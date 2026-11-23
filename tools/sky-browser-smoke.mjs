@@ -263,6 +263,39 @@ try {
       await context.close();
     }
   }
+  // The regular smoke loop exercises low quality on two form factors. Also
+  // compile the more expensive high-quality sea/shadow shaders in Chromium.
+  const highContext = await browser.newContext({ viewport: { width: 960, height: 640 }, reducedMotion: 'reduce' });
+  try {
+    await highContext.addInitScript(() => {
+      localStorage.setItem('waldo.preferences.v1', JSON.stringify({ sound: false, quality: 'high', reducedMotion: true }));
+    });
+    const highPage = await highContext.newPage();
+    highPage.setDefaultTimeout(30000);
+    const highErrors = [];
+    highPage.on('pageerror', error => highErrors.push(error.message));
+    highPage.on('console', msg => {
+      if (msg.type() === 'error' && /WebGL|shader|GL_INVALID|THREE.WebGLProgram/i.test(msg.text())) highErrors.push(msg.text());
+    });
+    await highPage.goto(origin, { waitUntil: 'domcontentloaded' });
+    await highPage.locator('#start-sky').click();
+    await highPage.locator('#sk-title').waitFor({ state: 'visible' });
+    await highPage.locator('#sk-start').click();
+    await highPage.waitForFunction(() => window.__sky?.sim?.time > 0.05 && window.__sky.renderer.info.render.calls > 0);
+    const highStats = await highPage.evaluate(() => ({
+      calls: window.__sky.renderer.info.render.calls,
+      cloudCount: window.__sky.view.clouds.length,
+      roughness: window.__sky.view.sea.material.roughness,
+    }));
+    assert.ok(highStats.calls > 0, 'High quality must issue rendered draw calls');
+    assert.ok(highStats.cloudCount >= 30, 'High quality must populate atmosphere sprites');
+    assert.ok(highStats.roughness < 0.6, 'High quality keeps richer water lighting');
+    await highPage.screenshot({ path: 'browser-artifacts/sky-high-desktop.png', animations: 'disabled' });
+    assert.deepEqual(highErrors, [], 'High quality must not throw WebGL or shader errors');
+    console.log('PASS SKY WAR high-quality desktop (' + highStats.calls + ' draw calls)');
+  } finally {
+    await highContext.close();
+  }
 } finally {
   await browser?.close().catch(() => undefined);
   server.kill('SIGTERM');

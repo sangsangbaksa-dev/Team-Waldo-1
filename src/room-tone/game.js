@@ -1365,8 +1365,9 @@ function pathsDistXZ(a, b) {
     Math.abs(Math.floor(a / level.w) - Math.floor(b / level.w))
   );
 }
-function update(dt) {
-  elapsed += dt;
+function update(dt, wallDt) {
+  // The timer measures real active play, even if WebGL is running below 13 FPS.
+  elapsed += wallDt;
   let f =
     (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
     (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
@@ -1490,12 +1491,13 @@ function showSceneOnce() {
 }
 function frame(ts) {
   frameId = null;
-  const dt = Math.min(0.075, Math.max(0, (ts - last) / 1000));
+  const wallDt = Math.max(0, (ts - last) / 1000);
+  const dt = Math.min(0.075, wallDt);
   last = ts;
   now = ts / 1000;
   if (document.hidden || !scene || $("game").hidden) return;
   const wasPlaying = state === "play";
-  if (wasPlaying) update(dt);
+  if (wasPlaying) update(dt, wallDt);
   if (state === "capture") {
     const duration = reducedEffects ? 1.2 : 1.45;
     if (captureTime < duration) {

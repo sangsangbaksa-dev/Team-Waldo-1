@@ -11,6 +11,7 @@ import type { LoadingScreen } from '../loading';
 import { drawIcon, svgIcon } from './art';
 import { AdaptiveQuality } from '../shared/adaptive';
 import { advanceSkyQualityRecovery } from './quality';
+import { LOW_FLIGHT_RULES } from './low-flight';
 import { planSkyFrame } from './timing';
 
 const clamp = THREE.MathUtils.clamp;
@@ -249,7 +250,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     setPercent('sk-hp', p.hp / p.maxHp * 100); $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
     setPercent('sk-heat', p.heat / 1.2 * 100); $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
     setText('sk-spd', String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'); setText('sk-alt', String(Math.round(p.pos.y))); setHtml($('sk-mis'), p.missiles > 0 ? missileIcon.repeat(Math.min(p.missiles, 12)) : '—');
-    setHtml($('sk-status'), [sim!.shield > 0 ? `${shieldIcon}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${boltIcon}${sim!.overdrive.toFixed(1)}s` : '', sim!.lowFlightCharge > 0 ? `저공 ${Math.round(sim!.lowFlightCharge / 1.25 * 100)}%` : ''].filter(Boolean).join(' '));
+    setHtml($('sk-status'), [sim!.shield > 0 ? `${shieldIcon}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${boltIcon}${sim!.overdrive.toFixed(1)}s` : '', sim!.lowFlightCharge > 0 ? `저공 ${Math.round(sim!.lowFlightCharge / LOW_FLIGHT_RULES.duration * 100)}%` : ''].filter(Boolean).join(' '));
     setPercent('sk-fuel', p.fuel * 100);
     setPercent('sk-thr', throttle * 100);
     // Flare cooldown is visible instead of silently ignoring repeated touch input.

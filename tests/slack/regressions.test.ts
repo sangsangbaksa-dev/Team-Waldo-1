@@ -52,6 +52,15 @@ it('caps canvas pixel ratio and ignores transient zero sizes', () => {
   expect([canvas.width, canvas.height]).toEqual([400, 225]);
 });
 
+it('updates the tactical army count after a newly trained unit joins', () => {
+  const battle = createBattle(true);
+  expect(battle.army).toBe(2);
+  expect(battle.train('i')).toBe(true);
+  battle.update(0.1);
+  expect(battle.army).toBe(3);
+  expect(Number.isFinite(battle.ore)).toBe(true);
+});
+
 it('resets the battle HUD immediately for a fresh round', () => {
   const battle = createBattle(true);
   expect(battle.ore).toBe(100);

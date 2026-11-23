@@ -371,3 +371,26 @@ describe('SKY WAR cannon terrain and first-impact order', () => {
     expect(sim.hits).toBe(1);
   });
 });
+
+describe('SKY WAR narrow ridge tunneling', () => {
+  it('intercepts a very fast projectile crossing a narrow high-altitude island crest', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const from = new THREE.Vector3(1670.3, 139.7, -1832.2);
+    const to = new THREE.Vector3(3719.1, 139.7, -1251.9);
+    sim.missiles.push({
+      id: 1291, owner: 999, team: 'enemy',
+      pos: from.clone(), vel: to.clone().sub(from).divideScalar(0.05),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.missiles).toHaveLength(0);
+    const explosion = sim.events.find(e => e.t === 'boom');
+    expect(explosion?.t).toBe('boom');
+    if (explosion?.t === 'boom') {
+      expect(explosion.pos.x).toBeGreaterThan(1900);
+      expect(explosion.pos.x).toBeLessThan(2300);
+      expect(explosion.pos.y).toBeCloseTo(139.7, 3);
+    }
+  });
+});

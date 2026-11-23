@@ -402,15 +402,18 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       view.camera.up.set(0, 1, 0);
       view.camera.lookAt(sim.player.pos.clone().addScaledVector(forward(sim.player, new THREE.Vector3()), 120));
     }
+    requestFrame();
   }
   function togglePause(): void {
     if (state === 'play') {
       clearHeldInput();
       audio.pause(true); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
+      cancelAnimationFrame(raf); raf = 0;
     } else if (state === 'paused') {
       state = 'play'; $('sk-paused').hidden = true; audio.pause(false); last = performance.now();
       resetQualityClock();
       lock();
+      requestFrame();
     }
   }
   function finish(): void {
@@ -438,8 +441,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     }
     return true;
   }
+  function requestFrame(): void { if (!closed && !raf) raf = requestAnimationFrame(frame); }
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame);
+    if (closed) return;
+    raf = 0;
     const frameMs = now - last, plan = planSkyFrame(frameMs);
     const dt = Math.min(0.05, plan.elapsed);
     last = now; if (!renderer || !view || !sim) return;
@@ -524,6 +529,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       }
       overlay(sim.player);
     } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
+    if (state === 'play') requestFrame();
   }
 
   // 난이도/버튼
@@ -551,6 +557,6 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     renderer.setPixelRatio(adaptive.pr);
     view = new SkyView(renderer); sim = new SkySim(diff); sim.intermission = 1e9; resize();
   } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
-  opts.loading?.close(); last = performance.now(); raf = requestAnimationFrame(frame);
+  opts.loading?.close(); last = performance.now(); requestFrame();
   (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, get renderer() { return renderer; }, get view() { return view; }, start };
 }

@@ -21,7 +21,7 @@ import { resolveChaseCamera } from './camera';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
-const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, grenade: 0xa6ca6b };
+const LOOT_COLOR: Record<string, number> = { weapon: 0xd0d3c9, ammo: 0xc5a178, medkit: 0x97b29f, armor: 0x92a7b2, bandage: 0xd3cdbd, attach: 0xb9abb9, helmet: 0xc4b38d, boost: 0x9abac1, grenade: 0xb8bd96 };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);
 /** 부드러운 2차원 값 잡음(지형 색 변화용) */
@@ -68,17 +68,19 @@ export class ShooterView {
     this.hemi = new THREE.HemisphereLight(0xa9bccf, 0x5d5a48, 0.82); sc.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xdbe4ee, 1.8); this.sun.position.copy(sunDir).multiplyScalar(120); sc.add(this.sun, this.sun.target);
     if (hi) { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -62; s.camera.right = s.camera.top = 62; s.camera.near = 20; s.camera.far = 320; s.bias = -0.0004; s.normalBias = 0.05; }
-    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.42, radius: 0.55, threshold: 0.88, vignette: 0.3 });
+    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.14, radius: 0.3, threshold: 0.94, vignette: 0.12 });
     this.buildGround(); this.buildBuildings(); this.buildScatter();
-    this.beams = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.09, 7, 8, 1, true), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }), 400);
+    this.beams = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.035, 1.15, 6, 1, true), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.68, blending: THREE.NormalBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }), 400);
     this.beams.count = 0; this.beams.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(400 * 3), 3); this.beams.frustumCulled = false; sc.add(this.beams);
     // 자기장 벽: 파란 반투명 원통과 다음 원을 알리는 바닥 고리
     this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 90, 128, 1, true), new THREE.ShaderMaterial({
-      transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, uniforms: { t: { value: 0 } },
+      transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.NormalBlending, fog: false, uniforms: { t: { value: 0 } },
       vertexShader: 'varying vec3 vP; varying float vH; void main(){ vP = position; vH = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: `varying vec3 vP; varying float vH; uniform float t;
-        void main(){ float a = atan(vP.z, vP.x); float band = 0.5 + 0.5 * sin(a * 90.0 + vH * 0.35 - t * 1.4); float rows = 0.5 + 0.5 * sin(vH * 0.9 - t * 2.2);
-          float fade = (1.0 - smoothstep(-5.0, 45.0, vH)) * 0.85 + 0.12; vec3 col = mix(vec3(0.08, 0.35, 1.0), vec3(0.45, 0.85, 1.0), band * rows); gl_FragColor = vec4(col, (0.18 + 0.2 * band * rows) * fade); }`,
+        void main(){ float a = atan(vP.z, vP.x);
+          float seam = step(0.985, fract((a + 3.14159265) * 18.0));
+          float fade = 1.0 - smoothstep(8.0, 90.0, vH);
+          gl_FragColor = vec4(0.27, 0.48, 0.54, (0.10 + 0.15 * seam) * fade); }`, 
     }));
     this.zoneWall.position.y = 45; this.zoneWall.frustumCulled = false; sc.add(this.zoneWall);
     this.zoneNext = new THREE.Mesh(new THREE.RingGeometry(0.992, 1, 160), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, fog: false }));
@@ -319,7 +321,7 @@ export class ShooterView {
       live.add(l.id); if (!entry) { entry = this.lootNode(l); this.lootNodes.set(l.id, entry); }
       const n = entry.node; n.visible = d2 < 150 * 150; if (!n.visible) continue;
       n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = entry.baseY + Math.sin(this.time * 2 + l.id) * 0.06;
-      if (nb < 400) { d.position.set(l.x, groundHeight(this.match.map.terrain, l.x, l.z) + 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
+      if (nb < 400) { d.position.set(l.x, groundHeight(this.match.map.terrain, l.x, l.z) + 0.73, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
     }
     this.beams.count = nb; this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
     for (const [id, entry] of this.lootNodes) if (!live.has(id)) { entry.dispose(); this.lootNodes.delete(id); }

@@ -321,3 +321,10 @@
   filter:grayscale(.8);
   cursor:not-allowed;
 }
+
+/* Keep the hold-to-cover control away from gesture-navigation system chrome. */
+.slack-computer .sc-controls{
+  padding-bottom:max(10px,env(safe-area-inset-bottom,0px));
+  padding-left:max(14px,env(safe-area-inset-left,0px));
+  padding-right:max(14px,env(safe-area-inset-right,0px));
+}

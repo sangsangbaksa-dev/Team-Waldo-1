@@ -8,6 +8,7 @@ import { groundHeight, waterDepth } from './terrain';
 import { acceptWheelSwap, newWheelSwapState } from './wheel';
 import { freshRecon, useRecon } from './recon';
 import { ShooterNavigation } from './navigation';
+import { advanceMatchChunk, FAST_FORWARD } from './fast-forward';
 import { Match, NADE, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -71,6 +72,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let soloRecorded = false;
+  let skipRun: { match: Match; remainingSteps: number } | null = null;
   let recon = freshRecon();
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
@@ -343,7 +345,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endPvp();
   }
   function endPvp(): void { pvp?.net.dispose(); pvp = null; }
-  function endMatch(): void { locked = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); view?.dispose(); view = null; match = null; }
+  function endMatch(): void { skipRun = null; locked = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); view?.dispose(); view = null; match = null; }
 
 
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
@@ -568,7 +570,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (p.killedWeapon === 'zone') return '<p class="sz-killer">자기장 밖에서 쓰러졌습니다</p>';
     if (p.killedBy < 0) return p.killedWeapon === 'bomb' ? '<p class="sz-killer">폭격에 쓰러졌습니다</p>' : p.killedWeapon === 'vehicle' ? '<p class="sz-killer">차량 사고로 쓰러졌습니다</p>' : '';
     const k = match!.players[p.killedBy], w = p.killedWeapon ? causeName(p.killedWeapon) : '';
-    return k ? `<p class="sz-killer">${k.name}에게 쓰러짐 · ${w}${k.alive ? ` · 상대 체력 ${Math.ceil(k.hp)}` : ''}</p>` : '';
+    return k ? `<p class="sz-killer">${esc(k.name)}에게 쓰러짐 · ${w}${k.alive ? ` · 상대 체력 ${Math.ceil(k.hp)}` : ''}</p>` : '';
   }
   function showResult(win: boolean): void {
     if (closed || !match) return; const p = me(), t = match.t, rank = win ? 1 : p.place; if (document.pointerLockElement) document.exitPointerLock();
@@ -581,8 +583,28 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 
-  /** 시뮬레이션을 화면 없이 끝까지 돌립니다(내가 쓰러진 뒤 결과만 보고 싶을 때). */
-  function skip(maxSeconds = 600): void { const m = match; if (!m) return; for (let t = 0; t < maxSeconds && !m.over; t += 1 / 30) { m.step(1 / 30); m.drain(); } if (m.over) onOver(m.winner); }
+  /** 관전 결과 계산은 여러 화면 프레임에 나눠서 입력·렌더링이 멈추지 않게 합니다. */
+  function skip(maxSeconds = 600): void {
+    const m = match;
+    if (!m || m.over || pvp || room || phase !== 'dead' || skipRun) return;
+    skipRun = { match: m, remainingSteps: Math.ceil(maxSeconds / FAST_FORWARD.stepSeconds) };
+    card('ZERO ZONE', '최종 순위 계산 중', '<p class="sz-sub">경기를 빠르게 진행하고 있습니다. 언제든 메뉴로 돌아갈 수 있습니다.</p>',
+      '<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>');
+  }
+
+  function stepSkip(): void {
+    const run = skipRun;
+    if (!run || match !== run.match) { skipRun = null; return; }
+    run.remainingSteps -= advanceMatchChunk(run.match, run.remainingSteps);
+    if (run.match.over) {
+      skipRun = null;
+      onOver(run.match.winner);
+    } else if (run.remainingSteps <= 0) {
+      skipRun = null;
+      resultShown = true;
+      showResult(false);
+    }
+  }
 
 
   function setPause(on: boolean): void {
@@ -610,6 +632,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (!match || !view) return;
     const m = match, p = me();
+    if (skipRun) { stepSkip(); return; }
     if (phase === 'countdown' && !paused) {
       countdown -= dt; const c = Math.ceil(countdown - 0.4), el = q('#sz-count');
       if (c > 0) { set(el, 'cd', String(c)); el.classList.add('show'); } else { set(el, 'cd', '출격'); }

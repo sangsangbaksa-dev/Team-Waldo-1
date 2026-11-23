@@ -235,6 +235,31 @@ it('visually marks powerless apps and offers a useful fallback without locking t
   off.el.remove();
 });
 
+it('tracks webtoon reactions independently for each episode and lets users undo a like', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="webtoon"]')!.click();
+  view.frame(0);
+  const tab = (i: number) => view.el.querySelector<HTMLButtonElement>(`[data-ep="${i}"]`)!;
+  const like = (i: number) => view.el.querySelector<HTMLButtonElement>(`[data-eppane="${i}"] [data-like]`)!;
+  expect(tab(2).getAttribute('aria-pressed')).toBe('true');
+  expect(like(2).getAttribute('aria-pressed')).toBe('false');
+  expect(like(2).querySelector('b')?.textContent).toBe('12');
+  like(2).click();
+  expect(like(2).getAttribute('aria-pressed')).toBe('true');
+  expect(like(2).querySelector('b')?.textContent).toBe('13');
+  tab(1).click();
+  expect(tab(1).getAttribute('aria-pressed')).toBe('true');
+  expect(tab(2).getAttribute('aria-pressed')).toBe('false');
+  expect(like(1).getAttribute('aria-pressed')).toBe('false');
+  expect(like(1).querySelector('b')?.textContent).toBe('12');
+  like(1).click();
+  tab(2).click();
+  expect(like(2).querySelector('b')?.textContent).toBe('13');
+  like(2).click();
+  expect(like(2).getAttribute('aria-pressed')).toBe('false');
+  expect(like(2).querySelector('b')?.textContent).toBe('12');
+  expect(like(1).querySelector('b')?.textContent).toBe('13');
+});
+
 it('lets keyboard and screen-reader users select each dorm music track', () => {
   view.el.querySelector<HTMLButtonElement>('[data-app="music"]')!.click();
   view.frame(0.1);

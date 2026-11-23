@@ -217,11 +217,11 @@ export const createComputerView: CreateView = (sim, audio) => {
   let nextIncoming = 8;
 
   /* ---------- 웹툰 ---------- */
-  const W = { ep: 2, likes: 12 };
-  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like>♡ 좋아요 <b>${W.likes}</b></button></div>`).join('')}</div>`;
+  const W = { ep: 2, likes: episodes.map(() => 12), liked: episodes.map(() => false) };
+  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like aria-label="${e.n}화 좋아요" aria-pressed="${W.liked[i]}">♡ 좋아요 <b>${W.likes[i]}</b></button></div>`).join('')}</div>`;
   const toonShow = (i: number) => {
     W.ep = i; const w = wins.webtoon;
-    w.querySelectorAll('[data-ep]').forEach((b, k) => b.classList.toggle('cur', k === i)); w.querySelectorAll('[data-eppane]').forEach((p, k) => p.classList.toggle('cur', k === i));
+    w.querySelectorAll('[data-ep]').forEach((b, k) => { b.classList.toggle('cur', k === i); b.setAttribute('aria-pressed', String(k === i)); }); w.querySelectorAll('[data-eppane]').forEach((p, k) => p.classList.toggle('cur', k === i));
     toonProgress();
   };
   const toonProgress = () => { const p = $(`[data-eppane="${W.ep}"]`, wins.webtoon); const max = p.scrollHeight - p.clientHeight; setTxt($('[data-read]', wins.webtoon), `${max > 0 ? Math.round((p.scrollTop / max) * 100) : 0}% 읽음`); };
@@ -332,7 +332,20 @@ export const createComputerView: CreateView = (sim, audio) => {
     const chip = target.closest<HTMLElement>('[data-chip]');
     if (chip) { audio.play('key', 0.6); chatPush(C.room, { m: true, who: '', t: chip.dataset.chip ?? '' }); chatIncoming(C.room, pick(rooms[C.room].reply), 1.8 + Math.random() * 1.5); return; }
     const ep = target.closest<HTMLElement>('[data-ep]'); if (ep) { audio.play('click'); toonShow(Number(ep.dataset.ep)); return; }
-    const like = target.closest('[data-like]'); if (like) { audio.play('chime', 0.3); W.likes++; const b = like.querySelector('b'); setTxt(b as HTMLElement, String(W.likes)); like.classList.add('liked'); return; }
+    const like = target.closest<HTMLButtonElement>('[data-like]');
+    if (like) {
+      const i = Number(like.closest<HTMLElement>('[data-eppane]')?.dataset.eppane);
+      if (!Number.isInteger(i) || i < 0 || i >= episodes.length) return;
+      W.liked[i] = !W.liked[i];
+      W.likes[i] += W.liked[i] ? 1 : -1;
+      audio.play('chime', 0.3);
+      like.classList.toggle('liked', W.liked[i]);
+      like.setAttribute('aria-pressed', String(W.liked[i]));
+      const count = like.querySelector<HTMLElement>('b');
+      setTxt(count, String(W.likes[i]));
+      like.firstChild!.textContent = W.liked[i] ? '♥ 좋아요 ' : '♡ 좋아요 ';
+      return;
+    }
     const add = target.closest<HTMLElement>('[data-add]');
     if (add) {
       const isDeal = add.dataset.add === 'deal'; const i = isDeal ? S.deal : Number(add.dataset.add);

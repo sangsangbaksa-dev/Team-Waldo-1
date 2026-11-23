@@ -195,6 +195,20 @@ try {
         }
       }
       await snap('dorm-shop');
+      // Likes belong to one comic episode; switching chapters must not
+      // silently borrow the selected count from another episode.
+      await page.locator('.sc-apps [data-app="webtoon"]').click();
+      const like12 = page.locator('[data-eppane="2"] [data-like]');
+      await like12.click();
+      assert.equal(await like12.getAttribute('aria-pressed'), 'true');
+      assert.equal(await like12.locator('b').textContent(), '13');
+      await page.locator('[data-ep="1"]').click();
+      const like11 = page.locator('[data-eppane="1"] [data-like]');
+      assert.equal(await like11.locator('b').textContent(), '12');
+      await page.locator('[data-ep="2"]').click();
+      assert.equal(await like12.locator('b').textContent(), '13');
+      await like12.click();
+      assert.equal(await like12.getAttribute('aria-pressed'), 'false');
 
       // Repeated restart must dispose the old view, rebuild a single set of
       // app windows and clear the previous run's shopping cart.

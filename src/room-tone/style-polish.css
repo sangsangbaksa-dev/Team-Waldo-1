@@ -1,10 +1,9 @@
-#game .hudleft { min-width:0; max-width:min(56vw,500px); padding:.55rem .75rem; background:#09100dc9; border-left:1px solid #9b8774; }
 :where(#home,#viewer,#game,dialog) :is(button,input):focus-visible { outline: 2px solid #eca16d; outline-offset: 3px; }
-#game .hudleft strong { text-shadow: 0 2px 8px #000, 0 0 3px #000; }
+#game .hudleft strong { text-shadow:0 1px 2px #000; }
 #game .panel, dialog { border-color: #786d5b; box-shadow: 0 14px 32px #0008; }
 @media (prefers-reduced-motion: reduce) { #game #danger { animation: none; } }
 
-#game .hudleft { min-width:0; }
+#game .hudleft { min-width:0; max-width:min(56vw,500px); padding:.55rem .75rem; background:#09100dc9; border-left:1px solid #9b8774; }
 #game .hudleft strong { overflow-wrap:anywhere; line-height:1.35; }
 #game #prompt { box-sizing:border-box; max-width:calc(100vw - 32px); white-space:normal; overflow-wrap:anywhere; }
 #game #timer { font-variant-numeric:tabular-nums; }

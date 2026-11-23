@@ -117,7 +117,32 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
-      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720" aria-label="장소를 터치하거나 클릭해 목적지를 지정"></canvas><div class="ty-map-caption">지도 터치: 자유 목적지 · 점선: 도로 참고 경로 · 흰 화살표: 현재 위치</div><button type="button" class="ty-clear-waypoint" data-waypoint-clear>내 목적지 지우기</button></div>'; break;
+      case 'map': {
+        const fleet = rides?.positions() ?? [];
+        const rows = fleet.map((car, index) => {
+          const block = layout.blocks.reduce((best, cur) =>
+            Math.hypot(cur.cx - car.x, cur.cz - car.z) < Math.hypot(best.cx - car.x, best.cz - car.z) ? cur : best);
+          const reachable = blockUnlocked(block, core.state.stageIndex);
+          const distance = Math.round(streetDistance(player.pos, car));
+          return `<button type="button" class="ty-map-vehicle" data-vehicle-target="${index}" ${!reachable || car.active ? 'disabled' : ''}
+            aria-label="${esc(car.name)}${reachable ? `, 도로 기준 약 ${distance}미터, 목적지로 설정` : ', 잠긴 구역'}">
+            <span class="ty-map-car-icon" aria-hidden="true">◈</span>
+            <span class="ty-map-car-copy"><strong>${esc(car.name)}</strong><small>${car.active ? '현재 운전 중' : reachable ? `도로 약 ${distance}m` : '구역 개방 후 이용 가능'}</small></span>
+            <span class="ty-map-car-chevron" aria-hidden="true">${reachable && !car.active ? '↗' : '—'}</span></button>`;
+        }).join('');
+        h = `<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도">
+          <button type="button" class="ty-x" data-close aria-label="지도 닫기">✕</button>
+          <div class="ty-map-layout">
+            <div class="ty-map-surface"><canvas id="ty-bigmap" width="720" height="720" aria-label="지도를 눌러 원하는 지점에 경로를 표시"></canvas>
+              <div class="ty-map-caption">지도를 눌러 목적지 지정 · 점선은 도로 참고 경로</div></div>
+            <div class="ty-map-aside"><div class="ty-map-aside-head"><small>CITY DIRECTORY</small><h2>이동할 곳을 선택하세요</h2><p>차량을 선택하거나 지도 위의 지점을 눌러 주세요.</p></div>
+              <div class="ty-map-vehicles">${rows || '<p class="ty-map-empty">배치된 차량이 없습니다.</p>'}</div>
+              <button type="button" class="ty-clear-waypoint" data-waypoint-clear ${waypoint ? '' : 'disabled'}>설정한 목적지 지우기</button>
+            </div>
+          </div>
+        </div>`;
+        break;
+      }
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
       const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
@@ -160,6 +185,16 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const t = e.target as HTMLElement; audio.unlock();
     if (t.closest('[data-close]') || t === modalEl) { closeModal(); return; }
     if (t.closest('[data-waypoint-clear]')) { waypoint = null; hudDirty = true; closeModal(); toast('자유 이동 목적지를 해제했습니다'); return; }
+    const vehicleTarget = t.closest<HTMLButtonElement>('[data-vehicle-target]');
+    if (vehicleTarget && modal?.kind === 'map' && !vehicleTarget.disabled) {
+      const index = Number(vehicleTarget.dataset.vehicleTarget);
+      const fleet = rides?.positions() ?? [];
+      const car = Number.isInteger(index) ? fleet[index] : undefined;
+      if (!car || car.active) return;
+      waypoint = { x: car.x, z: car.z };
+      hudDirty = true; closeModal(); toast(`${car.name} 위치를 목적지로 설정했습니다`, 'good'); return;
+    }
+
     const mapCanvas = t.closest<HTMLCanvasElement>('#ty-bigmap');
     if (mapCanvas && modal?.kind === 'map' && e instanceof MouseEvent) {
       const point = pointFromMapClick(e.clientX, e.clientY, mapCanvas.getBoundingClientRect());

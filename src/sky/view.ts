@@ -284,7 +284,13 @@ export class SkyView {
       let m = this.meshes.get(j.id);
       if (!j.alive) { if (m) { this.scene.remove(m); this.disposeObject(m); this.meshes.delete(j.id); } continue; }
       this.jetIds.add(j.id);
-      if (!m) { m = buildJet(j.kind, j.team); m.userData.team = j.team; this.scene.add(m); this.meshes.set(j.id, m); }
+      if (!m) {
+        m = buildJet(j.kind, j.team);
+        m.userData.team = j.team;
+        m.userData.flame = m.getObjectByName('flame');
+        m.userData.flameCore = m.getObjectByName('flameCore');
+        this.scene.add(m); this.meshes.set(j.id, m);
+      }
       m.visible = !(this.cockpit && j.team === 'player');
       m.position.copy(j.pos); m.quaternion.copy(j.q);
       if (j.team === 'enemy') {
@@ -295,11 +301,11 @@ export class SkyView {
         }
       }
       const throttle = THREE.MathUtils.clamp(j.throttle + (j.boosting ? 0.6 : 0), 0, 1.6);
-      const fl = m.getObjectByName('flame') as THREE.Mesh | undefined; if (fl) {
+      const fl = m.userData.flame as THREE.Mesh | undefined; if (fl) {
         fl.scale.set(0.65 + throttle * 0.55, 0.45 + throttle * 1.4 + Math.sin(time * 40 + j.id) * 0.1, 0.65 + throttle * 0.55);
         (fl.material as THREE.MeshBasicMaterial).opacity = 0.4 + throttle * 0.55;
       }
-      const core = m.getObjectByName('flameCore') as THREE.Mesh | undefined;
+      const core = m.userData.flameCore as THREE.Mesh | undefined;
       if (core) { core.scale.set(0.7 + throttle * 0.3, 0.55 + throttle * 0.8, 0.7 + throttle * 0.3); (core.material as THREE.MeshBasicMaterial).opacity = 0.35 + throttle * 0.32; }
       if ((j.speed > 170 || (j.speed > 120 && Math.abs(j.roll) > 0.8)) && Math.random() < Math.min(1, dt * 24)) {
         const tip = this.v1;

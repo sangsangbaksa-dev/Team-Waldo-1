@@ -238,7 +238,9 @@ function modal(title, description, body, actions, type = "panel") {
   if (state === "capture") $("viewWrap").classList.remove("caught-shot");
   state = type;
   leaveLook();
-  sound.pause(true);
+  // Puzzles intentionally keep WebAudio running for dial feedback. Rebuilding
+  // puzzle controls must never suspend the graph between consecutive clicks.
+  if (type !== "puzzle") sound.pause(true);
   $("dialog").hidden = false;
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;

@@ -1219,7 +1219,8 @@ function enemyUpdate(dt, running) {
   const dist = Math.hypot(player.x - e.x, player.z - e.z);
   grace = Math.max(0, grace - dt);
   exitGrace = Math.max(0, exitGrace - dt);
-  const visible = dist <= 14 && clearLine(player, e);
+  // Stereo footsteps remain audible out to 18 units in a clear corridor.
+  const visible = dist <= 18 && clearLine(player, e);
   const inSight = !hiddenSpot && canSeeTarget(dist, visible, lightOn,
     facingDot(entity.rotation.y, e, player));
   const playerCell = cellOf(player);

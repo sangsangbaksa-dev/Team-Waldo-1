@@ -393,17 +393,28 @@ export class ShooterView {
         n = { g, wreck: v.wreck, puffT: 0, fire }; this.vehNodes.set(v.id, n);
       }
       const dist = Math.abs(v.x - vx) + Math.abs(v.z - vz); n.g.visible = dist < 420; if (n.fire) n.fire.visible = n.g.visible; if (!n.g.visible) continue;
-      n.g.position.set(v.x, groundHeight(this.match.map.terrain, v.x, v.z), v.z); n.g.rotation.y = -v.yaw;
-      if (!v.wreck) { // 달릴 때 차체가 살짝 기웃: 가속하면 뒤로, 핸들 꺾으면 바깥으로 기웁니다
-        const sp = Math.abs(v.speed), top = 36, pitch = -Math.sign(v.speed) * Math.min(1, sp / top) * 0.012; n.g.rotation.z += (pitch - n.g.rotation.z) * Math.min(1, dt * 6);
+      const terrain = this.match.map.terrain, ground = groundHeight(terrain, v.x, v.z);
+      n.g.position.set(v.x, ground, v.z); n.g.rotation.y = -v.yaw;
+      // 가파르지 않은 능선을 따라 차체의 앞뒤·좌우 각도를 조금씩 보간합니다.
+      // 계산된 시각 효과만 변경하며 충돌/물리 상태는 기존 차체 AABB를 유지합니다.
+      if (!v.wreck) {
+        const h = 1.4;
+        const gx = (groundHeight(terrain, v.x + h, v.z) - groundHeight(terrain, v.x - h, v.z)) / (h * 2);
+        const gz = (groundHeight(terrain, v.x, v.z + h) - groundHeight(terrain, v.x, v.z - h)) / (h * 2);
+        const forwardSlope = gx * Math.cos(v.yaw) + gz * Math.sin(v.yaw);
+        const lateralSlope = gz * Math.cos(v.yaw) - gx * Math.sin(v.yaw);
+        const sp = Math.abs(v.speed), top = 36, accelerationLean = -Math.sign(v.speed) * Math.min(1, sp / top) * 0.012;
+        const alpha = Math.min(1, dt * 6);
+        n.g.rotation.z += (Math.atan(forwardSlope) + accelerationLean - n.g.rotation.z) * alpha;
+        n.g.rotation.x += (-Math.atan(lateralSlope) - n.g.rotation.x) * alpha;
       }
       n.puffT -= dt;
       if (n.puffT <= 0 && dist < 160) {
         const sp = Math.abs(v.speed);
-        if (sp > 9 && !v.wreck) { n.puffT = 0.07; this.puff(v.x - Math.cos(v.yaw) * v.w * 0.45 * Math.sign(v.speed), 0.35, v.z - Math.sin(v.yaw) * v.w * 0.45 * Math.sign(v.speed), 0x8a8270, 1.4 + sp * 0.03, 0.9, 0.5, 2.2, 0.28); }
-        else if (v.wreck || v.hp < v.max * 0.35) { n.puffT = v.wreck ? 0.16 : 0.25; this.puff(v.x + (Math.random() - 0.5) * 0.8, v.h + 0.2, v.z + (Math.random() - 0.5) * 0.8, v.wreck ? 0x202020 : 0x4a4a4a, 1.6, 2.2, 2.4, 2.6, v.wreck ? 0.6 : 0.4); }
+        if (sp > 9 && !v.wreck) { n.puffT = 0.07; this.puff(v.x - Math.cos(v.yaw) * v.w * 0.45 * Math.sign(v.speed), ground + 0.35, v.z - Math.sin(v.yaw) * v.w * 0.45 * Math.sign(v.speed), 0x8a8270, 1.4 + sp * 0.03, 0.9, 0.5, 2.2, 0.28); }
+        else if (v.wreck || v.hp < v.max * 0.35) { n.puffT = v.wreck ? 0.16 : 0.25; this.puff(v.x + (Math.random() - 0.5) * 0.8, ground + v.h + 0.2, v.z + (Math.random() - 0.5) * 0.8, v.wreck ? 0x202020 : 0x4a4a4a, 1.6, 2.2, 2.4, 2.6, v.wreck ? 0.6 : 0.4); }
       }
-      if (n.fire) { n.fire.position.set(v.x, groundHeight(this.match.map.terrain, v.x, v.z) + v.h * 0.8, v.z); const k = 2.2 + Math.sin(this.time * 17 + v.id) * 0.5 + Math.random() * 0.3; n.fire.scale.set(k, k * 1.3, 1); (n.fire.material as THREE.SpriteMaterial).opacity = 0.5 + Math.random() * 0.25; }
+      if (n.fire) { n.fire.position.set(v.x, ground + v.h * 0.8, v.z); const k = 2.2 + Math.sin(this.time * 17 + v.id) * 0.5 + Math.random() * 0.3; n.fire.scale.set(k, k * 1.3, 1); (n.fire.material as THREE.SpriteMaterial).opacity = 0.5 + Math.random() * 0.25; }
     }
   }
   private syncReds(): void {

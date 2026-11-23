@@ -104,6 +104,21 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('safely brakes for pedestrians entering the road ahead', () => {
+    const scene = new THREE.Scene(), layout = buildLayout([]);
+    let pedestrianInLane = false;
+    const player = new Player(scene, null);
+    const rides = new Rides(scene, layout, new Colliders(), undefined, () => pedestrianInLane);
+    const car = rides.positions()[0];
+    player.teleport(car.x, car.z, car.heading);
+    expect(rides.toggle(player).ok).toBe(true);
+    pedestrianInLane = true;
+    const contact = rides.update(0.08, { throttle: 1, steer: 0, brake: false }, player, false);
+    expect(contact).toBe(true);
+    expect(rides.speed).toBe(0);
+    rides.dispose();
+  });
+
   it('stops before moving NPC traffic and never tunnels through it', () => {
     const { player, rides } = setup();
     const car = rides.positions()[0]; player.teleport(car.x, car.z, car.heading);

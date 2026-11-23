@@ -15,7 +15,8 @@ describe('ZERO ZONE 중앙 메트로폴리스', () => {
     const towers = downtown.filter(b => b.type === 'apartment');
     expect(towers.length).toBeGreaterThanOrEqual(10);
     expect(new Set(towers.map(b => b.h)).size).toBeGreaterThan(2);
-    expect(Math.max(...towers.map(b => b.h))).toBeGreaterThanOrEqual(15);
+    expect(Math.max(...towers.map(b => b.h))).toBeGreaterThanOrEqual(12 * 3.2);
+    expect(towers.some(b => b.x > 20 && b.z > 20 && b.h >= 12 * 3.2)).toBe(true);
     for (const b of downtown) expect(waterDepth(map.terrain, b.x, b.z)).toBe(0);
     expect(new Set(map.terrain.hills.map(h => Math.floor(h.h))).size).toBeGreaterThan(2);
   });

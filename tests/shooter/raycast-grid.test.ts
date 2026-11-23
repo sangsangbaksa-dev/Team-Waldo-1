@@ -57,7 +57,9 @@ describe('ZERO ZONE 레이캐스트 격자 누락 방지', () => {
       const ox = (rng() * 2 - 1) * 120, oz = (rng() * 2 - 1) * 120, oy = rng() * 22;
       const yaw = rng() * Math.PI * 2, pitch = (rng() - 0.5) * 1.3;
       const dx = Math.cos(yaw) * Math.cos(pitch), dz = Math.sin(yaw) * Math.cos(pitch), dy = Math.sin(pitch);
-      const expected = brute(map.boxes, ox, oy, oz, dx, dy, dz, 250);
+      // 지면 고도를 통합한 레이캐스트는 상자 외에 y=0 지면도 최초 교차점으로 봅니다.
+      const flatHit = dy < -1e-9 ? oy / -dy : Infinity;
+      const expected = Math.min(brute(map.boxes, ox, oy, oz, dx, dy, dz, 250), flatHit <= 250 ? flatHit : Infinity);
       const actual = rayWorld(map, ox, oy, oz, dx, dy, dz, 250);
       if (Number.isFinite(expected)) expect(actual).toBeCloseTo(expected, 5);
       else expect(actual).toBe(Infinity);

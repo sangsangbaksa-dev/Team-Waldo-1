@@ -260,7 +260,7 @@ function furnish(map: GameMap, rng: () => number, c: Compound, layoutHalf: { x: 
     const tx = c.x + layoutHalf.x + 2, tz = c.z - layoutHalf.z - 1; addProp(map, { kind: 'tank', x: tx, z: tz, ry: 0, w: 3.4, d: 3.4, h: 9, c: 0xa7aeb2 }, null, 0.5);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) addBox(map, { x0: tx + sx * 1.2 - 0.2, x1: tx + sx * 1.2 + 0.2, z0: tz + sz * 1.2 - 0.2, z1: tz + sz * 1.2 + 0.2, y0: 0, y1: 7, kind: 'prop', tex: 0 });
   }
-  if (th === 'urban') for (const b of built) if (rng() < 0.8) addProp(map, { kind: 'dumpster', x: b.x + (rng() < 0.5 ? -1 : 1) * (b.w / 2 + 1.6), z: b.z + (rng() - 0.5) * b.d * 0.6, ry: Math.PI / 2, w: 2, d: 1.2, h: 1.25, c: 0x2f6f4b }, { kind: 'prop' }, 0.5);
+  if (th === 'urban' && !c.downtown) for (const b of built) if (rng() < 0.8) addProp(map, { kind: 'dumpster', x: b.x + (rng() < 0.5 ? -1 : 1) * (b.w / 2 + 1.6), z: b.z + (rng() - 0.5) * b.d * 0.6, ry: Math.PI / 2, w: 2, d: 1.2, h: 1.25, c: 0x2f6f4b }, { kind: 'prop' }, 0.5);
   if (c.downtown) {
     // 도심 내부 중앙 도로의 교차로는 차량/엄폐물로 막지 않습니다.
     // 엄폐물과 주차 차량은 외곽의 코너에 배치해 이동과 AI 경로를 보장합니다.
@@ -325,7 +325,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       const loots = lootCount(rng, mode, sp.loot);
       for (let k = 0; k < loots; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
       // 문밖 상자
-      if (rng() < 0.55) { const s = 0.6 + rng() * 0.4, ox = b.x + (b.w / 2 + 1.6) * (rng() < 0.5 ? -1 : 1), oz = b.z + (rng() - 0.5) * b.d; if (freeRect(map, ox - s, oz - s, ox + s, oz + s, 0.3)) addBox(map, { x0: ox - s, x1: ox + s, z0: oz - s, z1: oz + s, y0: 0, y1: 1.1, kind: 'crate', tex: 0 }); }
+      if (!downtown && rng() < 0.55) { const s = 0.6 + rng() * 0.4, ox = b.x + (b.w / 2 + 1.6) * (rng() < 0.5 ? -1 : 1), oz = b.z + (rng() - 0.5) * b.d; if (freeRect(map, ox - s, oz - s, ox + s, oz + s, 0.3)) addBox(map, { x0: ox - s, x1: ox + s, z0: oz - s, z1: oz + s, y0: 0, y1: 1.1, kind: 'crate', tex: 0 }); }
     });
     c.r = reach + 6;
     furnish(map, rng, c, { x: (cols * lot.w) / 2, z: (rows * lot.d) / 2 }, built);

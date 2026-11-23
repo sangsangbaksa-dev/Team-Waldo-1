@@ -68,6 +68,8 @@ try {
       assert.ok(flight.enemies > 0, 'The first wave must spawn enemies');
       assert.ok(flight.calls > 0, 'Three.js must issue WebGL draw calls');
       assert.ok(flight.altitude > 100, 'Aircraft must have a valid starting altitude');
+      const playerOnScreen = await page.evaluate(() => window.__sky.view.project(window.__sky.sim.player.pos));
+      assert.ok(Math.abs(playerOnScreen.x - 0.5) < 0.12, 'Third-person camera should begin centered behind the jet');
       await page.screenshot({ path: 'browser-artifacts/sky-flight-' + size.name + '.png', animations: 'disabled' });
       const clouds = await page.evaluate(() => {
         const view = window.__sky.view;

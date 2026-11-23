@@ -46,7 +46,18 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   // Compact devices should show the launch button before the optional long controls guide.
   const help = root.querySelector<HTMLDetailsElement>('.sk-help');
   if (help && matchMedia('(max-width:600px)').matches) help.open = false;
-  const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
+  // HUD elements live for the whole sortie; caching avoids dozens of
+  // querySelector traversals per frame and gives an immediate error on bad IDs.
+  const elementCache = new Map<string, HTMLElement>();
+  const $ = <T extends HTMLElement>(id: string): T => {
+    let element = elementCache.get(id);
+    if (!element) {
+      element = root.querySelector<HTMLElement>('#' + id) ?? undefined;
+      if (!element) throw new Error(`SKY WAR UI missing #${id}`);
+      elementCache.set(id, element);
+    }
+    return element as T;
+  };
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
 
   let adaptive: AdaptiveQuality | null = null; let stableQualitySeconds = 0;
@@ -208,13 +219,17 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     alertT = sec; alertRank = rank;
   }
   const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
+  // SVG strings never change between frames. Reuse them instead of creating
+  // markup at 60 fps when only the player's missile count changes.
+  const missileIcon = svgIcon('missile', 'sk-ic mini');
+  const shieldIcon = svgIcon('shield'), boltIcon = svgIcon('bolt');
   function hud(p: Jet, dt: number): void {
     $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
     $('sk-wave').textContent = `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`;
     $('sk-hp').style.width = `${Math.max(0, p.hp / p.maxHp * 100)}%`; $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
     $('sk-heat').style.width = `${clamp(p.heat / 1.2 * 100, 0, 100)}%`; $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
-    $('sk-spd').textContent = String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'; $('sk-alt').textContent = String(Math.round(p.pos.y)); setHtml($('sk-mis'), p.missiles > 0 ? svgIcon('missile', 'sk-ic mini').repeat(Math.min(p.missiles, 12)) : '—');
-    setHtml($('sk-status'), [sim!.shield > 0 ? `${svgIcon('shield')}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${svgIcon('bolt')}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
+    $('sk-spd').textContent = String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'; $('sk-alt').textContent = String(Math.round(p.pos.y)); setHtml($('sk-mis'), p.missiles > 0 ? missileIcon.repeat(Math.min(p.missiles, 12)) : '—');
+    setHtml($('sk-status'), [sim!.shield > 0 ? `${shieldIcon}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${boltIcon}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
     $('sk-fuel').style.width = `${p.fuel * 100}%`;
     $('sk-thr').style.width = `${throttle * 100}%`;
     // Flare cooldown is visible instead of silently ignoring repeated touch input.

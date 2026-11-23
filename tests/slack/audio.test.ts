@@ -207,7 +207,9 @@ it('stops silent ambience generation on mute and restores the selected stage on 
   audio.setMuted(true);
   expect(vi.getTimerCount()).toBe(0);
   audio.setMuted(false);
-  expect(ctx.createBuffer).toHaveBeenCalledTimes(4);
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(2); // Reuse both air textures after unmute.
+  audio.ambience('dorm');
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(2); // Switching stages also reuses buffers.
   audio.ambience(null);
   expect(vi.getTimerCount()).toBe(0);
   audio.dispose();

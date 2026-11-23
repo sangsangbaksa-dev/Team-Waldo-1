@@ -99,6 +99,19 @@ describe("ROOM TONE WebAudio suspend and resume",()=>{
   });
 });
 
+describe("ROOM TONE audio readiness contract",()=>{
+  it("returns actual boolean values in running and suspended states",()=>{
+    const {sound,ctx}=harness();
+    expect(sound.ready()).toBe(false);
+    sound.paused=false;
+    expect(sound.ready()).toBe(false);
+    ctx.state="running";
+    expect(sound.ready()).toBe(true);
+    sound.muted=true;
+    expect(sound.ready()).toBe(false);
+  });
+});
+
 describe("ROOM TONE audio mute power management",()=>{
   afterEach(()=>vi.useRealTimers());
   it("suspends the active audio graph on mute and resumes after unmuting",async()=>{

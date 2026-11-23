@@ -190,3 +190,9 @@
 .sl-loading-spinner{width:35px;height:35px;border:3px solid #ffffff28;border-top-color:#dfc587;border-radius:50%;animation:sl-loading-turn .8s linear infinite}
 @keyframes sl-loading-turn{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.sl-loading-spinner{animation:none;border-color:#dfc587}}
+/* The saved hub motion preference also applies when the OS preference differs.
+   Time-sensitive gameplay retains a textual countdown independent of animation. */
+.sl-root.sl-reduced-motion *, .sl-root.sl-reduced-motion *::before, .sl-root.sl-reduced-motion *::after{
+  animation-duration:.01ms!important;animation-iteration-count:1!important;
+  transition-duration:.01ms!important;scroll-behavior:auto!important
+}

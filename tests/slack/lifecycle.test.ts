@@ -42,6 +42,14 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
 
+it('honors the stored reduced-motion preference independently of the OS setting', () => {
+  localStorage.setItem('waldo.preferences.v1', JSON.stringify({
+    sound: false, quality: 'low', reducedMotion: true,
+  }));
+  openSlack(vi.fn());
+  expect(document.querySelector('.sl-root')?.classList.contains('sl-reduced-motion')).toBe(true);
+});
+
 it('shows an accessible, cancellable loading screen until the stage import resolves', async () => {
   openSlack(vi.fn());
   button('[data-start]').click();

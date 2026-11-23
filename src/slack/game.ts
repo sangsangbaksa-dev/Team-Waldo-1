@@ -32,7 +32,9 @@ const tutorialSteps: { text: string; classText?: string; done: (s: SlackState, t
 ];
 
 export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } = {}): void {
+  const preferences = readPreferences();
   const root = document.createElement('div'); root.className = 'sl-root';
+  root.classList.toggle('sl-reduced-motion', preferences.reducedMotion);
   root.innerHTML = `<div class="sl-view"></div><div class="sl-vignette"></div>
   <div class="sl-hud" hidden><div class="sl-hudclock"><span>남은 시간</span><b data-time>02:30</b></div><div class="sl-fun"><div><b>재미</b><span data-fun></span></div><div class="sl-track" data-fun-meter role="progressbar" aria-label="재미" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i data-fun-bar></i><em data-goal></em></div></div><div class="sl-numbers"><span class="sl-chip">들킴 <span class="sl-pips" data-pips><i></i><i></i><i></i></span><b hidden data-strikes>0</b></span><span class="sl-chip" data-battery-chip>배터리 <b data-battery>100</b>%</span><span class="sl-chip">연속 <b data-combo>1</b>배</span><span class="sl-chip" data-risk-chip>긴장 <span class="sl-risk"><i data-risk-meter role="progressbar" aria-label="긴장도" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><em data-risk></em></i></span></span></div><div class="sl-tools"><button data-sound>소리 켜짐</button><button data-pause>일시정지</button></div></div>
   <div class="sl-tip" data-tip hidden role="note"><b data-tip-step>안내</b><span data-tip-text></span><button type="button" data-tip-skip>건너뛰기</button></div><div class="sl-toast" role="status"></div>
@@ -56,7 +58,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const variable = (name: string, value: string): void => { if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value); };
   const strikePips = Array.from(root.querySelectorAll<HTMLElement>('[data-pips] i'));
   const funMeter = $('[data-fun-meter]'), riskMeter = $('[data-risk-meter]');
-  let audio = createSlackAudio(); let muted = !readPreferences().sound; audio.setMuted(muted);
+  let audio = createSlackAudio(); let muted = !preferences.sound; audio.setMuted(muted);
   let stage: StageId = 'class', level: Level = 2, sim: Sim | null = null, view: StageView | null = null;
   let state: 'title' | 'loading' | 'play' | 'paused' | 'result' = 'title', closed = false, raf = 0, last = performance.now(), toastTime = 0, beat = 0;
   let tutorial = !tutorialSeen(), tutStep = 0, tutTime = 0, tutWall = 0;

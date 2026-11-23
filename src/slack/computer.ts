@@ -111,10 +111,10 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 게임: 별빛 던전(반응속도) ---------- */
   const G = { score: 0, best: 0, combo: 1, streak: 0, hp: 100, over: false, clock: 0, deadline: 0, nextAt: 0.5, on: false, life: 1.5 };
-  const gameHtml = () => `<div class="sc-game"><div class="sc-game-top"><span>별빛 던전</span><span>최고 <b data-g-best>0</b>　점수 <b data-score>0</b></span></div><div class="sc-health">체력 <span role="progressbar" aria-label="별빛 던전 체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i data-health style="width:100%"></i></span><em data-g-combo>x1</em></div><div class="sc-game-scene"><div class="sc-stars">✦　　·　　 ✧　　　✦</div><button type="button" class="sc-target" aria-label="별 터뜨리기" aria-keyshortcuts="J"><b>★</b><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/></svg></button><span class="sc-pop"></span><div class="sc-game-ground"></div><div class="sc-game-over"><strong>게임 오버</strong><span data-g-final></span><button type="button" data-g-retry>다시 하기</button></div></div><div class="sc-game-hint">별을 누르거나 <kbd>J</kbd> 키로 터뜨리세요 · 연속 성공은 콤보!</div></div>`;
-  const gameEls = () => ({ score: $('[data-score]', wins.game), best: $('[data-g-best]', wins.game), hp: $('[data-health]', wins.game), combo: $('[data-g-combo]', wins.game), target: $('.sc-target', wins.game), pop: $('.sc-pop', wins.game), scene: $('.sc-game-scene', wins.game), over: $('.sc-game-over', wins.game), final: $('[data-g-final]', wins.game) });
+  const gameHtml = () => `<div class="sc-game"><div class="sc-game-top"><span>별빛 던전</span><span>최고 <b data-g-best>0</b>　점수 <b data-score>0</b></span></div><div class="sc-health">체력 <span role="progressbar" aria-label="별빛 던전 체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i data-health style="width:100%"></i></span><small class="sc-game-left" data-g-left role="timer" aria-label="별 제한시간"></small><em data-g-combo>x1</em></div><div class="sc-game-scene"><div class="sc-stars">✦　　·　　 ✧　　　✦</div><button type="button" class="sc-target" aria-label="별 터뜨리기" aria-keyshortcuts="J"><b>★</b><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/></svg></button><span class="sc-pop"></span><div class="sc-game-ground"></div><div class="sc-game-over"><strong>게임 오버</strong><span data-g-final></span><button type="button" data-g-retry>다시 하기</button></div></div><div class="sc-game-hint">별을 누르거나 <kbd>J</kbd> 키로 터뜨리세요 · 연속 성공은 콤보!</div></div>`;
+  const gameEls = () => ({ score: $('[data-score]', wins.game), best: $('[data-g-best]', wins.game), hp: $('[data-health]', wins.game), combo: $('[data-g-combo]', wins.game), remaining: $('[data-g-left]', wins.game), target: $('.sc-target', wins.game), pop: $('.sc-pop', wins.game), scene: $('.sc-game-scene', wins.game), over: $('.sc-game-over', wins.game), final: $('[data-g-final]', wins.game) });
   const gameHud = () => { const g = gameEls(); setTxt(g.score, String(G.score)); setTxt(g.best, String(G.best)); setTxt(g.combo, `x${G.combo}`); g.hp.style.width = `${Math.max(0, G.hp)}%`; const meter = g.hp.parentElement; if (meter?.getAttribute('aria-valuenow') !== String(G.hp)) meter?.setAttribute('aria-valuenow', String(G.hp)); };
-  const gameReset = () => { Object.assign(G, { score: 0, combo: 1, streak: 0, hp: 100, over: false, on: false, nextAt: G.clock + 0.5, life: 1.5 }); const g = gameEls(); g.over.classList.remove('on'); g.target.classList.remove('on'); gameHud(); };
+  const gameReset = () => { Object.assign(G, { score: 0, combo: 1, streak: 0, hp: 100, over: false, on: false, nextAt: G.clock + 0.5, life: 1.5 }); const g = gameEls(); g.over.classList.remove('on'); g.target.classList.remove('on'); setTxt(g.remaining, ''); gameHud(); };
   const gameSpawn = () => {
     const t = gameEls().target; G.life = Math.max(0.65, 1.6 - G.score / 450);
     // Keep the whole 46px star and its 8px countdown ring inside the game.
@@ -124,7 +124,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     scene.style.setProperty('--star-x', `${x}%`);
     scene.style.setProperty('--star-y', `${y}%`);
     t.style.setProperty('--life', `${G.life}s`);
-    t.classList.remove('on'); void t.offsetWidth; t.classList.add('on'); G.on = true; G.deadline = G.clock + G.life;
+    t.classList.remove('on'); void t.offsetWidth; t.classList.add('on'); G.on = true; G.deadline = G.clock + G.life; setTxt(gameEls().remaining, `${G.life.toFixed(1)}초`);
   };
   const gamePop = (text: string, good: boolean) => { const p = gameEls().pop; p.textContent = text; p.classList.toggle('bad', !good); p.classList.remove('go'); void p.offsetWidth; p.classList.add('go'); };
   const gameHit = () => {
@@ -132,11 +132,11 @@ export const createComputerView: CreateView = (sim, audio) => {
     const gain = 10 * G.combo; G.score += gain; G.streak++; G.combo = Math.min(5, 1 + Math.floor(G.streak / 4)); G.hp = Math.min(100, G.hp + 2);
     audio.play('fun', 0.35 + G.combo * 0.08); gamePop(`+${gain}`, true);
     if (G.score > G.best) { if (G.best > 0 && G.score - gain <= G.best) audio.play('chime', 0.35); G.best = G.score; }
-    gameEls().target.classList.remove('on'); G.on = false; G.nextAt = G.clock + 0.25 + Math.random() * 0.45; gameHud();
+    gameEls().target.classList.remove('on'); setTxt(gameEls().remaining, ''); G.on = false; G.nextAt = G.clock + 0.25 + Math.random() * 0.45; gameHud();
   };
   const gameMiss = () => {
     G.on = false; G.hp -= 14; G.streak = 0; G.combo = 1; audio.play('key', 0.7); gamePop('놓침', false);
-    const g = gameEls(); g.target.classList.remove('on'); g.scene.classList.remove('shake'); void g.scene.offsetWidth; g.scene.classList.add('shake');
+    const g = gameEls(); g.target.classList.remove('on'); setTxt(g.remaining, ''); g.scene.classList.remove('shake'); void g.scene.offsetWidth; g.scene.classList.add('shake');
     if (G.hp <= 0) { G.over = true; G.hp = 0; audio.play('lock', 0.4); setTxt(g.final, `점수 ${G.score} · 최고 ${G.best}`); g.over.classList.add('on'); }
     G.nextAt = G.clock + 0.7; gameHud();
   };
@@ -144,6 +144,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (shown !== 'game' || sim.state.cover || G.over) return;
     G.clock += dt;
     if (G.on && G.clock > G.deadline) gameMiss(); else if (!G.on && G.clock >= G.nextAt) gameSpawn();
+    if (G.on) setTxt(gameEls().remaining, `${Math.max(0, G.deadline - G.clock).toFixed(1)}초`);
   };
 
   /* ---------- 영상 ---------- */

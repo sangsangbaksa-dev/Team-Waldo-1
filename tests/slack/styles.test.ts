@@ -84,6 +84,15 @@ describe('SLACK OFF phone safe-area layout', () => {
   });
 });
 
+describe('SLACK OFF saved motion settings', () => {
+  it('disables stage animations for an explicit reduced-motion preference', () => {
+    const shared = styles.find(s => s.name === 'slack.css')!.css;
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(shared).toContain('.sl-root.sl-reduced-motion *');
+    expect(dorm).toContain('.sc-game-left{');
+  });
+});
+
 describe('SLACK OFF keyboard and motion accessibility', () => {
   it('keeps the miniature classroom RTS toolbar labels legible on touch screens', () => {
     const classroom = styles.find(s => s.name === 'classroom.css')!.css;

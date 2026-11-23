@@ -117,6 +117,7 @@ let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
 let hearingCell = -1, hearingTree = null;
 let previousMeterValue = -1, previousMeterLabel = "";
+let previousMeterScale = "", previousDangerOpacity = "";
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -1344,12 +1345,16 @@ function enemyUpdate(dt, running) {
     ? 0
     : Math.max(0, 1 - acousticDistance / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
-  $("danger").style.opacity = String(threat * 0.53);
-  $("strain").textContent =
-    threat > 0.68 ? "바로 근처"
-      : tracking ? "추적 중"
-        : searching ? "탐색 중"
-          : threat > 0.28 ? "접근 중" : "안정";
+  const opacity = (threat * 0.53).toFixed(3);
+  if (opacity !== previousDangerOpacity) {
+    $("danger").style.opacity = opacity;
+    previousDangerOpacity = opacity;
+  }
+  const strain = threat > 0.68 ? "바로 근처"
+    : tracking ? "추적 중"
+      : searching ? "탐색 중"
+        : threat > 0.28 ? "접근 중" : "안정";
+  if ($("strain").textContent !== strain) $("strain").textContent = strain;
   if (!hiddenSpot && !grace && !exitGrace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
@@ -1447,11 +1452,15 @@ function update(dt) {
         ? "출구 작동"
         : chapters[ch].station + " 확인"
     : "";
-  $("prompt").hidden = !caption;
+  if ($("prompt").hidden !== !caption) $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
   const meterFraction = hiddenSpot ? hideBreath : stamina;
-  $("stamina").style.transform = "scaleX(" + meterFraction.toFixed(3) + ")";
+  const meterScale = meterFraction.toFixed(3);
+  if (meterScale !== previousMeterScale) {
+    $("stamina").style.transform = "scaleX(" + meterScale + ")";
+    previousMeterScale = meterScale;
+  }
   const meterValue = Math.round(meterFraction * 100);
   if (meterValue !== previousMeterValue) {
     $("staminaMeter").setAttribute("aria-valuenow", String(meterValue));

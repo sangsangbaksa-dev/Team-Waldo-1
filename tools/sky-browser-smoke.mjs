@@ -62,6 +62,17 @@ try {
       await page.locator('.sk-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__sky?.sim);
       assert.equal(await page.evaluate(() => document.pointerLockElement === null), true, 'Default controls should not lock pointer');
+      if (size.name === 'desktop') {
+        // A canceled mouse event must not leave its queued missile press active.
+        await page.evaluate(() => {
+          const canvas = document.querySelector('.sk-canvas');
+          canvas.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 2, pointerType: 'mouse' }));
+          canvas.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, button: -1, pointerType: 'mouse' }));
+        });
+        await sleep(140);
+        assert.doesNotMatch(await page.locator('#sk-alert').innerText(), /락온 대상 없음/,
+          'A canceled right-click must not queue a phantom missile press');
+      }
       await page.evaluate(() => { window.__sky.sim.intermission = 0; });
       await page.waitForFunction(() => window.__sky?.sim?.wave >= 1);
       const flight = await page.evaluate(() => {

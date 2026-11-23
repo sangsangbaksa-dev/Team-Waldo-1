@@ -89,10 +89,18 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     else steerFrom(e.clientX, e.clientY, innerWidth, innerHeight);
   };
   // 마우스는 화면 중앙에 고정(포인터 잠금): 움직임을 누적해 조종 입력으로 씁니다.
-  let locked = false;
+  let locked = false, lockLostAt = -Infinity;
   const lock = (): void => { if (!ctl.pointerLock || matchMedia('(pointer: coarse)').matches || document.pointerLockElement === canvas) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { /* 거절되면 기존 커서 조종 */ }); } catch { /* 미지원이면 기존 커서 조종 */ } };
   const unlock = (): void => { if (document.pointerLockElement) document.exitPointerLock(); };
-  const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked && state === 'play') togglePause(); };
+  const onLock = (): void => {
+    const wasLocked = locked;
+    locked = document.pointerLockElement === canvas;
+    // Ignore spurious lockchange events when no pointer lock was held.
+    if (wasLocked && !locked && state === 'play') {
+      lockLostAt = performance.now();
+      togglePause();
+    }
+  };
   const onDown = (e: PointerEvent): void => {
     if (state !== 'play' || (e.target as HTMLElement).closest('button')) return; audio.unlock(); if (e.pointerType !== 'touch') lock();
     if (e.pointerType === 'touch') {
@@ -136,7 +144,14 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   }; // 두 손가락 스크롤/휠: 브라우저별 deltaMode 차이를 보정
   const onKey = (e: KeyboardEvent, down: boolean): void => {
     const k = e.key.toLowerCase();
-    if (down && (k === 'escape' || k === 'p')) { e.preventDefault(); if (!e.repeat) togglePause(); return; }
+    // Escape is also the browser's pointer-lock exit key. Leave that action
+    // to pointerlockchange, otherwise one press can pause and immediately resume.
+    if (down && k === 'escape' && locked) return;
+    if (down && (k === 'escape' || k === 'p')) {
+      e.preventDefault();
+      if (!e.repeat && !(k === 'escape' && performance.now() - lockLostAt < 250)) togglePause();
+      return;
+    }
     if (!down) { keys.delete(k); if (k === 'm') mMissile = false; return; }
     if (state !== 'play') return;
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();

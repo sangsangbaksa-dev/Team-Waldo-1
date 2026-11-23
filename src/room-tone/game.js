@@ -28,6 +28,7 @@ import { lineClear, soundTravelDistance } from "./visibility.mjs";
 import { renderingScale } from "./render-quality.mjs";
 import { propClearance } from "./obstacles.mjs";
 import { loadFailureText } from "./loading-error.mjs";
+import { reducedMotionOn } from "./motion-preferences.mjs";
 import { facingDot, canSeeTarget, stereoPan } from "./awareness.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
@@ -149,6 +150,13 @@ function selectedQuality() {
   const value = read(PREFS)?.quality;
   return value === "low" || value === "standard" || value === "high" ? value : "high";
 }
+let reducedEffects = false;
+function syncMotionPreference() {
+  reducedEffects = reducedMotionOn(reducedMotion.matches, read(PREFS));
+  document.body.classList.toggle("rt-reduced-motion", reducedEffects);
+}
+syncMotionPreference();
+reducedMotion.addEventListener?.("change", syncMotionPreference);
 function syncAudioButtons() {
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
@@ -176,7 +184,10 @@ $("sound").onclick = $("gsound").onclick = toggleAudio;
 window.addEventListener("storage", (e) => {
   if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
     applyMute(initialMute(read("rt-silent"), read(PREFS)));
-  if (e.key === PREFS) resize();
+  if (e.key === PREFS) {
+    resize();
+    syncMotionPreference();
+  }
 });
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
@@ -1390,17 +1401,17 @@ function update(dt) {
   }
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   // OS reduced-motion setting also disables movement head bob, not only sway.
-  const headBob = reducedMotion.matches ? 0
+  const headBob = reducedEffects ? 0
     : Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38;
   camera.position.set(player.x, eyeHeight + headBob, player.z);
   const proximity = Math.max(0, 1 - Math.hypot(player.x - entity.position.x, player.z - entity.position.z) / 12);
-  const sway = reducedMotion.matches ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
+  const sway = reducedEffects ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
   camera.rotation.set(pitch + sway * 0.4, yaw, sway, "YXZ");
-  if (!reducedMotion.matches && now >= nextFlicker) {
+  if (!reducedEffects && now >= nextFlicker) {
     flickerUntil = now + 0.18;
     nextFlicker = now + 24 + Math.random() * 35;
   }
-  const flickering = !reducedMotion.matches && now < flickerUntil && Math.sin(now * 55) > 0;
+  const flickering = !reducedEffects && now < flickerUntil && Math.sin(now * 55) > 0;
   lamp.visible = beam.visible = lightOn && !hiddenSpot && !flickering;
   enemyUpdate(dt, running);
   if (state !== "play") return;
@@ -1476,9 +1487,9 @@ function frame(ts) {
   const wasPlaying = state === "play";
   if (wasPlaying) update(dt);
   if (state === "capture") {
-    const duration = reducedMotion.matches ? 1.2 : 1.45;
+    const duration = reducedEffects ? 1.2 : 1.45;
     if (captureTime < duration) {
-      renderCaptureShot(renderer, camera.aspect, captureTime, reducedMotion.matches);
+      renderCaptureShot(renderer, camera.aspect, captureTime, reducedEffects);
       if (!wasPlaying) captureTime += dt;
     } else {
       renderer.render(scene, camera);

@@ -320,7 +320,13 @@ export class SkyView {
     if (this.sun.castShadow) { const pp = sim.player.pos; this.sun.target.position.set(pp.x, 0, pp.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this.shadowSun, 2200); }
     if (!this.reducedMotion) for (const cloud of this.clouds) { cloud.position.x += 6 * dt; if (cloud.position.x > 3600) cloud.position.x -= 7200; }
     this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.v1.copy(this.sun.position).normalize(), 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z; this.seaOrigin.value.set(this.camera.position.x, this.camera.position.z); // 바다 무늬를 월드에 고정(카메라를 따라다니면 정지한 듯 보임)
-    this.seaNormalMap.offset.set((this.reducedMotion ? 0 : time * 0.004) + this.camera.position.x / 125, (this.reducedMotion ? 0 : time * 0.0027) - this.camera.position.z / 125);
+    // The low-quality sea uses fewer repeated normal-map tiles. Keep texture
+    // motion world-anchored using the actual repeat count instead of the
+    // high-quality 125m tile width, or low-end devices see sliding ripples.
+    const normalTileX = this.seaNormalMap.repeat.x / 20000;
+    const normalTileZ = this.seaNormalMap.repeat.y / 20000;
+    this.seaNormalMap.offset.set((this.reducedMotion ? 0 : time * 0.004) + this.camera.position.x * normalTileX,
+      (this.reducedMotion ? 0 : time * 0.0027) - this.camera.position.z * normalTileZ);
   }
 
   /** 추적 카메라(부드러운 지연 + 속도감 FOV + 폭발 흔들림). boost: 0~1 */

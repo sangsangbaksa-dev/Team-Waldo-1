@@ -210,7 +210,11 @@ export const createComputerView: CreateView = (sim, audio) => {
     setBadge('chat', chatBadgeTotal());
   };
   const chatOpen = (i: number) => {
-    C.room = i; rooms[i].unread = 0; const w = wins.chat; const r = rooms[i];
+    C.room = i;
+    // The chat window may be built or switched to while the player is
+    // holding the study cover. Nothing behind that cover has been read yet.
+    if (!sim.state.cover) rooms[i].unread = 0;
+    const w = wins.chat; const r = rooms[i];
     setTxt($('[data-chat-name]', w), r.name); setTxt($('[data-chat-sub]', w), r.sub);
     $('[data-messages]', w).replaceChildren(...r.msgs.slice(-30).map(chatRow)); const m = $('[data-messages]', w); m.scrollTop = m.scrollHeight;
     $('[data-typing]', w).classList.toggle('on', typing[i]! > 0); chatRefresh();

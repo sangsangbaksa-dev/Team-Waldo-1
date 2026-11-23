@@ -351,6 +351,26 @@ it('visually marks powerless apps and offers a useful fallback without locking t
   off.el.remove();
 });
 
+it('keeps unread chat notifications when switching apps under a held study cover', () => {
+  const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+  try {
+    view.frame(30); view.frame(1.4);
+    const task = view.el.querySelector<HTMLButtonElement>('[data-app="chat"]')!;
+    expect(task.dataset.badge).toBe('1');
+    view.el.focus();
+    view.el.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true }));
+    task.click(); view.frame(0);
+    expect(simHolder.state.cover).toBe(true);
+    expect(task.dataset.badge).toBe('1');
+    expect(view.el.querySelector('[data-room="0"] [data-unread]')?.textContent).toBe('1');
+    view.el.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true }));
+    view.frame(0);
+    expect(simHolder.state.cover).toBe(false);
+    expect(task.dataset.badge).toBe('');
+    expect(view.el.querySelector('[data-room="0"] [data-unread]')?.textContent).toBe('');
+  } finally { random.mockRestore(); }
+});
+
 it('does not mark a messenger reply as read behind the study cover', () => {
   const random = vi.spyOn(Math, 'random').mockReturnValue(0);
   try {

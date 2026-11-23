@@ -51,6 +51,18 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('keeps first-person vehicle camera clear of the cabin mesh', () => {
+    const { player, rides } = setup();
+    const car = rides.positions()[0]; player.teleport(car.x, car.z, car.heading);
+    expect(rides.toggle(player).ok).toBe(true);
+    player.setFirstPerson(true);
+    const camera = new THREE.PerspectiveCamera();
+    rides.positionDriverCamera(camera, player);
+    expect(camera.position.distanceTo(new THREE.Vector3(car.x, 0.18, car.z))).toBeGreaterThan(2.5);
+    expect(Number.isFinite(camera.position.x)).toBe(true);
+    rides.dispose();
+  });
+
   it('freezes without erasing momentum during a map or menu pause', () => {
     const { player, rides } = setup();
     const car = rides.positions()[0]; player.teleport(car.x, car.z, car.heading);

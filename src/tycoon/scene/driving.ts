@@ -22,7 +22,7 @@ export function stepDrive(
   const steerRate = tuning.turnRate * steeringFactor * (0.85 - 0.25 * Math.abs(car.speed) / tuning.forward);
   const nextHeading = car.heading + turn * Math.sign(car.speed) * steerRate * dt;
   // A tight turn cannot rotate a long car into geometry in a single frame.
-  if (canOccupy(car.x, car.z, nextHeading)) car.heading = nextHeading;
+  if (canOccupy(car.x, car.z, nextHeading)) car.heading = Math.atan2(Math.sin(nextHeading), Math.cos(nextHeading));
   const count = Math.max(1, Math.ceil(Math.abs(car.speed) * dt / 0.42));
   for (let i = 0; i < count; i++) {
     const x = car.x + Math.cos(car.heading) * car.speed * dt / count;

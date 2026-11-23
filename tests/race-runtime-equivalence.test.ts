@@ -24,7 +24,19 @@ function referenceCollision(a: CarState, b: CarState): number {
   const push = (need - dist) / 2;
   a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
   const rel = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
-  if (rel > 0) { const imp = rel * 0.55; a.vx -= nx * imp; a.vz -= nz * imp; b.vx += nx * imp; b.vz += nz * imp; return rel; }
+  if (rel > 0) {
+    const imp = rel * 0.55;
+    a.vx -= nx * imp; a.vz -= nz * imp;
+    b.vx += nx * imp; b.vz += nz * imp;
+    // The reference models the corrected post-impact speed state, too.
+    for (const c of [a, b]) {
+      const fx = Math.cos(c.h), fz = Math.sin(c.h);
+      c.vf = c.vx * fx + c.vz * fz;
+      c.vl = -c.vx * fz + c.vz * fx;
+      c.slip = Math.atan2(c.vl, Math.max(Math.abs(c.vf), 1));
+    }
+    return rel;
+  }
   return 0;
 }
 

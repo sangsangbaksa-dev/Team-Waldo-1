@@ -76,6 +76,13 @@ export class Rides {
     this.lamp.target.position.set(car.x + cs * 22, 0.8, car.z + sn * 22);
     this.lamp.intensity = this.night * 1.5;
   }
+  /** Place first-person view at the windscreen line, not inside opaque roof geometry. */
+  positionDriverCamera(camera: THREE.PerspectiveCamera, player: Player): void {
+    const car = this.active;
+    if (!car || !player.firstPerson) return;
+    const forward = 2.55;
+    camera.position.set(car.x + Math.cos(car.heading) * forward, 1.68, car.z - Math.sin(car.heading) * forward);
+  }
   get speed(): number { return Math.abs(this.active?.speed ?? 0); }
   get name(): string | null { return this.active?.name ?? null; }
   positions(): ParkedVehicle[] { return this.cars.map(c => ({ x: c.x, z: c.z, heading: c.heading, name: c.name, active: c === this.active })); }

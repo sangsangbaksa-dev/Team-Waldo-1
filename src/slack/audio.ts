@@ -27,7 +27,7 @@ export const createSlackAudio: CreateAudio = () => {
   const tone = (freq: number, duration: number, volume: number, type: OscillatorType = 'sine', end = freq, delay = 0, cut = 0, dest?: AudioNode): void => {
     const c = ctx; const out = dest ?? filter; if (muted || c?.state !== 'running' || !out) return; const t = c.currentTime + delay, osc = c.createOscillator(), gain = c.createGain();
     osc.type = type; osc.frequency.setValueAtTime(freq, t); osc.frequency.exponentialRampToValueAtTime(Math.max(1, end), t + duration);
-    gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), t + 0.008); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), t + 0.008); gain.gain.exponentialRampToValueAtTime(0.0001, t + segment);
     osc.connect(gain);
     const lp = cut ? c.createBiquadFilter() : null;
     if (lp) { lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(out); } else gain.connect(out);
@@ -48,7 +48,7 @@ export const createSlackAudio: CreateAudio = () => {
     const segment = Math.max(0.001, Math.min(duration, sfxNoise.duration || 1));
     const offset = Math.random() * Math.max(0, (sfxNoise.duration || 1) - segment);
     const source = c.createBufferSource(), band = c.createBiquadFilter(), gain = c.createGain(), t = c.currentTime + delay;
-    source.buffer = buffer; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    source.buffer = sfxNoise; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     source.connect(band); band.connect(gain);
     const lp = cut ? c.createBiquadFilter() : null;
     if (lp) { lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(filter); } else gain.connect(filter);

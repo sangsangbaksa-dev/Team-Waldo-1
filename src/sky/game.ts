@@ -403,7 +403,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           case 'warn': audio.play('warn'); alertMsg('⚠ 미사일 접근 — 플레어(F)/기동!', 1, 4); break;
           case 'wave': audio.play('wave'); banner(`WAVE ${ev.n}${ev.modifier ? ` · ${ev.modifier}` : ''}`, 2.4); break;
           case 'flare': alertMsg('플레어 투하', 0.8); break;
-          case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? '수리 +30' : ev.kind === 'shield' ? '방어막 +30' : '미사일 +2', 1); break;
+          case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? `수리 +${ev.amount}` : ev.kind === 'shield' ? `방어막 +${ev.amount}` : `미사일 +${ev.amount}`, 1); break;
           case 'boss': banner('BOSS — 중폭격기 접근', 3); audio.play('warn'); break;
           case 'dodge': alertMsg(`아슬아슬 회피! +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5, 2); audio.play('lockdone'); break;
           case 'stall': audio.play('warn'); alertMsg('STALL — 기수를 내려 속도 회복!', 1, 3); break;

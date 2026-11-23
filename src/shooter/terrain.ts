@@ -37,6 +37,12 @@ export function groundRayDistance(t: Terrain, ox: number, oy: number, oz: number
   let best = dy < -1e-9 && oy >= 0 ? oy / -dy : Infinity;
   if (best > maxT) best = Infinity;
   const horizSq = dx * dx + dz * dz;
+  // 위를 향한 광선이 모든 능선보다 높게 출발하면 지면을 절대 맞히지 않습니다.
+  if (dy >= 0 && oy > 0) {
+    let tallest = 0;
+    for (const r of t.rises) if (r.h > tallest) tallest = r.h;
+    if (oy > tallest) return Infinity;
+  }
   for (const r of t.rises) {
     const rx = ox - r.x, rz = oz - r.z, b = rx * dx + rz * dz;
     let from = 0, to = Math.min(maxT, best);
@@ -51,6 +57,20 @@ export function groundRayDistance(t: Terrain, ox: number, oy: number, oz: number
     const above = (d: number): number => oy + dy * d - riseHeight(r, ox + dx * d, oz + dz * d);
     let previousT = from, previousY = above(from);
     if (previousY <= 0) { best = Math.min(best, from); continue; }
+    // 수평 사격은 능선 중심선에 가장 가까운 점이 가장 높은 지점입니다.
+    // 그 정점만 검사하고 양분 탐색하면 1m 표본 사이의 얕은 접선도 놓치지 않습니다.
+    if (Math.abs(dy) < 1e-12 && horizSq > 1e-12) {
+      const peak = Math.min(to, Math.max(from, -b / horizSq));
+      if (above(peak) <= 0) {
+        let low = from, high = peak;
+        for (let k = 0; k < 18; k++) {
+          const mid = (low + high) / 2;
+          if (above(mid) <= 0) high = mid; else low = mid;
+        }
+        best = Math.min(best, high);
+      }
+      continue;
+    }
     const n = Math.max(1, Math.ceil((to - from) / Math.max(0.5, r.r / 24)));
     for (let i = 1; i <= n; i++) {
       const at = from + (to - from) * i / n, altitude = above(at);

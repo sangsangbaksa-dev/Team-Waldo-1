@@ -1068,6 +1068,7 @@ function puzzle(reset = true) {
       if (response) {
         const p = document.createElement("p");
         p.className = "bad";
+        p.setAttribute("role", "alert");
         p.textContent = response;
         el.append(p);
       }

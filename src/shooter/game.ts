@@ -5,7 +5,7 @@ import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
-import { waterDepth } from './terrain';
+import { groundHeight, waterDepth } from './terrain';
 import { METROPOLIS } from './world';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
@@ -13,7 +13,7 @@ import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
-import { ShooterNet, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from './net';
+import { ShooterNet, canAcceptRoomNade, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
 import { ChatBox } from './chat';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
@@ -212,7 +212,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
     else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
     else if (msg.t === 'la') { const l = parseLoot(msg); if (l) m.addLoot(l); }
-    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
+    else if (msg.t === 'nd') {
+      const n = parseNade(msg), owner = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined;
+      if (n && canAcceptRoomNade(n, owner, from?.p, host, owner ? groundHeight(m.map.terrain, owner.x, owner.z) : 0)) {
+        m.addNade(owner!.id, n.x, n.y, n.z, n.vx, n.vy, n.vz);
+      }
+    }
     else if (msg.t === 've') {
       // 손님이 차에 타려고 함: 방장만 판정합니다.
       const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!m.authority || !from || !v) return; const p = from.p;

@@ -1483,6 +1483,24 @@ function frame(ts) {
   sceneDirty = false;
   scheduleFrame();
 }
+// The custom pause/puzzle overlay claims aria-modal, so Tab focus must stay
+// inside its visible controls instead of reaching the underlying gameplay HUD.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || $("dialog").hidden) return;
+  const focusables = [...$("dialog").querySelectorAll(
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled])',
+  )].filter((element) => element.getClientRects().length > 0);
+  if (!focusables.length) return;
+  const first = focusables[0], last = focusables[focusables.length - 1];
+  if (e.shiftKey && (document.activeElement === first || document.activeElement === $("panelTitle"))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.isComposing) return;
   if (e.target instanceof HTMLButtonElement && ["Space", "Enter"].includes(e.code)) return;

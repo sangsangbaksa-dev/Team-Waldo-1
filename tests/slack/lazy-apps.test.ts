@@ -106,10 +106,12 @@ it('locks cart prices to the add action when the midnight flash deal rotates', (
   expect(total()).toBe('합계 14,835원');
   expect(view.el.querySelector('[data-cart]')?.textContent).toBe('2');
   expect(view.el.querySelector<HTMLButtonElement>('[data-add="1"]')?.textContent).toBe('담김 ×2');
+  expect(view.el.querySelector<HTMLButtonElement>('[data-add="1"]')?.getAttribute('aria-label')).toContain('별빛 무드등 · 장바구니 2개');
 
   // A new deal applies only to future cart additions.
   view.frame(121);
   expect(view.el.querySelector('[data-deal-name]')?.textContent).toBe('말랑 젤리 세트');
+  expect(view.el.querySelector('[data-add="deal"]')?.getAttribute('aria-label')).toContain('말랑 젤리 세트 심야 특가 2,250원');
   expect(total()).toBe('합계 14,835원');
   view.el.querySelector<HTMLButtonElement>('[data-add="deal"]')!.click();
   expect(total()).toBe('합계 17,085원');
@@ -128,6 +130,16 @@ it('keeps the star and timer ring clear of narrow screen edges', () => {
   expect(star.style.top).toContain('calc(100% - 31px)');
   const ringDuration = star.style.getPropertyValue('--life');
   expect(ringDuration).toMatch(/s$/);
+});
+
+it('advances multiple shop promotions without losing elapsed remainder or stale accessible names', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="shop"]')!.click();
+  view.frame(0);
+  expect(view.el.querySelector('[data-deal-name]')?.textContent).toBe('별빛 무드등');
+  view.frame(361); // Three complete 120-second deal windows plus one second.
+  expect(view.el.querySelector('[data-deal-name]')?.textContent).toBe('무선 이어폰');
+  expect(view.el.querySelector('[data-timer]')?.textContent).toBe('01:59');
+  expect(view.el.querySelector('[data-add="deal"]')?.getAttribute('aria-label')).toContain('무선 이어폰 심야 특가 7,950원');
 });
 
 it('keeps the dorm messenger responsive after many quick replies and app switches', () => {

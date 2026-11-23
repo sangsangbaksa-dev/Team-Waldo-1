@@ -228,8 +228,8 @@ export const createComputerView: CreateView = (sim, audio) => {
   /* ---------- 쇼핑 ---------- */
   const S = { cart: products.map(() => 0), total: 0, deal: 1, left: 120, lastSec: -1 };
   const price = (i: number, deal = false) => Math.round(products[i].price * (deal ? 0.5 : 0.65));
-  const shopHtml = () => `<div class="sc-shop"><div class="sc-shop-head">오늘의 발견 <span>장바구니 <b data-cart>0</b></span></div><div class="sc-sale"><span class="sc-deal-ico" data-deal-ico></span><span class="sc-deal-txt"><small>심야 특가 · 50%</small><b data-deal-name></b><em data-deal-price></em></span><strong data-timer>02:00</strong><button type="button" data-add="deal">특가 담기</button></div><div class="sc-products">${products.map((p, i) => `<div><div class="sc-product p${i % 3}">${p.icon}</div><b>${p.name}</b><small><em>35%</em> ${price(i).toLocaleString('ko-KR')}원</small><button type="button" data-add="${i}">담기</button></div>`).join('')}</div><div class="sc-cartbar"><span data-total role="status" aria-live="polite" aria-atomic="true">합계 0원</span><button type="button" data-pay>결제하기</button></div></div>`;
-  const shopDeal = () => { const w = wins.shop; setTxt($('[data-deal-ico]', w), products[S.deal].icon); setTxt($('[data-deal-name]', w), products[S.deal].name); setTxt($('[data-deal-price]', w), `${price(S.deal, true).toLocaleString('ko-KR')}원`); };
+  const shopHtml = () => `<div class="sc-shop"><div class="sc-shop-head">오늘의 발견 <span>장바구니 <b data-cart>0</b></span></div><div class="sc-sale"><span class="sc-deal-ico" data-deal-ico></span><span class="sc-deal-txt"><small>심야 특가 · 50%</small><b data-deal-name></b><em data-deal-price></em></span><strong data-timer>02:00</strong><button type="button" data-add="deal" aria-label="심야 특가 상품 담기">특가 담기</button></div><div class="sc-products">${products.map((p, i) => `<div><div class="sc-product p${i % 3}">${p.icon}</div><b>${p.name}</b><small><em>35%</em> ${price(i).toLocaleString('ko-KR')}원</small><button type="button" data-add="${i}" aria-label="${p.name} 35% 할인가 ${price(i).toLocaleString('ko-KR')}원에 담기">담기</button></div>`).join('')}</div><div class="sc-cartbar"><span data-total role="status" aria-live="polite" aria-atomic="true">합계 0원</span><button type="button" data-pay>결제하기</button></div></div>`;
+  const shopDeal = () => { const w = wins.shop; setTxt($('[data-deal-ico]', w), products[S.deal].icon); setTxt($('[data-deal-name]', w), products[S.deal].name); setTxt($('[data-deal-price]', w), `${price(S.deal, true).toLocaleString('ko-KR')}원`); $('[data-add="deal"]', w).setAttribute('aria-label', `${products[S.deal].name} 심야 특가 ${price(S.deal, true).toLocaleString('ko-KR')}원에 담기`); };
   const shopTotals = () => {
     const n = S.cart.reduce((a, b) => a + b, 0);
     // Lock each item's displayed price at the moment it enters the cart.
@@ -238,7 +238,15 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const shopTick = (dt: number) => {
     S.left -= dt;
-    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; if (built.shop) shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); } }
+    if (S.left <= 0) {
+      // A large elapsed-time step can cross several two-minute deals. Do not
+      // throw away remainder time or incorrectly display an older promotion.
+      const rotations = 1 + Math.floor(-S.left / 120);
+      S.left += rotations * 120;
+      S.deal = (S.deal + rotations) % products.length;
+      if (built.shop) shopDeal();
+      if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); }
+    }
     const sec = Math.ceil(S.left); if (sec !== S.lastSec) { S.lastSec = sec; if (built.shop) setTxt($('[data-timer]', built.shop), `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`); }
   };
 
@@ -332,7 +340,7 @@ export const createComputerView: CreateView = (sim, audio) => {
       add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump');
       // Normal and flash-sale buttons add to the same product quantity.
       const regular = wins.shop.querySelector<HTMLButtonElement>(`[data-add="${i}"]`);
-      if (regular) regular.textContent = `담김 ×${S.cart[i]}`;
+      if (regular) { regular.textContent = `담김 ×${S.cart[i]}`; regular.setAttribute('aria-label', `${products[i].name} · 장바구니 ${S.cart[i]}개 · 35% 할인가 ${price(i).toLocaleString('ko-KR')}원에 담기`); }
       return;
     }
     if (target.closest('[data-pay]')) { audio.play('key', 0.6); toast(S.cart.some(Boolean) ? '잔액이 부족합니다. (용돈은 이미 야식으로…)' : '장바구니가 비어 있어요.', 2.5); return; }

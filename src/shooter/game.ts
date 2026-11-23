@@ -75,6 +75,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
   const cache = new Map<string, string>();
   const roomNadeTimes = new Map<number, number>();
+  let pvpNadeAt = -Infinity;
   const wheelSwap = newWheelSwapState();
   const set = (el: HTMLElement, key: string, text: string): void => { if (cache.get(key) !== text) { cache.set(key, text); el.textContent = text; } };
   const html = (el: HTMLElement, key: string, v: string): void => { if (cache.get(key) !== v) { cache.set(key, v); el.innerHTML = v; } };
@@ -117,7 +118,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); locked = lockFail = false;
     // The previous renderer forces context loss on dispose. Never reuse its canvas.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
-    match = m; meIdx = my; roomNadeTimes.clear(); Object.assign(wheelSwap, newWheelSwapState()); over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
+    match = m; meIdx = my; roomNadeTimes.clear(); pvpNadeAt = -Infinity; Object.assign(wheelSwap, newWheelSwapState()); over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
@@ -150,7 +151,15 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         pvp.opp.muzzle = 0.06; pvp.opp.kick = Math.min(1, pvp.opp.kick + 0.3); match.remoteShot(pvp.opp.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
       onHitAck: () => { /* 명중 표시는 내 쪽 판정으로 이미 보여 줬습니다 */ },
-      onNade: n => { if (match && pvp?.opp) match.addNade(pvp.opp.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); },
+      onNade: n => {
+        const owner = pvp?.opp, m = match;
+        if (!m || !owner) return;
+        const now = performance.now();
+        if (!canAcceptRoomNade(n, owner, owner, false, groundHeight(m.map.terrain, owner.x, owner.z)) ||
+            !roomNadeCooldownReady(Number.isFinite(pvpNadeAt) ? pvpNadeAt : undefined, now, NADE.cd * 900)) return;
+        pvpNadeAt = now;
+        m.addNade(owner.id, n.x, n.y, n.z, n.vx, n.vy, n.vz);
+      },
       onPickup: id => { match?.removeLoot(id); },
       onDead: mt => { if (!pvp || !match || !pvp.opp) return; pvp.oppDeadMt = mt; if (pvp.opp.alive) match.kill(pvp.opp, me().id, 'rifle'); if (pvp.deadAt !== null) settleTie(); else void conclude(pvp.s.me.id, '상대를 쓰러뜨렸습니다'); },
       onGone: reason => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },

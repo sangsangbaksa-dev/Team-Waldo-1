@@ -109,6 +109,7 @@ let noticeUntil = 0,
 let guidance = read("rt-guidance") === true;
 let guidePath = [];
 let returnFromMap = resume;
+let returnFromHelp = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
@@ -246,18 +247,19 @@ function resume() {
   scheduleFrame();
   $("viewWrap").focus({ preventScroll: true });
 }
-function guide(fromHome = false) {
+function guide(fromHome = false, returnAction = resume) {
   if (fromHome) {
     $("how").showModal();
     return;
   }
+  returnFromHelp = returnAction;
   modal(
     "조작 안내",
     "숙이면 발소리가 줄어듭니다. 침대 밑이나 커튼 뒤에 숨을 수 있지만, 괴물이 보면 조사할 수 있습니다.",
     (el) => {
       el.innerHTML = $("guideText").innerHTML;
     },
-    [["돌아가기", resume]],
+    [["돌아가기", returnFromHelp]],
     "help",
   );
 }
@@ -275,21 +277,24 @@ $("confirmReset").onclick = () => {
 };
 $("continue").onclick = () => start(true);
 const hubUrl = () => new URL("../", location.href).href;
-function pauseGame() {
-  if (state !== "play") return;
-  save();
+function showPauseMenu() {
   modal(
     "녹음 일시정지",
     chapters[ch].location + " · " + clock(elapsed),
     null,
     [
       ["계속하기", resume],
-      ["조작 안내", () => guide()],
+      ["조작 안내", () => guide(false, showPauseMenu)],
       ["타이틀로", homepage, true],
       ["게임 목록으로", () => location.assign(hubUrl()), true],
     ],
     "pause",
   );
+}
+function pauseGame() {
+  if (state !== "play") return;
+  save();
+  showPauseMenu();
 }
 $("pauseGame").onclick = pauseGame;
 async function setup() {
@@ -1508,6 +1513,7 @@ document.addEventListener("keydown", (e) => {
   ) {
     e.preventDefault();
     if (state === "map") returnFromMap();
+    else if (state === "help") returnFromHelp();
     else resume();
   }
 });

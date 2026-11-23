@@ -61,6 +61,16 @@ export class Crowd {
       w.rig.setDetail(dist > 70 ? 3 : dist > 40 ? 1 : 0); w.rig.step(dt); w.rig.update(dt);
     }
   }
+  /** Driving obstacle query: pedestrians do not become ghost objects on crosswalks. */
+  blocks(x: number, z: number, radius: number): boolean {
+    const r2 = (radius + 0.45) * (radius + 0.45);
+    for (const walker of this.walkers) {
+      if (!walker.active || !walker.rig.root.visible) continue;
+      const dx = x - walker.x, dz = z - walker.z;
+      if (dx * dx + dz * dz < r2) return true;
+    }
+    return false;
+  }
   /** 플레이어 가까이에 있는 사람들(말풍선·부딪힘 회피용). */
   dispose(): void { this.group.removeFromParent(); }
 }

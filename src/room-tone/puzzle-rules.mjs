@@ -19,16 +19,24 @@ function tapeTime(label) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : -1;
 }
 export function expectedSequence(chapter, labels) {
-  if (!Array.isArray(labels) || labels.length !== 3) return [-1, -1, -1];
+  if (!Array.isArray(labels) || labels.length !== 3 ||
+      labels.some(label => typeof label !== "string")) return [-1, -1, -1];
   if (chapter === 0) return labels.map(label => circuitOptions.indexOf(label));
-  if (chapter === 1) return labels.map((label, i) =>
-    tuneOptions[i].findIndex(option => Number(option) === Number.parseFloat(label)));
-  if (chapter === 2) return [0, 1, 2].sort((a, b) =>
-    tapeTime(labels[b]) - tapeTime(labels[a]) || a - b);
+  if (chapter === 1) return labels.map((label, i) => {
+    const match = /^(\\d+(?:\\.\\d+)?) MHz$/.exec(label);
+    return match
+      ? tuneOptions[i].findIndex(option => Number(option) === Number(match[1]))
+      : -1;
+  });
+  if (chapter === 2) {
+    if (labels.some(label => tapeTime(label) < 0)) return [-1, -1, -1];
+    return [0, 1, 2].sort((a, b) =>
+      tapeTime(labels[b]) - tapeTime(labels[a]) || a - b);
+  }
   if (chapter === 3) return labels.map(label => {
-    const value = Number.parseInt(label, 10);
-    return Number.isFinite(value)
-      ? phaseOptions.indexOf(((value + 180) % 360 + 360) % 360 + "°")
+    const match = /^(\\d+)°$/.exec(label);
+    return match
+      ? phaseOptions.indexOf(((Number(match[1]) + 180) % 360 + 360) % 360 + "°")
       : -1;
   });
   return [-1, -1, -1];

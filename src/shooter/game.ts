@@ -10,7 +10,7 @@ import { freshRecon, useRecon } from './recon';
 import { ShooterNavigation } from './navigation';
 import { advanceMatchChunk, FAST_FORWARD } from './fast-forward';
 import { Match, NADE, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
-import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
+import { CAUSES, WorldSync, canAcceptRoomLoot, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -229,7 +229,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (msg.t === 'ch') r.chat?.add(r.s.players.find(x => x.id === id)?.nickname ?? '참가자', id, msg.x, false, now);
     else if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
     else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
-    else if (msg.t === 'la') { const l = parseLoot(msg); if (l) m.addLoot(l); }
+    else if (msg.t === 'la') {
+      const loot = parseLoot(msg), senderIndex = r.net.list.indexOf(id);
+      if (loot && canAcceptRoomLoot(loot, senderIndex, m.map.half, host, from?.p)) m.addLoot(loot);
+    }
     else if (msg.t === 'nd') {
       const n = parseNade(msg), owner = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined;
       if (n && canAcceptRoomNade(n, owner, from?.p, host, owner ? groundHeight(m.map.terrain, owner.x, owner.z) : 0) &&

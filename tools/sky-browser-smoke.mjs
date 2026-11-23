@@ -118,6 +118,24 @@ try {
         await page.waitForFunction(() => !document.querySelector('.sk-root')?.classList.contains('cockpit'));
         await page.waitForFunction(() => window.__sky.view.meshes.get(window.__sky.sim.player.id)?.visible === true);
         assert.equal(await viewButton.getAttribute('aria-pressed'), 'false');
+        // Landscape touch layouts need a horizontal action dock, not a tall
+        // column overlapping the view/pause keys or the right-hand radar.
+        await page.setViewportSize({ width: 844, height: 390 });
+        const landscape = await page.evaluate(() => {
+          const fire = document.querySelector('#sk-b-fire').getBoundingClientRect();
+          const boost = document.querySelector('#sk-b-boost').getBoundingClientRect();
+          const camera = document.querySelector('#sk-camera').getBoundingClientRect();
+          return { fire: { x: fire.x, y: fire.y, right: fire.right, bottom: fire.bottom },
+            boost: { x: boost.x, y: boost.y, right: boost.right, bottom: boost.bottom },
+            camera: { x: camera.x, y: camera.y, right: camera.right, bottom: camera.bottom } };
+        });
+        assert.ok(landscape.fire.y > 295 && landscape.boost.y > 295 &&
+          landscape.fire.x < landscape.boost.x && landscape.boost.right <= 844,
+          'Landscape touch controls must form a reachable bottom row');
+        assert.ok(landscape.camera.bottom < landscape.boost.y,
+          'Cockpit switch must not overlap landscape boost key');
+        await page.screenshot({ path: 'browser-artifacts/sky-landscape-mobile.png', animations: 'disabled' });
+        await page.setViewportSize({ width: 390, height: 844 });
       }
       if (size.name === 'desktop') {
         // Simulate a browser that dispatches pointerlockchange before the

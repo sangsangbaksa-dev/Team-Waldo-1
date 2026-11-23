@@ -85,6 +85,9 @@ try {
       await page.waitForTimeout(1500);
       const runningTime=await page.locator("#timer").textContent();
       assert.notEqual(runningTime,firstTime,"The playing clock must keep advancing");
+      assert.equal(await page.locator("#staminaMeter").getAttribute("role"),"progressbar");
+      const staminaValue=Number(await page.locator("#staminaMeter").getAttribute("aria-valuenow"));
+      assert.ok(staminaValue>=0&&staminaValue<=100,"Stamina needs a valid accessible percentage");
       if(config.mobile) {
         for (const id of ["#gsound","#mapBtn","#pauseGame","#crouch","#torch","#run","#act"]) {
           const box=await page.locator(id).boundingBox();

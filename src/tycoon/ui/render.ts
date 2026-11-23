@@ -122,7 +122,7 @@ export function mapDirectoryHtml(cars: readonly MapCarRow[], hasWaypoint: boolea
     <div class="ty-map-layout">
       <div class="ty-map-surface"><canvas id="ty-bigmap" width="720" height="720" aria-label="지도를 눌러 원하는 지점에 경로를 표시"></canvas>
         <div class="ty-map-caption">지도를 눌러 목적지 지정 · 점선은 도로 참고 경로</div></div>
-      <div class="ty-map-aside"><div class="ty-map-aside-head"><small>CITY DIRECTORY</small><h2>이동할 곳을 선택하세요</h2><p>차량을 선택하거나 지도 위의 지점을 눌러 주세요.</p></div>
+      <div class="ty-map-aside"><div class="ty-map-aside-head"><small>CITY DIRECTORY</small><h2>이동할 곳을 선택하세요</h2><p>차량을 선택하거나 지도 위의 지점을 눌러 주세요. 도로는 자유롭게 탐험할 수 있지만 사업장 이용에는 성장 단계가 적용됩니다.</p></div>
         <div class="ty-map-vehicles">${rows || '<p class="ty-map-empty">배치된 차량이 없습니다.</p>'}</div>
         <button type="button" class="ty-clear-waypoint" data-waypoint-clear ${hasWaypoint ? '' : 'disabled'}>설정한 목적지 지우기</button>
       </div>

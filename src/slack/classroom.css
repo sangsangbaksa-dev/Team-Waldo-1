@@ -202,3 +202,10 @@
 .sl-end button:hover{background:#ffebb5}
 .sl-end button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 @media(any-pointer:coarse){.sl-end button{min-height:44px}}
+
+/* Extra bottom space only on devices where the home indicator consumes it. */
+.sl-class .sl-controls{
+  padding-bottom:max(9px,env(safe-area-inset-bottom,0px));
+  padding-left:max(9px,env(safe-area-inset-left,0px));
+  padding-right:max(9px,env(safe-area-inset-right,0px));
+}

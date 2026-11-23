@@ -70,6 +70,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   let closed = false, raf = 0, last = performance.now(), phase: Phase = 'load', modal: Modal = null, clockT = 0, syncT = 0, hudT = 0, saveT = 0, titleAngle = 0, cineT = 0;
   let core!: TycoonCore, layout!: Layout, city!: CityView, atmo!: Atmosphere, player!: Player, crowd: Crowd | null = null, traffic: Traffic | null = null, post: PostFx | null = null, kit: CharacterKit | null = null;
   let rides: Rides | null = null;
+  const resolveParked = (x: number, z: number, r: number, out: { x: number; z: number }): void => {
+    if (rides) rides.resolveWalker(x, z, r, out);
+    else { out.x = x; out.z = z; }
+  };
   let renderer: THREE.WebGLRenderer | null = null; const unsub: Array<() => void> = [];
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(66, 1, 0.2, 2400); let colliders!: Colliders;
   const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
@@ -358,7 +362,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       if (turn || tilt) player.look(-turn * dt * 1.8, tilt * dt * 1.2);
       if (st.activity?.lockMovement && Math.hypot(mv.mx, mv.mz) > 0.35) { core.cancelActivity(); toast('중단했습니다'); }
     }
-    if (playing) { player.update(dt, mv, colliders, frozen || !!rides?.driving);
+    if (playing) { player.update(dt, mv, colliders, frozen || !!rides?.driving, resolveParked);
       const steer = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0) - tc.mx;
       const throttle = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) - tc.my;
       const impact = rides?.update(dt, { throttle, steer, brake: keys.has('Space') }, player, frozen);

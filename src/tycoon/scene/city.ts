@@ -488,10 +488,46 @@ export class CityView {
   private constructionSign: THREE.MeshBasicMaterial | null = null;
 
   dispose(): void {
-    if (this.disposed) return; this.disposed = true;
-    this.group.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (mat) for (const x of Array.isArray(mat) ? mat : [mat]) { const t = x as THREE.MeshStandardMaterial; t.map?.dispose(); (t as THREE.MeshStandardMaterial).emissiveMap?.dispose(); x.dispose(); } });
-    for (const v of this.views.values()) for (const g of v.disposables) g.dispose();
-    this.ringTex.dispose();
+    if (this.disposed) return;
+    this.disposed = true;
+    // Some sign materials survive after a block is rebuilt; disposing only the
+    // currently mounted meshes misses their cached textures.
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+    const disposeGeometry = (g: THREE.BufferGeometry): void => {
+      if (geometries.has(g)) return;
+      geometries.add(g); g.dispose();
+    };
+    const disposeTexture = (t: THREE.Texture | null | undefined): void => {
+      if (!t || textures.has(t)) return;
+      textures.add(t); t.dispose();
+    };
+    const disposeMaterial = (mat: THREE.Material): void => {
+      if (materials.has(mat)) return;
+      materials.add(mat);
+      const mapped = mat as THREE.MeshStandardMaterial;
+      for (const tex of [mapped.map, mapped.emissiveMap, mapped.roughnessMap, mapped.alphaMap, mapped.normalMap]) disposeTexture(tex);
+      mat.dispose();
+    };
+    this.group.traverse(object => {
+      if (!(object instanceof THREE.Mesh)) return;
+      disposeGeometry(object.geometry);
+      for (const mat of Array.isArray(object.material) ? object.material : [object.material]) disposeMaterial(mat);
+    });
+    for (const view of this.views.values()) for (const geo of view.disposables) disposeGeometry(geo);
+    for (const mat of this.signMats.values()) disposeMaterial(mat);
+    for (const mat of [...Object.values(this.facade), this.roofMat, this.detailMat, this.glowMat, this.walkMat, this.dirtMat, this.grassMat, this.roadMat]) disposeMaterial(mat);
+    disposeTexture(this.ringTex);
+    this.group.removeFromParent();
+    this.group.clear();
+    this.views.clear();
+    this.signMats.clear();
+    this.beacons.clear();
+    this.construction.clear();
+    this.spotViews.clear();
+    this.blockLookup.clear();
+    this.orderedBlocks.length = 0;
   }
 }
 

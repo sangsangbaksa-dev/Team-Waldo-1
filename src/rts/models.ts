@@ -91,7 +91,8 @@ function jeepBody(body: THREE.Object3D, m: Mats): void {
 /** 모델은 +X 방향을 봅니다. */
 export function makeUnit(kind: UnitKind, owner: number, detailed = true): UnitRig {
   const m = matsFor(owner), root = new THREE.Group(), body = new THREE.Group(); root.add(body);
-  let gun: THREE.Object3D | null = null, carry: THREE.Object3D | null = null, arm: THREE.Object3D | null = null, muzzle = 0.8, mh = 0.62;
+  let gun: THREE.Object3D | null = null, carry: THREE.Object3D | null = null, muzzle = 0.8, mh = 0.62;
+  const arm: THREE.Object3D | null = null;
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), flashMat); flash.visible = false; flash.userData.ownedGeometry = true;
   const kitKind = KIT_OF[kind];
   if (kitKind) { // Use identical animation and proportions for downloaded and procedural characters.

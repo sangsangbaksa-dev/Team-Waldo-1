@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pushWalkerFromCar, stepDrive, type DriveInput, type DriveState, type DriveTuning } from '../../src/tycoon/scene/driving';
+import { carBodiesOverlap, pushWalkerFromCar, stepDrive, type DriveInput, type DriveState, type DriveTuning } from '../../src/tycoon/scene/driving';
 
 const tune: DriveTuning = { forward: 22, reverse: 7, turnRate: 1.8, response: 2.8 };
 const fresh = (): DriveState => ({ x: 0, z: 0, heading: 0, speed: 0 });
@@ -70,5 +70,22 @@ describe('HUSTLE parking collision', () => {
     const car = { x: 5, z: 6, heading: -Math.PI / 2 };
     const point = pushWalkerFromCar(5, 6, 0.45, car);
     expect(Math.hypot(point.x - 5, point.z - 6)).toBeGreaterThan(1.4);
+  });
+});
+
+
+describe('HUSTLE exact vehicle collision', () => {
+  it('detects shallow overlaps between two diagonally parked vehicles', () => {
+    const a = { x: 0, z: 0, heading: 0.9057469858718303 };
+    const b = { x: -1.727969384752214, z: -1.4073390047997236, heading: 0.9821935036618596 };
+    expect(carBodiesOverlap(a, b)).toBe(true);
+    expect(carBodiesOverlap(a, { x: 100, z: 100, heading: 0 })).toBe(false);
+  });
+  it('is symmetric and respects car orientation', () => {
+    const a = { x: 0, z: 0, heading: 0 };
+    const b = { x: 3.9, z: 0, heading: 0 };
+    expect(carBodiesOverlap(a, b)).toBe(true);
+    expect(carBodiesOverlap(b, a)).toBe(true);
+    expect(carBodiesOverlap(a, { x: 0, z: 6, heading: 0 })).toBe(false);
   });
 });

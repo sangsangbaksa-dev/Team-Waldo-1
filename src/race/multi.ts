@@ -32,7 +32,12 @@ export class RaceMulti {
   private hello(): void { if (!this.dead && !this.started) this.ch.send({ t: 'hello', f: this.session.me.id, car: this.car }); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
-    if (now - this.lastTick > 2000) for (const id of this.heard.keys()) this.heard.set(id, now); // 내 탭이 멈춘 시간은 상대의 침묵으로 세지 않습니다
+    if (now - this.lastTick > 2000) {
+      // Inactive tabs throttle timers. Sleeping time cannot expire either the
+      // launch/gather deadline or another driver's silence timeout.
+      this.born += now - this.lastTick;
+      for (const id of this.heard.keys()) this.heard.set(id, now);
+    }
     this.lastTick = now;
     if (!this.started) {
       this.hello();

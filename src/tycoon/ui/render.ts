@@ -76,19 +76,20 @@ export function menuHtml(sound: boolean, firstPerson: boolean): string {
       <li><button type="button" class="ty-act" data-menu="save"><span class="body"><b>저장하기</b><small>진행 상황을 브라우저에 저장합니다</small></span></button></li>
       <li><button type="button" class="ty-act" data-menu="view"><span class="body"><b>시점 바꾸기</b><small>지금: ${firstPerson ? '1인칭' : '3인칭'} (V)</small></span></button></li>
       <li><button type="button" class="ty-act" data-menu="sound"><span class="body"><b>소리 ${sound ? '끄기' : '켜기'}</b></span></button></li>
+      <li class="ty-controls-note">이동 W A S D · 상호작용 E · 차량 F · 차량 브레이크 Space · 시점 V · 지도 M (터치해 목적지 지정)</li>
       <li><button type="button" class="ty-act danger" data-menu="exit"><span class="body"><b>허브로 나가기</b><small>저장하고 나갑니다</small></span></button></li>
     </ul></div>`;
 }
 
 export function titleHtml(has: boolean, summary: string): string {
   return `<div class="ty-titlebox">
-    <p class="kick">WALDO</p><h1>HUSTLE</h1><p class="sub">빈털터리에서 세계 정복까지 — 직접 발로 뛰는 도시 타이쿤</p>
+    <p class="kick">WALDO / OPEN CITY</p><h1>HUSTLE</h1><p class="sub">가게를 운영하고, 일거리를 찾고, 도시를 직접 운전해 가로지르세요.</p>
     <div class="ty-ladder-lg">${STAGES.map(s => `<span>${STAGE_NAMES[s]}</span>`).join('<i>›</i>')}</div>
     <div class="ty-title-btns">
       ${has ? `<button type="button" class="primary" data-title="continue">이어하기<small>${esc(summary)}</small></button><button type="button" data-title="new">새로 시작</button>` : '<button type="button" class="primary" data-title="new">시작하기</button>'}
       <button type="button" data-title="exit">허브로</button>
     </div>
-    <p class="keys">WASD 이동 · Shift 달리기 · E 상호작용 · 마우스 드래그로 시점 · V 1인칭 · Tab 현황 · M 지도</p>
+    <p class="keys">WASD 이동 / 운전 · Shift 달리기 · E 상호작용 · F 차량 탑승 · Space 브레이크 · V 시점 · Tab 현황 · M 지도(클릭해 목적지 지정)</p>
   </div>`;
 }
 

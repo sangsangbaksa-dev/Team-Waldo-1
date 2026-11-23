@@ -39,6 +39,17 @@ export function newCar(t: Track, idx: number, lat: number): CarState {
   return { x: t.x[i] - t.tz[i] * lat, z: t.z[i] + t.tx[i] * lat, y: t.y[i], h, vx: 0, vz: 0, vf: 0, vl: 0, slip: 0, steer: 0, yawRate: 0, idx: i, lat, total: idxDelta(t, 0, i), nitro: 0.35, boostT: 0, drifting: false, driftT: 0, padCd: 0, wallT: 0, draft: 0 };
 }
 
+/** Return a stranded car to the track without changing lap progress or resources. */
+export function recoverCar(c: CarState, t: Track): void {
+  const i = ((c.idx % t.n) + t.n) % t.n;
+  c.idx = i;
+  c.x = t.x[i]; c.z = t.z[i]; c.y = t.y[i];
+  c.h = Math.atan2(t.tz[i], t.tx[i]);
+  c.vx = c.vz = c.vf = c.vl = c.slip = c.steer = c.yawRate = c.lat = 0;
+  c.drifting = false; c.driftT = 0; c.wallT = 0; c.draft = 0;
+  c.nitroLit = false;
+}
+
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
 export const wrapAngle = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 

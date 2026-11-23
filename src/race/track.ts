@@ -27,6 +27,15 @@ function catmull(p0: ControlPoint, p1: ControlPoint, p2: ControlPoint, p3: Contr
 }
 
 export function buildTrack(points: ReadonlyArray<ControlPoint> = MAPS[0].points, halfWidth = MAPS[0].halfWidth, spacing = SAMPLE_SPACING, padFractions: readonly number[] = MAPS[0].pads): Track {
+  if (points.length < 4 || !points.every(p => p.length === 3 && p.every(Number.isFinite))) {
+    throw new RangeError('A circuit needs at least four finite 3D control points');
+  }
+  if (!Number.isFinite(halfWidth) || halfWidth <= 0 || !Number.isFinite(spacing) || spacing <= 0) {
+    throw new RangeError('Road width and sample spacing must be positive finite numbers');
+  }
+  if (!padFractions.every(f => Number.isFinite(f) && f >= 0 && f <= 1)) {
+    throw new RangeError('Boost pad fractions must be within [0, 1]');
+  }
   const m = points.length, dense: V3[] = [], per = 48;
   for (let i = 0; i < m; i++) {
     const a = points[(i + m - 1) % m], b = points[i], c = points[(i + 1) % m], d = points[(i + 2) % m];
@@ -34,7 +43,12 @@ export function buildTrack(points: ReadonlyArray<ControlPoint> = MAPS[0].points,
   }
   const cum: number[] = [0];
   for (let i = 1; i <= dense.length; i++) { const p = dense[i - 1], q = dense[i % dense.length]; cum.push(cum[i - 1] + Math.hypot(q[0] - p[0], q[1] - p[1])); }
-  const total = cum[dense.length], n = Math.round(total / spacing), ds = total / n;
+  const total = cum[dense.length], estimate = total / spacing;
+  // A bad authoring parameter must never allocate gigabytes of typed arrays.
+  if (!Number.isFinite(estimate) || estimate < 4 || estimate > 200_000) {
+    throw new RangeError('Circuit length or spacing creates an invalid sample count');
+  }
+  const n = Math.round(estimate), ds = total / n;
   const x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n);
   let j = 0;
   for (let i = 0; i < n; i++) {
@@ -45,7 +59,11 @@ export function buildTrack(points: ReadonlyArray<ControlPoint> = MAPS[0].points,
   const tx = new Float32Array(n), tz = new Float32Array(n), k = new Float32Array(n), pitch = new Float32Array(n), raw = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const a = (i + n - 1) % n, b = (i + 1) % n, dx = x[b] - x[a], dz = z[b] - z[a], l = Math.hypot(dx, dz);
-    tx[i] = dx / l; tz[i] = dz / l; pitch[i] = Math.atan2(y[b] - y[a], l);
+    // Coincident local samples can occur on an otherwise valid hand-drawn
+    // track. Fall back to the preceding tangent instead of producing NaN.
+    if (l > 1e-8) { tx[i] = dx / l; tz[i] = dz / l; }
+    else { tx[i] = i > 0 ? tx[i - 1] : 1; tz[i] = i > 0 ? tz[i - 1] : 0; }
+    pitch[i] = Math.atan2(y[b] - y[a], l);
   }
   for (let i = 0; i < n; i++) {
     const b = (i + 1) % n, cross = tx[i] * tz[b] - tz[i] * tx[b], dot = tx[i] * tx[b] + tz[i] * tz[b];
@@ -59,10 +77,13 @@ export function buildTrack(points: ReadonlyArray<ControlPoint> = MAPS[0].points,
 export interface Nearest { i: number; lat: number; dist: number }
 /** hint 주변(±win)에서 가장 가까운 샘플과 중심선 기준 좌우 오프셋(오른쪽이 +)을 찾습니다. win<0 이면 전체 탐색. */
 export function nearest(t: Track, px: number, pz: number, hint: number, win = 40): Nearest {
-  const n = t.n, full = win < 0 || win * 2 + 1 >= n; let best = 0, bd = Infinity;
+  if (!Number.isFinite(px) || !Number.isFinite(pz)) return { i: 0, lat: 0, dist: Infinity };
+  const n = t.n, window = Number.isFinite(win) ? Math.trunc(win) : -1;
+  const full = window < 0 || window * 2 + 1 >= n; let best = 0, bd = Infinity;
   // Walk the same cyclic sample sequence, including the original tie order.
-  const count = full ? n : win * 2 + 1;
-  let i = full ? 0 : wrapIdx(t, hint - win);
+  const count = full ? n : window * 2 + 1;
+  const center = Number.isFinite(hint) ? Math.trunc(hint) : 0;
+  let i = full ? 0 : wrapIdx(t, center - window);
   for (let o = 0; o < count; o++) {
     const dx = px - t.x[i], dz = pz - t.z[i], d = dx * dx + dz * dz;
     if (d < bd) { bd = d; best = i; }

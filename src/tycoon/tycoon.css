@@ -381,3 +381,10 @@
   .ty-map-surface .ty-map-caption {font-size:10px;padding:4px 6px}
 }
 @media(prefers-reduced-motion:reduce) {.ty-map-vehicle {transition:none}}
+
+/* Touch driving: horn is a secondary control, not a dead primary action. */
+.ty-root.touch .ty-tfoot button.big.horn {
+  background:#2c3a47; color:#f1d59e; border:1px solid #89734f;
+  box-shadow:none; min-height:53px; border-radius:7px;
+}
+.ty-root.touch .ty-tfoot button.big.horn:active {background:#485966;color:#fff2cc;}

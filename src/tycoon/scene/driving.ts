@@ -33,3 +33,23 @@ export function stepDrive(
   }
   return false;
 }
+
+/** Resolve a walking circle against a parked car in the car's local axes. */
+export function pushWalkerFromCar(
+  x: number, z: number, r: number, car: { x: number; z: number; heading: number },
+  halfLength = 2.35, halfWidth = 1.05,
+): { x: number; z: number } {
+  const cs = Math.cos(car.heading), sn = Math.sin(car.heading);
+  const dx = x - car.x, dz = z - car.z;
+  let forward = dx * cs - dz * sn;
+  let sideways = dx * sn + dz * cs;
+  const left = halfLength + r - Math.abs(forward);
+  const side = halfWidth + r - Math.abs(sideways);
+  if (left <= 0 || side <= 0) return { x, z };
+  if (left < side) forward += (forward >= 0 ? 1 : -1) * left;
+  else sideways += (sideways >= 0 ? 1 : -1) * side;
+  return {
+    x: car.x + forward * cs + sideways * sn,
+    z: car.z - forward * sn + sideways * cs,
+  };
+}

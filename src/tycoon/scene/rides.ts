@@ -60,6 +60,22 @@ export class Rides {
   get speed(): number { return Math.abs(this.active?.speed ?? 0); }
   get name(): string | null { return this.active?.name ?? null; }
   positions(): ParkedVehicle[] { return this.cars.map(c => ({ x: c.x, z: c.z, heading: c.heading, name: c.name, active: c === this.active })); }
+  snapshot(): { name: string; x: number; z: number; heading: number } | null {
+    const c = this.active; return c ? { name: c.name, x: c.x, z: c.z, heading: c.heading } : null;
+  }
+  /** Resume an occupied car only when its validated position is collision-free. */
+  restore(ride: { name: string; x: number; z: number; heading: number }, player: Player): boolean {
+    const car = this.cars.find(c => c.name === ride.name);
+    if (!car || !Number.isFinite(ride.x) || !Number.isFinite(ride.z) || !Number.isFinite(ride.heading) ||
+      !this.occupiable(ride.x, ride.z, ride.heading, car)) return false;
+    car.x = ride.x; car.z = ride.z; car.heading = ride.heading; car.speed = 0;
+    car.mesh.position.set(car.x, 0.18, car.z); car.mesh.rotation.y = car.heading;
+    this.active = car;
+    player.pos.set(car.x, 0.18, car.z); player.vel.set(0, 0, 0);
+    player.facing = car.heading;
+    if (player.rig) player.rig.root.visible = false;
+    return true;
+  }
   private occupiable(x: number, z: number, heading: number, ignore?: Ride): boolean {
     for (const part of [-BODY_LENGTH, 0, BODY_LENGTH]) {
       const px = x + Math.cos(heading) * part, pz = z - Math.sin(heading) * part;

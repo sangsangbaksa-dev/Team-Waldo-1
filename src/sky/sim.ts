@@ -43,7 +43,7 @@ export interface Bullet { pos: THREE.Vector3; vel: THREE.Vector3; life: number; 
 export type SimEvent =
   | { t: 'gun'; id: number } | { t: 'missile'; id: number } | { t: 'boom'; pos: THREE.Vector3; big: boolean }
   | { t: 'hit'; id: number; pos: THREE.Vector3; by?: number } | { t: 'nolock' } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
-  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield'; amount: number } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' } | { t: 'stunt'; points: number; fuel: number };
+  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield'; amount: number } | { t: 'boss' } | { t: 'dodge'; points: number; shield: number } | { t: 'overdrive' } | { t: 'stunt'; points: number; fuel: number };
 
 export interface Input { pitch: number; roll: number; yaw?: number; throttle: number; fire: boolean; missile: boolean; flare: boolean; boost?: boolean; }
 export interface Pickup { id: number; kind: 'repair' | 'ammo' | 'shield'; pos: THREE.Vector3; life: number; } // pitch/roll -1..1
@@ -199,7 +199,7 @@ export class SkySim {
   }
 
   step(dt: number, input: Input): void {
-    if (this.over || dt <= 0) { this.events.length = 0; return; }
+    if (this.over || !Number.isFinite(dt) || dt <= 0) { this.events.length = 0; return; }
     this.time += dt; this.overdrive = Math.max(0, this.overdrive - dt);
     const p = this.player;
     if (p.alive) this.stepPlayer(p, input, dt);
@@ -383,7 +383,6 @@ export class SkySim {
         this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
         m.alive = false; continue; // 이미 소진한 미사일은 다음 프레임에서 충돌하지 않습니다.
       }
-      if (m.team === 'enemy' && m.target === this.player.id && this.player.alive && !m.dodged) { const d = m.pos.distanceTo(this.player.pos); if (d < 120) m.nearPlayer = true; else if (m.nearPlayer && d > 180) { m.dodged = true; this.score += 150; if (this.combo > 0) this.comboT = Math.max(this.comboT, 6); this.shield = Math.min(50, this.shield + 5); this.events.push({ t: 'dodge', points: 150 }); } }
       const tgt = m.target ? this.get(m.target) : undefined;
       if (tgt) {
         const want = tmpV.copy(tgt.pos).sub(m.pos); const d = want.length() || 1; want.divideScalar(d);
@@ -422,13 +421,26 @@ export class SkySim {
         this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
         m.alive = false;
       }
+      if (m.alive && m.team === 'enemy' && m.target === this.player.id && this.player.alive && !m.dodged) {
+        const distance = m.pos.distanceTo(this.player.pos);
+        if (distance < 120) m.nearPlayer = true;
+        else if (m.nearPlayer && distance > 180
+          && tmpV.copy(m.pos).sub(this.player.pos).dot(m.vel) > 0) {
+          m.dodged = true;
+          this.score += 150;
+          if (this.combo > 0) this.comboT = Math.max(this.comboT, 6);
+          const shield = Math.min(5, Math.max(0, 50 - this.shield));
+          this.shield += shield;
+          this.events.push({ t: 'dodge', points: 150, shield });
+        }
+      }
     }
     this.missiles = this.missiles.filter(m => m.alive);
   }
 
   private stepBullets(dt: number): void {
     for (const b of this.bullets) {
-      if (!b.alive) continue;
+      if (!b.alive || b.life <= 0) { b.alive = false; continue; }
       const remaining = Math.max(0, Math.min(dt, b.life));
       b.life -= dt;
       const prev = bulletTest.copy(b.pos);

@@ -71,3 +71,17 @@
 - 테스트 명령 및 CI run 링크, 미확인 범위
 - 충돌·선행 PR 의존성
 - 병합 여부와 실제 배포 여부 (둘 다 기본값 '아니요')
+
+## 8. PR 파일 충돌 자동 보고 도구
+
+저장소 루트에서 다음 명령을 실행하면 현재 열린 PR의 **부모/자식 관계, 같은 파일을 바꾼 PR 쌍, 운영 기준과 다른 base, 두 게임 이상을 건드린 PR**을 읽기 전용으로 보고합니다.
+
+```bash
+node tools/coordination-report.mjs --repo=sangsangbaksa-dev/Team-Waldo-1 --target=feat/shared-menu-rails
+node tools/coordination-report.mjs --json
+```
+
+- GitHub 공개 API를 사용합니다. 요청량 제한을 늘리고 싶으면 인증된 환경에서 `GITHUB_TOKEN`을 미리 설정할 수 있으며, 스크립트는 토큰을 출력하지 않습니다.
+- 인증 없이 실행할 때에는 최신 열린 PR 최대 40개만 확인합니다. `--limit=80`처럼 범위를 늘리면 API 요청 제한에 걸릴 수 있습니다.
+- 네트워크 없이 확인하려면 `--input=path/to/fixture.json`을 사용합니다. 입력은 PR 객체 배열 또는 `{ "prs": [...] }`이며 각 PR에는 `number`, `base`, `head`, `files` 필드를 넣습니다.
+- 파일 이름이 겹친다는 것만으로 병합 충돌이 확정되지는 않습니다. 이 도구는 충돌 후보를 식별할 뿐 코드를 수정·병합·배포하지 않습니다.

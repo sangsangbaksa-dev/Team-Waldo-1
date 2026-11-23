@@ -235,9 +235,12 @@ try {
       const overDrawsAfter = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       assert.ok(overDrawsAfter - overDrawsBefore <= 3,
         'The result menu should cap expensive 3D redraws instead of drawing at 60fps');
+      const overQualityLevel = await page.evaluate(() => window.__sky.view.level);
       await page.locator('#sk-again').click();
       await page.locator('#sk-end').waitFor({ state: 'hidden' });
       await page.waitForFunction(() => window.__sky?.sim?.player?.alive && window.__sky.sim.time > 0.05);
+      assert.equal(await page.evaluate(() => window.__sky.view.level), overQualityLevel,
+        'Restart after a long game-over screen must not downgrade adaptive quality');
       if (size.name === 'desktop') await page.keyboard.press('p');
       else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });

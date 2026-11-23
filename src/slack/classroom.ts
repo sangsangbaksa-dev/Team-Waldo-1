@@ -2,7 +2,6 @@
 import type { CreateView, SlackEvent } from './types';
 import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
 
-// 교실 딴짓은 노트북 하나: video = 전략 게임 플레이 영상, game = 같은 전략 게임 직접 플레이. 수업 자료는 보스키(cover) 화면.
 type Pick = 'video' | 'game';
 const picks: { id: Pick; icon: string; name: string }[] = [
   { id: 'video', icon: '▶', name: '전략 영상' },
@@ -20,7 +19,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     <div class="sl-room" aria-label="저녁 자습 교실" data-view="doc">
       <div class="sl-world">
         <div class="sl-ceiling"><div class="sl-light"></div><div class="sl-light"></div></div>
-        <div class="sl-wall"><div class="sl-clock">10:24</div><div class="sl-board"><small>오늘의 자습</small><span>조용히, 끝까지.</span><i>수고했어, 오늘도.</i></div>
+        <div class="sl-wall"><div class="sl-clock">10:24</div><div class="sl-board"><small>야간 자습 안내</small><span>복도 이동 금지</span><i>노트북은 학습용으로만 사용</i></div>
           <div class="sl-door"><div class="sl-window"><div class="sl-shadow"></div><div class="sl-face"><i></i><i></i></div></div><div class="sl-handle"></div><div class="sl-gap"><i></i><i></i></div></div></div>
         <div class="sl-rows">${KIDS}</div>
         <div class="sl-teacher"><div class="sl-teacher-head"></div><div class="sl-teacher-body"></div></div>
@@ -29,7 +28,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
           <div class="sl-lid"><div class="sl-screen">
             <div class="sl-win doc"><div class="sl-tb"><i></i><span>EduPlus 학습마당 · 중2 수학 문제집</span></div>
               <div class="sl-docbody"><aside><b>단원</b><u>1. 일차방정식</u><u class="on">2. 연립방정식</u><u>3. 일차함수</u><u>4. 도형의 성질</u></aside>
-                <article><div class="sl-pdfbar"><span>‹ 37 / 120 ›</span><span>100%</span><span>★ 북마크</span></div><h4>p.37 연립방정식의 풀이</h4><p>1. 다음 연립방정식을 가감법으로 풀어 보시오.</p><div class="eq">x + y = 12<br>2x − y = 3</div><p>2. 두 수의 합이 25, 차가 7일 때 두 수를 구하시오.</p><div class="ans"></div><p>3. 대입법을 이용하여 해를 구하시오.</p><div class="eq">y = 2x − 1<br>3x + y = 14</div></article></div></div>
+                <article><div class="sl-pdfbar"><span>‹ 37 / 120 ›</span><span>100%</span><span>북마크</span></div><h4>p.37 연립방정식의 풀이</h4><p>1. 다음 연립방정식을 가감법으로 풀어 보시오.</p><div class="eq">x + y = 12<br>2x − y = 3</div><p>2. 두 수의 합이 25, 차가 7일 때 두 수를 구하시오.</p><div class="ans"></div><p>3. 대입법을 이용하여 해를 구하시오.</p><div class="eq">y = 2x − 1<br>3x + y = 14</div></article></div></div>
             <div class="sl-win vid"><div class="sl-tb"><i></i><span>FRONTLINE 전술 분석 · 다리 점령전 하이라이트</span></div>
               <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-sub"></div></div>
               <div class="sl-pbar"><b>▶</b><span class="sl-track"><i></i></span><em>00:00</em></div></div>

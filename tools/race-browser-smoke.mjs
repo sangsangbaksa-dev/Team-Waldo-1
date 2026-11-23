@@ -126,6 +126,24 @@ try {
   await page.waitForFunction(() => window.__race.race.phase === 'racing');
   assert.equal(await page.evaluate(() => window.__race.race.track.n > 0), true);
   await page.screenshot({ path: 'browser-artifacts/race/storm-racing.png' });
+  // Simulate a WebGL context loss, which must show a usable restart path.
+  await page.evaluate(() => {
+    const canvas = document.querySelector('.rc-canvas');
+    window.__raceLostCanvas = canvas;
+    canvas.dispatchEvent(new Event('webglcontextlost', { bubbles: true, cancelable: true }));
+  });
+  await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'error');
+  assert.match(await page.locator('.rc-modal.show h2').innerText(), /그래픽 연결/);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.rc-root').getAttribute('data-phase'), 'error',
+    'Pause shortcut must not dismiss WebGL failure');
+  await page.locator('.rc-modal.show [data-act="restart"]').click();
+  await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
+  assert.equal(await page.evaluate(() => document.querySelector('.rc-canvas') !== window.__raceLostCanvas), true,
+    'context-loss recovery must replace the old canvas');
+  await page.evaluate(() => window.__race.skip(3.3));
+  await page.waitForFunction(() => window.__race.race.phase === 'racing');
+  await page.screenshot({ path: 'browser-artifacts/race/context-recovered.png' });
   // Avoid rendering two SwiftShader scenes at once on slow CI VMs.
   await context.close();
   // Portrait touch layout uses the same game loop and must remain fully usable.

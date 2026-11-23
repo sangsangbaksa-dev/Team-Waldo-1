@@ -324,3 +324,50 @@ describe('SKY WAR finite consumables and kill accounting', () => {
     expect(sim.pickups.length).toBe(drops);
   });
 });
+
+describe('SKY WAR cannon terrain and first-impact order', () => {
+  function launchBullet(sim: SkySim): void {
+    sim.fireGun(sim.player, 0);
+    const bullet = sim.bullets[0]!;
+    bullet.pos.set(450, 110, 300);
+    bullet.vel.set(30000, 0, 0);
+    bullet.life = 1;
+  }
+
+  it('cannon fire is stopped by a mountain before hitting a jet behind it', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const behind = sim.makeJet('enemy', 'fighter', new THREE.Vector3(1910, 110, 300), 0.8);
+    launchBullet(sim);
+    const hp = behind.hp;
+    sim.step(0.05, neutral);
+    expect(behind.hp).toBe(hp);
+    expect(sim.hits).toBe(0);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('a near-side jet takes cannon damage even if the same bullet would subsequently hit terrain', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const near = sim.makeJet('enemy', 'fighter', new THREE.Vector3(650, 110, 300), 0.8);
+    const hp = near.hp;
+    launchBullet(sim);
+    sim.step(0.05, neutral);
+    expect(near.hp).toBeLessThan(hp);
+    expect(sim.hits).toBe(1);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('the first of two aircraft in the same bullet path takes the impact', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const near = sim.makeJet('enemy', 'fighter', new THREE.Vector3(650, 110, 300), 0.8);
+    const farther = sim.makeJet('enemy', 'fighter', new THREE.Vector3(730, 110, 300), 0.8);
+    const nearHp = near.hp, fartherHp = farther.hp;
+    launchBullet(sim);
+    sim.step(0.05, neutral);
+    expect(near.hp).toBeLessThan(nearHp);
+    expect(farther.hp).toBe(fartherHp);
+    expect(sim.hits).toBe(1);
+  });
+});

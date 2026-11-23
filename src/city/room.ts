@@ -3,7 +3,7 @@
 import type { RoomSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
 import { cleanChat } from './chat';
-import { parsePose, parseShot, type DuelPose, type DuelShot } from './duel';
+import { parseDuelClass, parsePose, parseShot, type DuelPose, type DuelShot } from './duel';
 
 export const ROOM_LIVES = 5, ROOM_TIME = 480;
 const SILENT_MS = 8000, GATHER_MS = 12000, NEVER_MS = 25000;
@@ -75,10 +75,16 @@ export class CityRoom {
     if (this.dead) return;
     const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.me() || !this.ids.includes(f)) return;
     if (this.started && this.heard.has(f)) this.heard.set(f, performance.now());
-    if (m.t === 'hello') { if (this.started && this.session.host) this.ch.send({ t: 'start', f: this.me(), list: this.startList }); else if (!this.started) this.klasses.set(f, typeof m.klass === 'string' ? m.klass : 'warlord'); }
+    if (m.t === 'hello') { if (this.started && this.session.host) this.ch.send({ t: 'start', f: this.me(), list: this.startList }); else if (!this.started) this.klasses.set(f, parseDuelClass(m.klass)); }
     else if (m.t === 'start') {
       if (f !== this.session.room.host_id || this.session.host || !Array.isArray(m.list)) return;
-      const list = (m.list as unknown[]).flatMap(x => { const o = x as { id?: unknown; klass?: unknown }; return typeof o?.id === 'string' && this.ids.includes(o.id) ? [{ id: o.id, klass: typeof o.klass === 'string' ? o.klass : 'warlord' }] : []; });
+      const seen = new Set<string>();
+      const list = (m.list as unknown[]).flatMap(x => {
+        const o = x as { id?: unknown; klass?: unknown };
+        if (typeof o?.id !== 'string' || !this.ids.includes(o.id) || seen.has(o.id)) return [];
+        seen.add(o.id);
+        return [{ id: o.id, klass: parseDuelClass(o.klass) }];
+      });
       if (list.some(p => p.id === this.me()) && list.length >= 2) this.begin(list);
     }
     else if (!this.started || this.gone.has(f)) return;

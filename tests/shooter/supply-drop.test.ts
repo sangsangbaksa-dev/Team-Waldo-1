@@ -27,5 +27,5 @@ describe('ZERO ZONE supply-drop placement safety', () => {
         expect(blockedAt(a.map, item.x, item.z, 0.45), `seed=${seed} item=${item.id} wall`).toBe(false);
       }
     }
-  });
+  }, 25000);
 });

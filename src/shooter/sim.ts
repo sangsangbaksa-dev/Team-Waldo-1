@@ -1,14 +1,14 @@
 // ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
 import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, DRIVE, HELMET_CUT, HEAL, ARMOR_PTS, ARMOR_ABS, MAP_HALF, PARTS, adsSpread, canFit, partFit, PLAYER, RED, SKIN_TONES, TEAM_COLORS, VEHICLES, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type DriveKind, type Mode, type PartId, type WeaponId } from './config';
 import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
-import { WATER_SLOW, waterDepth } from './terrain';
+import { WATER_SLOW, groundHeight, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
 export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean; /** 치료 시작: 1 붕대 · 2 구급상자 */ heal?: number }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
 /** 광선과 차체(옆에서 본 직사각형 × 높이)의 첫 교차 거리(없으면 Infinity). */
-export function rayVehicle(v: Vehicle, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  const c = Math.cos(v.yaw), s = Math.sin(v.yaw), px = ox - v.x, pz = oz - v.z, lo = { x: px * c + pz * s, y: oy, z: -px * s + pz * c }, ld = { x: dx * c + dz * s, y: dy, z: -dx * s + dz * c };
+export function rayVehicle(v: Vehicle, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, baseHeight = 0): number {
+  const c = Math.cos(v.yaw), s = Math.sin(v.yaw), px = ox - v.x, pz = oz - v.z, lo = { x: px * c + pz * s, y: oy - baseHeight, z: -px * s + pz * c }, ld = { x: dx * c + dz * s, y: dy, z: -dx * s + dz * c };
   let t0 = 0, t1 = maxT;
   const slab = (o: number, d: number, a: number, b: number): boolean => { if (Math.abs(d) < 1e-9) return o >= a && o <= b; let u = (a - o) / d, w = (b - o) / d; if (u > w) { const k = u; u = w; w = k; } if (u > t0) t0 = u; if (w < t1) t1 = w; return t0 <= t1; };
   return slab(lo.x, ld.x, -v.w / 2, v.w / 2) && slab(lo.y, ld.y, 0.15, v.h) && slab(lo.z, ld.z, -v.d / 2, v.d / 2) ? t0 : Infinity;
@@ -236,9 +236,11 @@ export class Match {
       if ((wantJump && p.alt <= AIR.manualOpen) || p.alt <= AIR.open) { p.air = 3; this.events.push({ t: 'chute', id: p.id }); }
     } else { const run = inp.sprint && fwd; top = run ? AIR.chuteRun : fwd ? AIR.chuteGo : AIR.chuteH; fall = run ? AIR.chuteFast : AIR.chute; }
     const k = Math.min(1, dt * 3); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
-    p.x += p.vx * dt; p.z += p.vz * dt; p.alt -= (p.air === 3 && p.alt < 4 ? Math.max(3, fall * 0.5) : fall) * dt;
+    p.x += p.vx * dt; p.z += p.vz * dt;
+    const ground = groundHeight(this.map.terrain, p.x, p.z);
+    p.alt -= (p.air === 3 && p.alt - ground < 4 ? Math.max(3, fall * 0.5) : fall) * dt;
     const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
-    if (p.alt <= 0) { p.alt = 0; p.air = 0; p.vx = 0; p.vz = 0; pushOut(this.map, p, PLAYER.radius); p.landedAt = this.t; p.cd = Math.max(p.cd, 0.5); this.events.push({ t: 'land', id: p.id }); }
+    if (p.alt <= groundHeight(this.map.terrain, p.x, p.z)) { p.alt = 0; p.air = 0; p.vx = 0; p.vz = 0; pushOut(this.map, p, PLAYER.radius); p.landedAt = this.t; p.cd = Math.max(p.cd, 0.5); this.events.push({ t: 'land', id: p.id }); }
   }
   private stepDrops(): void {
     for (const d of this.drops) {
@@ -452,7 +454,7 @@ export class Match {
   }
 
   private throwNade(p: Player): void {
-    p.nades--; p.nadeCd = NADE.cd; const cp = Math.cos(p.pitch), eye = eyeOf(p), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp;
+    p.nades--; p.nadeCd = NADE.cd; const cp = Math.cos(p.pitch), eye = eyeOf(p) + groundHeight(this.map.terrain, p.x, p.z), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp;
     const n: Nade = { id: this.nadeId++, owner: p.id, x: p.x + fx * 0.6, y: eye - 0.1, z: p.z + fz * 0.6, vx: fx * NADE.speed + p.vx * 0.5, vy: Math.sin(p.pitch) * NADE.speed + 4.5, vz: fz * NADE.speed + p.vz * 0.5, fuse: NADE.fuse };
     this.nades.push(n); this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id, quiet: true }); this.events.push({ t: 'nade', stage: 'throw', id: p.id, x: n.x, y: n.y, z: n.z, vx: n.vx, vy: n.vy, vz: n.vz });
   }
@@ -467,7 +469,9 @@ export class Match {
       const nx = n.x + n.vx * dt, nz = n.z + n.vz * dt;
       if (blockedAt(this.map, nx, n.z, 0.15)) n.vx *= -0.45; else n.x = nx;
       if (blockedAt(this.map, n.x, nz, 0.15)) n.vz *= -0.45; else n.z = nz;
-      n.y += n.vy * dt; if (n.y < 0.12) { n.y = 0.12; n.vy = Math.abs(n.vy) > 2 ? -n.vy * 0.38 : 0; n.vx *= 0.7; n.vz *= 0.7; }
+      n.y += n.vy * dt;
+      const floor = groundHeight(this.map.terrain, n.x, n.z) + 0.12;
+      if (n.y < floor) { n.y = floor; n.vy = Math.abs(n.vy) > 2 ? -n.vy * 0.38 : 0; n.vx *= 0.7; n.vz *= 0.7; }
       if (n.fuse > 0) continue;
       this.nades.splice(i, 1); this.events.push({ t: 'nade', stage: 'boom', id: n.owner, x: n.x, y: n.y, z: n.z });
       this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner });
@@ -533,7 +537,7 @@ export class Match {
     const h = partHandling(gun.att), quiet = gun.att.muzzle === 'suppressor';
     p.kick = Math.max(0, p.kick - def.recoil * 12 * (1 - h.kick));
     const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * h.spread * (p.ads ? adsSpread(gun.att) : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (1 - 0.22 * p.crouch);
-    const ox = p.x, oy = eyeOf(p), oz = p.z, ends: number[] = [];
+    const ox = p.x, oy = eyeOf(p) + groundHeight(this.map.terrain, p.x, p.z), oz = p.z, ends: number[] = [];
     for (let i = 0; i < def.pellets; i++) {
       const a = this.rng() * Math.PI * 2, r = spread * Math.sqrt(this.rng()), yaw = p.yaw + Math.cos(a) * r, pitch = p.pitch + Math.sin(a) * r;
       this.bullet(p.id, id, ox, oy, oz, yaw, pitch, ends, false);
@@ -548,14 +552,16 @@ export class Match {
     const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range);
     let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false, vcand: Vehicle | null = null, vt = Infinity;
     // 차체: 서 있는 차는 지도 상자가 먼저 막고, 움직이는 차는 여기서 막습니다(상자와 거의 같은 거리면 차가 맞은 것).
-    for (const v of this.vehicles) { if (v.wreck) continue; const t = rayVehicle(v, ox, oy, oz, dx, dy, dz, def.range); if (t < vt) { vt = t; vcand = v; } }
+    for (const v of this.vehicles) { if (v.wreck) continue; const t = rayVehicle(v, ox, oy, oz, dx, dy, dz, def.range, groundHeight(this.map.terrain, v.x, v.z)); if (t < vt) { vt = t; vcand = v; } }
     if (vcand && vt <= hitT + 0.9) hitT = Math.min(hitT, vt); else vcand = null;
     for (const q of this.players) {
       if (!q.alive || q.id === shooter || q.air || q.veh >= 0) continue;
       const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;
       const R = fromRemote ? 0.62 : 0.5, b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
       let t = (-b - Math.sqrt(disc)) / (2 * a); if (t < 0) { if (c < 0) t = 0; else continue; }
-      if (t >= hitT) continue; const y = oy + dy * t, cr = q.remote ? q.crouch : q.crouch; if (y < 0 || y > heightOf(cr) + 0.1) continue;
+      if (t >= hitT) continue;
+      const y = oy + dy * t - groundHeight(this.map.terrain, q.x, q.z), cr = q.crouch;
+      if (y < 0 || y > heightOf(cr) + 0.1) continue;
       hitT = t; target = q; head = y > headOf(cr);
     }
     const ex = ox + dx * hitT, ey = oy + dy * hitT, ez = oz + dz * hitT; ends.push(ex, ey, ez);

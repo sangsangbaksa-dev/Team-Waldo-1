@@ -14,3 +14,10 @@ export function renderingScale(width, height, deviceRatio, touch = false, qualit
   const pixelBudget = touch ? Math.min(1_350_000, preset.pixels) : preset.pixels;
   return Math.max(0.1, Math.min(dpr, maxDpr, Math.sqrt(pixelBudget / (w * h))));
 }
+
+/** Mirror the hub's first-visit defaults without ignoring explicit saved quality. */
+export function selectQuality(preferences, smallViewport) {
+  const value = preferences?.quality;
+  return value === "low" || value === "standard" || value === "high"
+    ? value : smallViewport ? "standard" : "high";
+}

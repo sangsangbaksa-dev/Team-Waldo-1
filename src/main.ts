@@ -421,10 +421,16 @@ window.addEventListener('popstate', () => {
 });
 // 게임 중 새로고침·탭 닫기: 진행이 사라진다고 먼저 알립니다.
 window.addEventListener('beforeunload', e => {
-  if (!activeGame || returningToHubViaHistory) return;
+  if (returningToHubViaHistory) {
+    // Individual games may register their own beforeunload warnings. The hub
+    // must handle our intentional Back navigation before those listeners run.
+    e.stopImmediatePropagation();
+    return;
+  }
+  if (!activeGame) return;
   e.preventDefault();
   e.returnValue = '';
-});
+}, { capture: true });
 
 try { history.scrollRestoration = 'manual'; } catch { /* 선택 사항 */ }
 try { hubScrollY = Number(sessionStorage.getItem('waldo.hubScroll')) || 0; sessionStorage.removeItem('waldo.hubScroll'); } catch { /* 선택 사항 */ }

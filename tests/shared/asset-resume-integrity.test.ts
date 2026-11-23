@@ -1,0 +1,223 @@
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fetchBuffer, showLoading } from '../../src/loading';
+
+const enc = new TextEncoder(), dec = new TextDecoder();
+type Spec = { status: number; chunk: string; length?: number; range?: string; etag?: string; encoding?: string; fail?: boolean };
+
+// Minimal streaming Response mock. A first read can succeed while a later read
+// rejects, exactly as happens when a connection breaks mid-download.
+function response({ status, chunk, length, range, etag, encoding, fail }: Spec): Response {
+  const headers = new Headers();
+  if (length !== undefined) headers.set('content-length', String(length));
+  if (range !== undefined) headers.set('content-range', range);
+  if (etag !== undefined) headers.set('etag', etag);
+  if (encoding !== undefined) headers.set('content-encoding', encoding);
+  return {
+    ok: status >= 200 && status < 300, status, headers,
+    body: {
+      getReader() {
+        let calls = 0;
+        return {
+          async read() {
+            if (calls++ === 0) return { done: false, value: enc.encode(chunk) };
+            if (fail) throw new TypeError('connection reset after partial body');
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    },
+  } as unknown as Response;
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('resumable asset integrity', () => {
+  it('appends a verified HTTP range only at the exact downloaded byte offset', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/10' }));
+    vi.stubGlobal('fetch', mock);
+    const result = await fetchBuffer('/models/test.glb', undefined, 1000);
+    expect(dec.decode(result)).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(2);
+    expect(mock.mock.calls[0][1].headers).toBeUndefined();
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-' });
+  });
+
+  it('restarts from zero rather than silently concatenating a misaligned range', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'abcdefg', length: 7, range: 'bytes 0-6/10' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    const result = await fetchBuffer('/models/test.glb', undefined, 1000);
+    expect(dec.decode(result)).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-' });
+    expect(mock.mock.calls[2][1].headers).toBeUndefined();
+  });
+
+  it('does not trust HTTP 206 without a Content-Range header', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7 }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects mismatched range lengths and compressed resumed chunks', async () => {
+    for (const invalid of [
+      { status: 206, chunk: 'defghij', length: 6, range: 'bytes 3-9/10' },
+      { status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/10', encoding: 'gzip' },
+    ]) {
+      const mock = vi.fn()
+        .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+        .mockResolvedValueOnce(response(invalid))
+        .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+      vi.stubGlobal('fetch', mock);
+      expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+      expect(mock).toHaveBeenCalledTimes(3);
+    }
+  });
+
+  it('keeps a partially resumed transfer alive until all expected bytes arrive', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'de', range: 'bytes 3-9/10' }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'fghij', range: 'bytes 5-9/10' }));
+    vi.stubGlobal('fetch', mock);
+    const result = await fetchBuffer('/models/test.glb', undefined, 1000);
+    expect(dec.decode(result)).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(mock.mock.calls[2][1].headers).toEqual({ Range: 'bytes=5-' });
+  });
+
+  it('continues downloading when the server returns only a proper prefix of the remaining range', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defg', length: 4, range: 'bytes 3-6/10' }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'hij', length: 3, range: 'bytes 7-9/10' }));
+    vi.stubGlobal('fetch', mock);
+    const result = await fetchBuffer('/models/test.glb');
+    expect(dec.decode(result)).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(mock.mock.calls[2][1].headers).toEqual({ Range: 'bytes=7-' });
+  });
+
+  it('restarts when a CDN resumes bytes from a different resource version', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/11' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghijk', length: 11 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghijk');
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(mock.mock.calls[2][1].headers).toBeUndefined();
+  });
+
+  it('rejects extra bytes beyond the declared complete object length', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghijk', length: 7, range: 'bytes 3-9/10' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+  });
+
+  it('never treats an unknown resumed total size as a complete GLB', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/*' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+  });
+
+  it('accepts a server ignoring Range only after resetting the prior prefix', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts decoded gzip streams whose Content-Length is the smaller compressed wire size', async () => {
+    const mock = vi.fn().mockResolvedValueOnce(response({
+      status: 200, chunk: 'abcdefghij', length: 6, encoding: 'gzip',
+    }));
+    vi.stubGlobal('fetch', mock);
+    const result = await fetchBuffer('/models/compressed.glb');
+    expect(dec.decode(result)).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not resume partially decoded compressed streams with encoded byte offsets', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 6, encoding: 'br', fail: true }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 6, encoding: 'br' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/compressed.glb'))).toBe('abcdefghij');
+    expect(mock.mock.calls[1][1].headers).toBeUndefined();
+  });
+
+  it('sends If-Range with a strong ETag and accepts matching resumed bytes', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, etag: '"edition-a"', fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/10', etag: '"edition-a"' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/asset.glb'))).toBe('abcdefghij');
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-', 'If-Range': '"edition-a"' });
+  });
+
+  it('restarts when a same-length asset version changes between byte ranges', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, etag: '"edition-a"', fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'DEFGHIJ', length: 7, range: 'bytes 3-9/10', etag: '"edition-b"' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'ABCDEFGHIJ', length: 10, etag: '"edition-b"' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/asset.glb'))).toBe('ABCDEFGHIJ');
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-', 'If-Range': '"edition-a"' });
+    expect(mock.mock.calls[2][1].headers).toBeUndefined();
+  });
+
+  it('does not send invalid weak ETags as If-Range validators', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, etag: 'W/"edition-a"', fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/10' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/asset.glb'))).toBe('abcdefghij');
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-' });
+  });
+
+  it('never writes NaN% or Infinity% to the loading bar and keeps valid progress monotonic', () => {
+    const loading = showLoading('MODEL');
+    try {
+      loading.progress(Number.NaN, '수신 중');
+      const bar = document.querySelector<HTMLElement>('.ld-bar')!;
+      const fill = document.querySelector<HTMLElement>('.ld-bar i')!;
+      const pct = document.querySelector<HTMLElement>('.ld-pct')!;
+      expect(bar.classList.contains('busy')).toBe(true);
+      expect(pct.textContent).toBe('');
+      expect(fill.style.width).not.toContain('NaN');
+
+      loading.progress(0.6);
+      expect(Number.parseFloat(fill.style.width)).toBe(60);
+      expect(pct.textContent).toBe('60%');
+      loading.progress(0.15);
+      expect(Number.parseFloat(fill.style.width)).toBe(60);
+      loading.progress(Number.POSITIVE_INFINITY);
+      expect(pct.textContent).toBe('');
+      expect(Number.parseFloat(fill.style.width)).toBe(60);
+      expect(bar.classList.contains('busy')).toBe(true);
+    } finally {
+      loading.close();
+    }
+    expect(document.querySelector('.ld-screen')).toBeNull();
+  });
+});

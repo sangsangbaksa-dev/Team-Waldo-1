@@ -26,7 +26,7 @@ export function showLoading(title: string): LoadingScreen {
   return {
     progress(fraction, text) {
       if (text) label.textContent = text;
-      if (fraction === null) { bar.classList.add('busy'); pct.textContent = ''; return; }
+      if (fraction === null || !Number.isFinite(fraction)) { bar.classList.add('busy'); pct.textContent = ''; return; }
       bar.classList.remove('busy');
       shown = Math.max(shown, Math.min(1, Math.max(0, fraction))); // 재시도로 되돌아가도 막대는 뒤로 가지 않습니다
       fill.style.width = `${(shown * 100).toFixed(1)}%`;
@@ -68,18 +68,69 @@ export async function retry<T>(task: (attempt: number) => Promise<T>, opt: Retry
  */
 export async function fetchBuffer(url: string, onProgress?: (loaded: number, total: number) => void, stallMs = 30000): Promise<ArrayBuffer> {
   let chunks: Uint8Array[] = [], loaded = 0, total = 0, resumable = true, idle = 0;
+  let validator: string | null = null; // Strong ETag for conditional byte-range downloads.
   for (;;) {
     const ctl = new AbortController(), before = loaded;
     let timer = window.setTimeout(() => ctl.abort(), stallMs);
     const poke = (): void => { window.clearTimeout(timer); timer = window.setTimeout(() => ctl.abort(), stallMs); };
     try {
-      const res = await fetch(url, { signal: ctl.signal, headers: loaded && resumable ? { Range: `bytes=${loaded}-` } : undefined });
+      const headers = loaded && resumable
+        ? { Range: `bytes=${loaded}-`, ...(validator ? { 'If-Range': validator } : {}) }
+        : undefined;
+      const res = await fetch(url, { signal: ctl.signal, headers });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
       poke();
-      if (loaded && res.status !== 206) { chunks = []; loaded = 0; resumable = false; } // 이어 받기를 안 받아 주면 처음부터
-      const len = Number(res.headers.get('content-length')) || 0;
-      if (res.headers.get('content-encoding')) resumable = false; // 압축 전송은 바이트 위치가 안 맞아 이어 받을 수 없습니다
-      total = len ? loaded + len : 0;
+      if (res.status === 200) {
+        // Strong ETags identify exact bytes even when a CDN replaces an asset
+        // with a different version of the same length during a slow transfer.
+        const etag = res.headers.get('etag');
+        validator = etag?.startsWith('"') && etag.endsWith('"') ? etag : null;
+      }
+      let expectedRangeLength = 0, expectedFullLength = 0;
+      if (res.status === 206) {
+        // A proxy/CDN can return HTTP 206 for a different byte interval.
+        // Appending it would produce a full-size but corrupt GLB/media file.
+        // A range is only safe if the server explicitly confirms the exact
+        // offset we requested; otherwise retry the whole file without Range.
+        const range = /^bytes (\d+)-(\d+)\/(\d+|\*)$/i.exec(res.headers.get('content-range') ?? '');
+        // Number(undefined) produces NaN, which the finite-integer guards
+        // below reject; this also keeps the types non-nullable.
+        const start = Number(range?.[1]), end = Number(range?.[2]);
+        const size = range?.[3] === '*' ? Infinity : Number(range?.[3]);
+        const newTag = res.headers.get('etag');
+        if (validator && newTag && newTag !== validator) {
+          resumable = false; chunks = []; loaded = 0;
+          throw new TypeError('Resumed asset ETag changed; restarting full download');
+        }
+        if (!loaded || !range || start !== loaded || !Number.isSafeInteger(start) ||
+            !Number.isSafeInteger(end) || end < start || !Number.isSafeInteger(size) ||
+            size <= end || (total > 0 && size !== total)) {
+          resumable = false; chunks = []; loaded = 0;
+          throw new TypeError('Invalid resume Content-Range; restarting full download');
+        }
+        // Content-Range is authoritative even if Content-Length is absent.
+        // Never accept a truncated resumed chunk as a complete asset.
+        expectedRangeLength = end - start + 1;
+        expectedFullLength = size;
+        const declaredLength = Number(res.headers.get('content-length')) || 0;
+        if ((declaredLength && declaredLength !== expectedRangeLength) || res.headers.get('content-encoding')) {
+          resumable = false; chunks = []; loaded = 0;
+          throw new TypeError('Inconsistent resumed response; restarting full download');
+        }
+      } else if (loaded) { chunks = []; loaded = 0; resumable = false; } // Range ignored: use the complete 200 response
+      const rawLength = res.headers.get('content-length');
+      const declaredLength = rawLength === null ? 0 : Number(rawLength);
+      if (rawLength !== null && (!Number.isSafeInteger(declaredLength) || declaredLength < 0)) {
+        resumable = false; chunks = []; loaded = 0;
+        throw new TypeError('Invalid Content-Length; restarting full download');
+      }
+      const len = declaredLength || expectedRangeLength;
+      const encoded = !!res.headers.get('content-encoding');
+      if (encoded) resumable = false; // 브라우저 스트림은 압축 해제된 바이트를 전달하므로 Range 와 원본 길이를 신뢰할 수 없습니다
+      // The wire Content-Length of gzip/br responses is not the number of
+      // decoded bytes returned by fetch(). Never compare those two lengths.
+      // For uncompressed ranges, Content-Range gives the full object size.
+      total = encoded ? 0 : expectedFullLength || (len ? loaded + len : 0);
       if (!res.body) { const b = new Uint8Array(await res.arrayBuffer()); chunks.push(b); loaded += b.byteLength; onProgress?.(loaded, loaded); }
       else {
         const reader = res.body.getReader();
@@ -88,6 +139,10 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
           if (done) break;
           chunks.push(value); loaded += value.byteLength; poke(); onProgress?.(loaded, total);
         }
+      }
+      if (total && loaded > total) {
+        resumable = false; chunks = []; loaded = 0;
+        throw new TypeError(`oversized response for ${url}`);
       }
       if (total && loaded < total) throw new Error(`short ${loaded}/${total} ${url}`);
       const out = new Uint8Array(loaded);

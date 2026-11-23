@@ -84,7 +84,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const getGame = (): ReturnType<typeof createBattle> => game ??= createBattle(true, e => { if (e === 'train') audio.play('key', 0.4); else if (e === 'order') audio.play('click', 0.3); else if (e === 'hq') audio.play('fun', 0.4); else if (e === 'win') audio.play('chime'); else if (e === 'lose') audio.play('click', 0.5); });
   let coverKey = false, coverPointer: number | null = null;
   let step = 0, stepLv = 0, relief = 0, popT = 0, quiet = 0, strike = 0, vt = 0, gHand = 0.5;
-  let doorSoundOpen = false;
+  let doorSoundOpen = false, walkingMode = '', lastFootfall = -1;
   let cursorX = W / 2, cursorY = H / 2;
   const syncCover = () => sim.setCover(coverKey || coverPointer !== null || !sim.state.activity);
   const choose = (id: Pick) => {
@@ -219,6 +219,17 @@ export const createClassroomView: CreateView = (sim, audio) => {
       css('--sl-teacher-opacity', motion.presence.toFixed(2));
       put(teacher, 'walking', String(motion.walking));
       put(teacher, 'facing', motion.exiting ? 'exit' : 'room');
+      if (motion.walking) {
+        const footfall = Math.floor(s.watcher.t / 0.64);
+        if (walkingMode !== s.watcher.mode || footfall !== lastFootfall) {
+          walkingMode = s.watcher.mode;
+          lastFootfall = footfall;
+          audio.play('footstep', 0.24 + motion.advance * 0.12);
+        }
+      } else {
+        walkingMode = '';
+        lastFootfall = -1;
+      }
       const doorIsOpen = motion.door > 0.16;
       if (doorIsOpen !== doorSoundOpen) {
         doorSoundOpen = doorIsOpen;

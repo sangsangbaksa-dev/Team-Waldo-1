@@ -59,6 +59,18 @@ try {
       assert.ok(flight.enemies > 0, 'The first wave must spawn enemies');
       assert.ok(flight.calls > 0, 'Three.js must issue WebGL draw calls');
       assert.ok(flight.altitude > 100, 'Aircraft must have a valid starting altitude');
+      const clouds = await page.evaluate(() => {
+        const view = window.__sky.view;
+        const total = view.clouds.length;
+        view.setLevel(3);
+        const hidden = view.clouds.filter(sprite => !sprite.visible).length;
+        view.setLevel(0);
+        const restored = view.clouds.filter(sprite => sprite.visible).length;
+        return { total, hidden, restored };
+      });
+      assert.ok(clouds.total >= 30, 'The atmosphere must register all cloud sprite layers');
+      assert.equal(clouds.hidden, clouds.total, 'Low quality must cull both cloud layers');
+      assert.equal(clouds.restored, clouds.total, 'Restored quality must show all cloud layers again');
       if (size.name === 'mobile') {
         await page.locator('#sk-b-flare').dispatchEvent('pointerdown', { pointerId: 12, pointerType: 'touch' });
         await page.waitForFunction(() => window.__sky?.sim?.player?.flare > 0);

@@ -135,7 +135,8 @@ body::before {
   color: #d6e3d5; font-size: clamp(11px, 1.35vw, 20px); font-weight: 800;
   letter-spacing: .09em; line-height: 1.35; text-shadow: 0 2px 16px #0b1713;
   background: linear-gradient(140deg, rgba(39,70,56,.3), rgba(10,17,15,.15));
-  opacity: .92; transition: opacity .24s ease;
+  /* Keep the placeholder visible until the image opacity transition catches up. */
+  opacity: .92; transition: opacity .35s ease .16s;
   pointer-events: none;
 }
 .tile-media.is-loaded::after { opacity: 0; }

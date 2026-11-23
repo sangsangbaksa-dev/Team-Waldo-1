@@ -53,7 +53,24 @@ export function openRace(onExit: () => void): void {
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
   const clearInput = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); };
   let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
-  const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
+  const cache = new Map<string, string>(), textElements = new Map<string, HTMLElement>();
+  const setText = (id: string, v: string): void => {
+    if (cache.get(id) === v) return;
+    cache.set(id, v);
+    let el = textElements.get(id);
+    if (!el) { el = $(id); textElements.set(id, el); }
+    el.textContent = v;
+  };
+  const ui = {
+    best: $('#rc-best'), nitro: $<HTMLElement>('#rc-nitro'), nitroTrack: $('#rc-nitro').parentElement!,
+    draft: $<HTMLElement>('#rc-draft'), drift: $('#rc-drift'), rev: $<HTMLElement>('#rc-rev'),
+    wrong: $('#rc-wrong'), boost: $<HTMLElement>('.rc-boostfx'), vignette: $<HTMLElement>('.rc-vignette'),
+  };
+  const HUD_INTERVAL = 1 / 30, MINI_INTERVAL = 1 / 15, FX_INTERVAL = 1 / 30;
+  let hudElapsed = HUD_INTERVAL, miniElapsed = MINI_INTERVAL, fxElapsed = FX_INTERVAL, unpaintedSim = 0;
+  const resetVisualTiming = (): void => {
+    hudElapsed = HUD_INTERVAL; miniElapsed = MINI_INTERVAL; fxElapsed = FX_INTERVAL; unpaintedSim = 0;
+  };
 
   const msg = (text: string, kind = ''): void => { const el = $('#rc-msg'); el.textContent = text; el.className = `rc-msg show ${kind}`; msgT = 1.6; };
   const bigCount = (text: string, go = false): void => { const el = $('#rc-count'); el.textContent = text; el.className = 'rc-count'; void el.offsetWidth; el.className = `rc-count show${go ? ' go' : ''}`; };
@@ -247,6 +264,7 @@ export function openRace(onExit: () => void): void {
     try {
       view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme, prefs.reducedMotion);
       view.setChaseLift(touch); view.setRacers(race.racers); view.setGhost(carById(setup.car).model, !!race.ghost); resize();
+      resetVisualTiming();
       return true;
     } catch {
       view?.dispose(); view = null;
@@ -294,18 +312,18 @@ export function openRace(onExit: () => void): void {
     setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
     setText('#rc-time', fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
     setText('#rc-best', race.trial ? (race.ghost ? (gd === null ? `GHOST ${fmtTime(race.ghost.time)}` : `GHOST ${gd >= 0 ? '+' : '-'}${Math.abs(gd).toFixed(2)}`) : '첫 기록 — 이 주행이 고스트가 됩니다') : Number.isFinite(race.bestLap) ? `BEST ${fmtTime(race.bestLap)}` : '');
-    $('#rc-best').classList.toggle('ahead', gd !== null && gd < 0);
+    ui.best.classList.toggle('ahead', gd !== null && gd < 0);
     setText('#rc-gear', race.phase === 'countdown' || Math.abs(c.vf) < 1 ? 'N' : c.vf < -0.5 ? 'R' : String(gearFor(c.vf)));
-    $<HTMLElement>('#rc-nitro').style.width = `${(c.nitro * 100).toFixed(0)}%`; $('#rc-nitro').parentElement!.classList.toggle('on', boosting(c));
-    $<HTMLElement>('#rc-draft').style.opacity = String(c.draft > 0.15 ? Math.min(1, c.draft * 1.3) : 0);
+    ui.nitro.style.width = `${(c.nitro * 100).toFixed(0)}%`; ui.nitroTrack.classList.toggle('on', boosting(c));
+    ui.draft.style.opacity = String(c.draft > 0.15 ? Math.min(1, c.draft * 1.3) : 0);
     const dr = race.drift;
-    setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `DRIFT ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
-    const rev = Math.min(1, Math.abs(c.vf) / p.params.top); $<HTMLElement>('#rc-rev').style.width = `${(rev * 100).toFixed(0)}%`;
+    setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `DRIFT ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); ui.drift.classList.toggle('live', c.drifting);
+    const rev = Math.min(1, Math.abs(c.vf) / p.params.top); ui.rev.style.width = `${(rev * 100).toFixed(0)}%`;
     root.dataset.kmh = String(Math.round(sp)); root.dataset.place = String(place); root.dataset.lap = String(currentLap(race)); root.dataset.phase = finishedShown ? 'done' : race.phase;
     const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz;
     wrongT = advanceWrongWay(wrongT, race.phase === 'racing', dir, simulatedSeconds);
-    $('#rc-wrong').classList.toggle('show', wrongT >= WRONG_WAY_DELAY);
-    const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); $<HTMLElement>('.rc-boostfx').style.opacity = boosting(c) ? '1' : '0'; $<HTMLElement>('.rc-vignette').style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
+    ui.wrong.classList.toggle('show', wrongT >= WRONG_WAY_DELAY);
+    const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); ui.boost.style.opacity = boosting(c) ? '1' : '0'; ui.vignette.style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
     if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
     lastPlace = place;
   }
@@ -324,8 +342,12 @@ export function openRace(onExit: () => void): void {
       if (nitroNow && !nitroWas) { audio.sfx('nitro'); view.punchFov(0.9); }
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
-      view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); drawMini();
+      view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5);
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now);
+      unpaintedSim += steps * STEP;
+      if ((hudElapsed += dt) >= HUD_INTERVAL) { hudElapsed %= HUD_INTERVAL; hud(unpaintedSim); unpaintedSim = 0; }
+      if ((miniElapsed += dt) >= MINI_INTERVAL) { miniElapsed %= MINI_INTERVAL; drawMini(); }
+      if ((fxElapsed += dt) >= FX_INTERVAL) { fxElapsed %= FX_INTERVAL; drawFx(fxIntensity); }
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }
@@ -374,10 +396,18 @@ export function openRace(onExit: () => void): void {
     b.addEventListener('contextmenu', e => e.preventDefault());
   });
 
-  // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
+  // 차와 캐릭터 모델을 동시에 읽습니다. 어느 한쪽이 실패해도 레이스는 시작할 수 있습니다.
   void (async () => {
-    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
-    try { setDriverKit(await loadCharacterKit(import.meta.env.BASE_URL)); } catch { setDriverKit(null); }
-    if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
+    const cars = new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`)
+      .then(gltf => {
+        const found: Record<string, THREE.Object3D> = {};
+        gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; });
+        return found;
+      }).catch(() => null);
+    const characters = loadCharacterKit(import.meta.env.BASE_URL).catch(() => null);
+    const [models, kit] = await Promise.all([cars, characters]);
+    if (closed) return;
+    carTemplate = models; setDriverKit(kit);
+    last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

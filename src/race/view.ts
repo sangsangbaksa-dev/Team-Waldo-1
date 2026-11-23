@@ -60,24 +60,59 @@ let dot: THREE.CanvasTexture | null = null;
 function dotTex(): THREE.CanvasTexture { dot ??= canvasTex(32, 32, g => { const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 32, 32); }, false); return dot; }
 
 class Particles {
-  readonly points: THREE.Points; private pos: Float32Array; private col: Float32Array; private vel: Float32Array; private life: Float32Array; private max: Float32Array; private rgb: Float32Array; private head = 0;
+  readonly points: THREE.Points;
+  private pos: Float32Array; private col: Float32Array; private vel: Float32Array;
+  private life: Float32Array; private max: Float32Array; private rgb: Float32Array;
+  private active: Uint16Array; private activeCount = 0; private head = 0;
+
   constructor(private cap: number, size: number, blending: THREE.Blending, opacity = 1) {
-    this.pos = new Float32Array(cap * 3); this.col = new Float32Array(cap * 3); this.vel = new Float32Array(cap * 3); this.life = new Float32Array(cap); this.max = new Float32Array(cap); this.rgb = new Float32Array(cap * 3);
-    this.pos.fill(0, 0); for (let i = 0; i < cap; i++) this.pos[i * 3 + 1] = -999;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
-    this.points = new THREE.Points(g, new THREE.PointsMaterial({ size, map: dotTex(), vertexColors: true, transparent: true, opacity, blending, depthWrite: false, sizeAttenuation: true })); this.points.frustumCulled = false;
+    this.pos = new Float32Array(cap * 3); this.col = new Float32Array(cap * 3);
+    this.vel = new Float32Array(cap * 3); this.life = new Float32Array(cap);
+    this.max = new Float32Array(cap); this.rgb = new Float32Array(cap * 3);
+    this.active = new Uint16Array(cap);
+    for (let i = 0; i < cap; i++) this.pos[i * 3 + 1] = -999;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    this.points = new THREE.Points(g, new THREE.PointsMaterial({
+      size, map: dotTex(), vertexColors: true, transparent: true, opacity,
+      blending, depthWrite: false, sizeAttenuation: true,
+    }));
+    this.points.frustumCulled = false;
   }
+
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, r: number, g: number, b: number): void {
-    const i = this.head; this.head = (this.head + 1) % this.cap; this.pos.set([x, y, z], i * 3); this.vel.set([vx, vy, vz], i * 3); this.life[i] = life; this.max[i] = life; this.rgb.set([r, g, b], i * 3);
+    const i = this.head, p = i * 3;
+    this.head = (this.head + 1) % this.cap;
+    if (this.life[i] <= 0) this.active[this.activeCount++] = i;
+    this.pos[p] = x; this.pos[p + 1] = y; this.pos[p + 2] = z;
+    this.vel[p] = vx; this.vel[p + 1] = vy; this.vel[p + 2] = vz;
+    this.life[i] = life; this.max[i] = life;
+    this.rgb[p] = r; this.rgb[p + 1] = g; this.rgb[p + 2] = b;
   }
+
   update(dt: number, gravity: number): void {
-    for (let i = 0; i < this.cap; i++) {
-      if (this.life[i] <= 0) { this.pos[i * 3 + 1] = -999; this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
-      this.life[i] -= dt; if (this.life[i] <= 0) { this.pos[i * 3 + 1] = -999; continue; } const f = Math.max(0, this.life[i] / this.max[i]);
-      this.vel[i * 3 + 1] -= gravity * dt; this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
-      this.col[i * 3] = this.rgb[i * 3] * f; this.col[i * 3 + 1] = this.rgb[i * 3 + 1] * f; this.col[i * 3 + 2] = this.rgb[i * 3 + 2] * f;
+    if (this.activeCount === 0) return;
+    for (let j = this.activeCount - 1; j >= 0; j--) {
+      const i = this.active[j], p = i * 3;
+      this.life[i] -= dt;
+      if (this.life[i] <= 0) {
+        this.pos[p + 1] = -999;
+        this.col[p] = this.col[p + 1] = this.col[p + 2] = 0;
+        this.active[j] = this.active[--this.activeCount];
+        continue;
+      }
+      const fade = Math.max(0, this.life[i] / this.max[i]);
+      this.vel[p + 1] -= gravity * dt;
+      this.pos[p] += this.vel[p] * dt;
+      this.pos[p + 1] += this.vel[p + 1] * dt;
+      this.pos[p + 2] += this.vel[p + 2] * dt;
+      this.col[p] = this.rgb[p] * fade;
+      this.col[p + 1] = this.rgb[p + 1] * fade;
+      this.col[p + 2] = this.rgb[p + 2] * fade;
     }
-    (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.points.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (this.points.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
   }
 }
 
@@ -111,8 +146,8 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
-  private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private sky!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
+  private rainFx: Particles | null = null; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private artRandom:()=>number; private clearance:ClearanceIndex;
   private artRnd(a:number,b:number):number{return a+this.artRandom()*(b-a);}
@@ -129,8 +164,14 @@ export class RaceView {
     this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     if(quality!=='low'&&trackLightStrength(theme.light.sunPower,theme.rain)>0){this.roadLights=new RoadLightBatch(this.scene,12);}
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
-    this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) { this.scene.add(this.rainFx.points); this.spray = new Particles(quality === 'low' ? 160 : 420, 0.8, THREE.NormalBlending, 0.24); this.scene.add(this.spray.points); }
-    const n = 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
+    this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points);
+    if (theme.rain) {
+      this.rainFx = new Particles(quality === 'low' ? 720 : 1800, 0.32, THREE.NormalBlending, 0.55);
+      this.scene.add(this.rainFx.points);
+      this.spray = new Particles(quality === 'low' ? 160 : 420, 0.8, THREE.NormalBlending, 0.24);
+      this.scene.add(this.spray.points);
+    }
+    const n = quality === 'low' ? 80 : 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
     this.carTemplates = carTemplates; this.viewH = window.innerHeight || 1;
@@ -253,7 +294,7 @@ export class RaceView {
             c = mix(c, cc, cov * smoothstep(0.02, 0.18, vD.y) * 0.92); }
           gl_FragColor = vec4(c, 1.0); }`,
     });
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), mat); sky.name = 'sky'; this.scene.add(sky); this.disposables.push(sky.geometry, mat);
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), mat); sky.name = 'sky'; this.sky = sky; this.scene.add(sky); this.disposables.push(sky.geometry, mat);
   }
 
   private buildGround(): void {
@@ -572,7 +613,9 @@ export class RaceView {
     this.time += dt; const p = race.player.car, t = this.track, speed = Math.abs(p.vf), sf = Math.min(1, speed / 74), bst = boosting(p);
     for (const pad of this.pads) pad.tex.offset.x -= dt * 1.4;
     this.outposts?.update(this.time);
-    for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }
+    if (this.crew.length && (p.x - t.x[0]) ** 2 + (p.z - t.z[0]) ** 2 < 200 * 200) {
+      for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }
+    }
     // 차량 배치
     this.roadLights?.begin();
     for (const v of this.cars) {
@@ -627,8 +670,8 @@ export class RaceView {
     }
     this.roadLights?.end();
     this.skids.flush(); this.sparks.update(dt, 14); this.smoke.update(dt, -1.5); this.spray?.update(dt, 5.8);
-    if (this.theme.rain) {
-      const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
+    if (this.rainFx) {
+      const cp = this.camera.position, n = Math.round(34 * (this.theme.rain ?? 0) * Math.min(2, dt * 60));
       for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);
       this.rainFx.update(dt, 0);
     }
@@ -645,10 +688,11 @@ export class RaceView {
     this.camera.lookAt(p.x + Math.cos(this.camH) * ahead, p.y + 1.15 + lift * 0.35 + (t.pitch[lookI] || 0) * 8, p.z + Math.sin(this.camH) * ahead);
     const grind = Math.abs(p.lat) > t.halfWidth - 1.65 && speed > 22 ? 1 : 0, rum = chaseRumble(sf, bst, grind);
     if (!this.reducedMotion) { this.camera.rotateZ(chaseRoll(p.yawRate, p.slip) + Math.sin(tt * 71) * rum); this.camera.rotateX(Math.sin(tt * 83 + 1.3) * rum * 0.8); }
-    const targetFov = this.reducedMotion ? 64 : chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov)); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
+    const targetFov = this.reducedMotion ? 64 : chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov));
+    if (Math.abs(this.camera.fov - this.fov) > 0.005) { this.camera.fov = this.fov; this.camera.updateProjectionMatrix(); }
     // 지면·태양광이 카메라를 따라감
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
-    this.scene.getObjectByName('sky')?.position.copy(this.camera.position);
+    this.sky.position.copy(this.camera.position);
     this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
     this.updateGhost(race); this.post?.setSpeedBlur(this.reducedMotion ? 0 : Math.max(0, (sf - 0.42) * 0.1 + (bst ? 0.04 : 0)));
     this.updateStartLights(race);
@@ -662,16 +706,19 @@ export class RaceView {
   private updateStreaks(dt: number, vx: number, vz: number, speed: number, bst: boolean): void {
     const n = this.streakSeed.length / 3, cam = this.camera.position, mat = this.streak.material as THREE.LineBasicMaterial;
     const target = Math.max(0, (speed - 26) / 50) * (bst ? 1 : 0.75); mat.opacity += (target * 0.8 - mat.opacity) * Math.min(1, dt * 6);
+    if (target === 0 && mat.opacity < 0.001) { mat.opacity = 0; return; }
     const dx = speed > 1 ? vx / speed : 1, dz = speed > 1 ? vz / speed : 0, len = Math.min(42, 2 + speed * (bst ? 0.4 : 0.28));
     for (let i = 0; i < n; i++) {
       let x = this.streakSeed[i * 3], y = this.streakSeed[i * 3 + 1], z = this.streakSeed[i * 3 + 2];
       const ahead = (x - cam.x) * dx + (z - cam.z) * dz;
-      if (ahead < -10 || Math.hypot(x - cam.x, z - cam.z) > 70 || (x === 0 && z === 0)) {
+      if (ahead < -10 || (x - cam.x) ** 2 + (z - cam.z) ** 2 > 4900 || (x === 0 && z === 0)) {
         const a = Math.random() * Math.PI * 2, rr = rnd(3.5, 22), fwd = rnd(20, 70);
         x = cam.x + dx * fwd + Math.cos(a) * rr * -dz + Math.sin(a) * rr * 0; z = cam.z + dz * fwd + Math.cos(a) * rr * dx; y = cam.y + Math.sin(a) * rr * 0.55 - 1.2;
         if (y < 0.4) y = 0.4 + Math.random(); this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
       }
-      this.streakPos.set([x, y, z, x + dx * len, y, z + dz * len], i * 6);
+      const o = i * 6;
+      this.streakPos[o] = x; this.streakPos[o + 1] = y; this.streakPos[o + 2] = z;
+      this.streakPos[o + 3] = x + dx * len; this.streakPos[o + 4] = y; this.streakPos[o + 5] = z + dz * len;
     }
     (this.streak.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }

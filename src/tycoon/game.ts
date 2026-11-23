@@ -77,7 +77,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   };
   let renderer: THREE.WebGLRenderer | null = null; const unsub: Array<() => void> = [];
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(66, 1, 0.2, 2400); let colliders!: Colliders;
-  const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
+  const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false, brakeId: -1, brake: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
   let bannerTimer = 0, winTimer = 0, lastCrashAt = -100;
@@ -196,7 +196,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 입력 ----------
-  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; tc.run = false; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
+  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; tc.run = false; tc.brake = false; tc.brakeId = -1; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
   function lock(): void { if (touch || !player?.firstPerson || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
   const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked) resetInput(); };
   document.addEventListener('pointerlockchange', onLock);
@@ -245,14 +245,19 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onUp = (e: PointerEvent): void => {
     if (e.pointerId === tc.moveId) { tc.moveId = -1; tc.mx = tc.my = 0; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
-    if (e.pointerId === tc.lookId) tc.lookId = -1; if (e.pointerId === drag) drag = -1;
+    if (e.pointerId === tc.lookId) tc.lookId = -1;
+    if (e.pointerId === tc.brakeId) { tc.brakeId = -1; tc.brake = false; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); }
+    if (e.pointerId === drag) drag = -1;
   };
   window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp); canvas.addEventListener('lostpointercapture', onUp);
   const onWheel = (e: WheelEvent): void => { if (phase === 'play' && !modal && !player.firstPerson) player.dist = clamp(player.dist + e.deltaY * 0.01, 3.5, 14); };
   window.addEventListener('wheel', onWheel, { passive: true });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
-    const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); } else if (t === 'view') { toggleView(); }
+    const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') interact(); else if (t === 'run') {
+      if (rides?.driving) { tc.brakeId = e.pointerId; tc.brake = true; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
+      else { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); }
+    } else if (t === 'view') { toggleView(); }
   });
   q('#ty-prompt').addEventListener('click', () => { audio.unlock(); if (rides?.driving || rides?.nearby(player.pos.x, player.pos.z)) toggleRide(); else interact(); });
   q('#ty-route-clear').addEventListener('click', () => { waypoint = null; hudDirty = true; toast('목적지를 해제했습니다'); });
@@ -366,7 +371,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (playing) { player.update(dt, mv, colliders, frozen || !!rides?.driving, resolveParked);
       const steer = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0) - tc.mx;
       const throttle = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) - tc.my;
-      const impact = rides?.update(dt, { throttle, steer, brake: keys.has('Space') }, player, frozen);
+      const impact = rides?.update(dt, { throttle, steer, brake: keys.has('Space') || tc.brake }, player, frozen);
       if (impact && !frozen && nowS - lastCrashAt > 0.7) { lastCrashAt = nowS; audio.impact(); }
     }
     // 가까운 장소
@@ -430,6 +435,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
     if (rides?.driving && !modal) { p.hidden = false; html('prompt', '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
+    const runButton = q<HTMLButtonElement>('#ty-t-run');
+    runButton.textContent = rides?.driving ? '브레이크' : '달리기';
+    runButton.setAttribute('aria-label', rides?.driving ? '길게 눌러 차량 브레이크' : '달리기 전환');
+    runButton.classList.toggle('brake', !!rides?.driving);
     const rideButton = q<HTMLButtonElement>('#ty-t-ride');
     const nearbyRide = rides?.nearby(player.pos.x, player.pos.z);
     rideButton.textContent = rides?.driving ? '하차' : '탑승';

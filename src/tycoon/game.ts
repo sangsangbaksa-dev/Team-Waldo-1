@@ -94,6 +94,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const save = (): boolean => !!core && !!player && phase === 'play' && saveTycoon(core, undefined, {
     x: player.pos.x, z: player.pos.z, facing: player.facing, yaw: player.camYaw,
     pitch: player.camPitch, distance: player.dist, firstPerson: player.firstPerson,
+    ride: rides?.snapshot() ?? null,
   });
   const persistOnHide = (): void => { if (document.hidden) { save(); resetInput(); } };
   const persistOnPageHide = (): void => { save(); };
@@ -314,6 +315,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const sp = layout.spawn, s = core.state, restored = resumePosition;
     resumePosition = null;
     const valid = restored && Math.abs(restored.x) <= WORLD_HALF - 2 && Math.abs(restored.z) <= WORLD_HALF - 2;
+    let restoredAtSavedPlace = false;
     if (valid && restored) {
       const safe = { x: restored.x, z: restored.z };
       colliders.resolve(restored.x, restored.z, 0.45, safe);
@@ -321,8 +323,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
         player.teleport(safe.x, safe.z, restored.facing);
         player.setFirstPerson(restored.firstPerson);
         player.camYaw = restored.yaw; player.camPitch = clamp(restored.pitch, restored.firstPerson ? -1.3 : -0.1, restored.firstPerson ? 1.3 : 1.2); player.dist = restored.distance;
+        restoredAtSavedPlace = true;
       } else player.teleport(sp.x, sp.z, sp.yaw);
     } else player.teleport(sp.x, sp.z, sp.yaw);
+    if (restoredAtSavedPlace && restored?.ride) rides?.restore(restored.ride, player);
     if (s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20) { banner('빈털터리', '벤치에서 눈을 떴습니다. 병을 주워 팔고, 일을 찾아 걸어가 보세요.', 5000); toast('E 로 장소와 상호작용 · 지도(M)로 길을 찾으세요', 'info', 6); }
     audio.unlock(); core.tick(0.0001); if (player.firstPerson) lock();
   }

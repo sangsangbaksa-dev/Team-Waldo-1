@@ -76,7 +76,20 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
       const res = await fetch(url, { signal: ctl.signal, headers: loaded && resumable ? { Range: `bytes=${loaded}-` } : undefined });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
       poke();
-      if (loaded && res.status !== 206) { chunks = []; loaded = 0; resumable = false; } // 이어 받기를 안 받아 주면 처음부터
+      if (res.status === 206) {
+        // A proxy/CDN can return HTTP 206 for a different byte interval.
+        // Appending it would produce a full-size but corrupt GLB/media file.
+        // A range is only safe if the server explicitly confirms the exact
+        // offset we requested; otherwise retry the whole file without Range.
+        const range = /^bytes (\\d+)-(\\d+)\/(\\d+|\\*)$/i.exec(res.headers.get('content-range') ?? '');
+        const start = range && Number(range[1]), end = range && Number(range[2]);
+        const size = range && range[3] === '*' ? Infinity : range && Number(range[3]);
+        if (!loaded || !range || start !== loaded || !Number.isSafeInteger(start) ||
+            !Number.isSafeInteger(end) || end < start || (size !== Infinity && (!Number.isSafeInteger(size) || size <= end))) {
+          resumable = false; chunks = []; loaded = 0;
+          throw new TypeError('Invalid resume Content-Range; restarting full download');
+        }
+      } else if (loaded) { chunks = []; loaded = 0; resumable = false; } // Range ignored: use the complete 200 response
       const len = Number(res.headers.get('content-length')) || 0;
       if (res.headers.get('content-encoding')) resumable = false; // 압축 전송은 바이트 위치가 안 맞아 이어 받을 수 없습니다
       total = len ? loaded + len : 0;

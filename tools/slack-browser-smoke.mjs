@@ -138,6 +138,17 @@ try {
       await page.locator('.sc-app-shop [data-add="deal"]').click();
       assert.equal(await total.textContent(), '합계 14,835원', 'Flash deal should be 50% off');
       assert.equal(await page.locator('.sc-app-shop [data-add="1"]').textContent(), '담김 ×2');
+
+      // Simulate a lost touch-pointer capture: the eventual release may be
+      // delivered on window instead of the cover button. The player must not
+      // become permanently stuck in the study-cover overlay.
+      await cover.dispatchEvent('pointerdown', { pointerId: 42, pointerType: 'touch', button: 0, isPrimary: true });
+      assert.equal(await cover.getAttribute('aria-pressed'), 'true', 'Hold-to-study should activate');
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true, pointerId: 42, pointerType: 'touch', button: 0,
+      })));
+      assert.equal(await cover.getAttribute('aria-pressed'), 'false', 'Off-element release should end the cover hold');
+
       if (!size.mobile) {
         const segments = await page.evaluate(() => window.__slackNoiseStarts);
         assert.ok(segments.length >= 1, 'An audible shopping click should use the native cached noise source');

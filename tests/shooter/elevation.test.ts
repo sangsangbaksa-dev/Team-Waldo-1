@@ -83,6 +83,13 @@ describe('ZERO ZONE 올라갈 수 있는 고저차', () => {
     expect(groundHeight(match.map.terrain, p.x, p.z)).toBeGreaterThan(3.5);
   });
 
+  it('높은 차량은 사람 키보다 위에 있는 낮은 차고 천장에 걸린다', () => {
+    const m = slopeMap();
+    addBox(m, { x0: 28, x1: 32, z0: -2, z1: 2, y0: 2.4, y1: 2.65, kind: 'ceiling', tex: 0 });
+    expect(circleHits(m, 30, 0, 0.4)).toBe(false);
+    expect(circleHits(m, 30, 0, 0.4, 3.1)).toBe(true);
+  });
+
   it('높은 능선에 주차된 차량도 발밑 충돌로 처리하고, 머리 위 천장은 통과한다', () => {
     const m = slopeMap();
     addBox(m, { x0: -1, x1: 1, z0: -1, z1: 1, y0: 4, y1: 5.5, kind: 'vehicle', tex: 0 });

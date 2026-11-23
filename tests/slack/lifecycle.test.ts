@@ -76,6 +76,14 @@ it('can exit during a pending stage import without reopening the disposed game',
   expect(document.querySelector('.sl-root')).toBeNull();
 });
 
+it('explains that meeting the fun goal still requires surviving the full round', () => {
+  openSlack(vi.fn());
+  const intro = document.querySelector<HTMLElement>('.sl-root .sl-lead')!;
+  expect(intro.textContent).toContain('2분 30초');
+  expect(intro.textContent).toContain('끝까지 버티세요');
+  expect(intro.textContent).toContain('세 번 들키면');
+});
+
 it('starts once, advances by elapsed play time, and cancels the frame on exit', async () => {
   const exit = vi.fn();
   openSlack(exit);

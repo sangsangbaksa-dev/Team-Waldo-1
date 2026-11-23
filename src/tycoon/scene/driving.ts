@@ -34,6 +34,18 @@ export function stepDrive(
   return false;
 }
 
+/** Fast, allocation-free overlap probe for pedestrians and moving NPC traffic. */
+export function pointWithinCar(
+  x: number, z: number, radius: number,
+  car: { x: number; z: number; heading: number },
+  halfLength = 2.35, halfWidth = 1.05,
+): boolean {
+  const dx = x - car.x, dz = z - car.z;
+  const cs = Math.cos(car.heading), sn = Math.sin(car.heading);
+  return Math.abs(dx * cs - dz * sn) < halfLength + radius &&
+    Math.abs(dx * sn + dz * cs) < halfWidth + radius;
+}
+
 /** Resolve a walking circle against a parked car in the car's local axes. */
 export function pushWalkerFromCar(
   x: number, z: number, r: number, car: { x: number; z: number; heading: number },

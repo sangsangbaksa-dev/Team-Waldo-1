@@ -73,16 +73,17 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => { b.textContent = muted ? '소리 꺼짐' : '소리 켜짐'; b.setAttribute('aria-pressed', String(!muted)); });
   };
   const clearView = (): void => { view?.dispose(); view?.el.remove(); view = null; sim = null; };
-  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); clearView(); audio.dispose(); root.remove(); onExit(); };
+  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('blur', background); clearView(); audio.dispose(); root.remove(); onExit(); };
   const pause = (): void => { if (state === 'play') {
-      state = 'paused'; $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
+      state = 'paused'; view?.releaseInput(); $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
       $('[data-resume]').focus();
       $('.sl-view').inert = true; $('.sl-hud').inert = true; $('[data-tip]').inert = true;
       root.classList.add('sl-paused');
       if (sim) { const s = sim.state; $('[data-pause-stats]').innerHTML = `<li>${stageInfo[stage].name}</li><li>재미 <b>${Math.round(s.fun)}</b> / ${Math.round(s.goal)}</li><li>들킴 <b>${s.strikes}</b> / 3</li>`; }
     } else if (state === 'paused' && !document.hidden) { state = 'play'; $('[data-paused]').hidden = true; enablePlay(); audio.hold(false); audio.resume(); audio.ambience(stage); } };
   const keydown = (e: KeyboardEvent): void => { if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); } } };
-  const visibility = (): void => { if (document.hidden && state === 'play') pause(); };
+  const background = (): void => { if (state === 'play') pause(); };
+  const visibility = (): void => { if (document.hidden) background(); };
   const enablePlay = (): void => {
     $('.sl-view').inert = false; $('.sl-hud').inert = false; $('[data-tip]').inert = false;
     root.classList.remove('sl-paused');
@@ -103,8 +104,9 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
       audio.muffle(false); tally = { act: {}, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] }; beat = 0;
       if (tutorial) { tutStep = 0; showTutorialStep(); } else { $('[data-tip]').hidden = true; root.classList.remove('tipping'); }
       enablePlay();
-      if (document.hidden) pause();
+      if (document.hidden || !document.hasFocus()) pause();
     } catch (err) {
+      if (closed) return;
       console.error(err); clearView(); audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); $('.sl-hud').hidden = true;
       state = 'title'; $('[data-title]').hidden = false; $('[data-start]').focus(); toast('화면을 불러오지 못했어요. 다시 시도해 주세요.');
     }
@@ -155,7 +157,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     const activity = sim.state.cover ? null : sim.state.activity;
     sim.update(dt);
     const elapsed = sim.state.time - before;
-    // 모르는 이벤트(다른 담당이 추가)는 view 에만 넘기고 여기선 무시한다.
+    // Views handle stage-specific events; only run statistics are tracked here.
     for (const ev of sim.drain()) {
       view.onEvent(ev);
       if (ev.t === 'strike') { audio.play('alert'); toast(`들켰어요! ${ev.reason}`); tally.reasons.push(ev.reason); tally.maxSus = 100; }
@@ -185,6 +187,6 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   root.addEventListener('contextmenu', event => {
     if ((event.target as Element).closest('.sl-cover,.sc-cover-button,.gm canvas')) event.preventDefault();
   });
-  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility);
+  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility); window.addEventListener('blur', background);
   refreshTitle(); opts.loading?.close(); $('[data-start]').focus({ preventScroll: true });
 }

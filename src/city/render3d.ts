@@ -408,7 +408,7 @@ export class Renderer3D {
   draw(dt: number, ghost: Ghost | null): void {
     this.adaptResolution(dt);
     const inside = this.world.inside, ib = inside ? this.world.insideBiz() : null;
-    if (inside && ib) { this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
+    if (inside && ib) { this.chaseActive = false; this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
     if (this.ins) { this.ins.dispose(); this.ins = null; this.insKind = ''; this.camera.aspect = this.w / Math.max(1, this.h); this.camera.updateProjectionMatrix(); }
     this.govern(); if (this.renderer.shadowMap.enabled && ++this.shadowTick >= (this.perfLevel === 0 ? (this.quality === 'high' ? 2 : 3) : 6)) { this.shadowTick = 0; this.renderer.shadowMap.needsUpdate = true; }
     const w = this.world, d = this.dummy, col = this.color, pb = w.boss(0), f0 = w.factions[0]; this.t += dt;

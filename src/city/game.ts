@@ -13,6 +13,7 @@ import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
 import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld } from './uiMath';
+import { HeldPointer, primaryReleased } from './input';
 import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { PHASE_LABEL, WEATHER_ICON, WEATHER_LABEL, clockLabel } from './clock';
@@ -62,7 +63,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const audio = new CityAudio(); audio.enabled = prefs.sound;
   type View = 'fp' | 'tp' | 'top';
   let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
-  let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
+  let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0, heartbeatT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
   let demolishArmed: { id: number; at: number } | null = null;
@@ -75,9 +76,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const chatLive = (): boolean => !!((duel && duel.started && !duel.done) || (room && room.started && !room.done));
   const chatNow = (): number => performance.now() / 1000;
   function addChat(name: string, text: string, mine: boolean): void { pushChat(chatLog, { name, text, t: chatNow(), mine }); if (!mine) audio.play('click'); }
+  const firePointer = new HeldPointer();
   function openChat(): void {
     if (!chatLive() || chatOpen || !world || world.over) return;
-    chatOpen = true; keys.clear(); mouse.down = false; touchFire = false; unlock(); chatForm().hidden = false; chatBox().value = ''; chatBox().focus();
+    chatOpen = true; clearInput(); unlock(); chatForm().hidden = false; chatBox().value = ''; chatBox().focus();
   }
   function closeChat(send: boolean): void {
     if (!chatOpen) return; chatOpen = false; const text = cleanChat(chatBox().value); chatBox().value = ''; chatForm().hidden = true; chatBox().blur();
@@ -111,7 +113,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
+    keys.clear(); mouse.down = false; firePointer.clear(); acc = 0; killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
@@ -233,7 +235,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, z = w.insideBiz(); if (!z) return;
     if (!R3) { w.exitBiz(0); toast('3D 시점에서만 안에 들어갈 수 있습니다'); return; }
     preView = view === 'top' ? 'fp' : view; if (view !== 'fp') setView('fp');
-    R3.yaw = w.inside!.ang; R3.pitch = 0; panel.hidden = true; shopOpen = false; touchFire = false; mouse.down = false; audio.play('door'); banner(`${BIZ[z.kind].name} 내부`);
+    R3.yaw = w.inside!.ang; R3.pitch = 0; panel.hidden = true; shopOpen = false; firePointer.clear(); mouse.down = false; audio.play('door'); banner(`${BIZ[z.kind].name} 내부`);
     if (tut) tut.c.entered = true;
   }
   function leaveBuilding(out?: { x: number; y: number }): void {
@@ -511,13 +513,13 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (tut && k === 'Enter' && locked && !STEPS[tut.s.i]?.info && !paused && !e.repeat) { e.preventDefault(); act('tutskip'); return; }
     if (k === 'Enter' && chatLive() && !paused && !w.over && f.pending === 0 && !(e.target instanceof Element && e.target.closest('button,a,select,textarea'))) { e.preventDefault(); openChat(); return; }
     if (f.pending > 0) { if (!e.repeat && k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
-    if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!q('#c-missions').hidden) { q('#c-missions').hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
-    if (tut && k === 'Enter' && STEPS[tut.s.i]?.info && !paused) { act('tutnext'); return; }
+    if (k === 'Escape') { if (e.repeat) return; if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!q('#c-missions').hidden) { q('#c-missions').hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
+    if (tut && k === 'Enter' && STEPS[tut.s.i]?.info && !paused && !e.repeat) { act('tutnext'); return; }
     // Never preserve movement during pause/results; allow native Tab/Space on focused controls.
     if (paused || w.over) return;
     const focusedControl = e.target instanceof Element && !!e.target.closest('button,a,input,select,textarea,[contenteditable="true"]');
     if (k === 'Tab') {
-      if (panel.hidden && bigmap.hidden && q('#c-missions').hidden && !focusedControl) { e.preventDefault(); act('panel'); }
+      if (!e.repeat && panel.hidden && bigmap.hidden && q('#c-missions').hidden && !focusedControl) { e.preventDefault(); act('panel'); }
       return;
     }
     if (e.repeat) return;
@@ -541,7 +543,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const onResize = (): void => { R?.resize(); R3?.resize(); };
   const aimPoint = (): { x: number; y: number } => view === 'top' || !R3 ? R!.toWorld(mouse.x, mouse.y) : R3.groundPoint(900);
   function clearInput(): void {
-    keys.clear(); mouse.down = false; touchFire = false; looks.clear();
+    keys.clear(); mouse.down = false; firePointer.clear(); looks.clear();
     if (world) { world.input.fire = false; world.input.mx = world.input.my = 0; world.input.dash = false; world.input.brake = false; }
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
   }
@@ -590,7 +592,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const looks = new Map<number, { x: number; y: number }>();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
-      audio.unlock(); if (!world || paused || world.over || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
+      audio.unlock(); if (!world || paused || chatOpen || world.over || world.factions[0].pending > 0 || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
         if (ghost && !three) return; // 탑뷰: 누른 곳으로 고스트가 따라옵니다. 설치는 아래 '설치' 버튼
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -611,19 +613,26 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       }
       mouse.x = e.clientX; mouse.y = e.clientY;
     });
-    const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && e.button === 0) mouse.down = false; };
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (primaryReleased(e)) mouse.down = false; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('lostpointercapture', up);
     cv.addEventListener('wheel', e => { e.preventDefault(); if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
   }
   const onWindowPointerEnd = (e: PointerEvent): void => {
     looks.delete(e.pointerId);
     for (const stick of [sticks.move, sticks.aim]) if (stick.id === e.pointerId) { stick.id = -1; stick.x = 0; stick.y = 0; }
-    if (e.pointerType !== 'touch') mouse.down = false;
+    firePointer.release(e.pointerId);
+    if (primaryReleased(e)) mouse.down = false;
   };
   // Mobile pointers may end over the HUD rather than the canvas.
   window.addEventListener('pointerup', onWindowPointerEnd);
   window.addEventListener('pointercancel', onWindowPointerEnd);
-  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { if (!world || paused || world.over || world.factions[0].pending > 0 || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave']) fireBtn.addEventListener(n, () => { touchFire = false; });
+  const fireBtn = q('#c-fire');
+  fireBtn.addEventListener('pointerdown', e => {
+    if (!world || paused || chatOpen || world.over || world.factions[0].pending > 0 || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden || e.button !== 0) return;
+    if (!firePointer.press(e.pointerId)) return;
+    e.preventDefault(); e.stopPropagation(); audio.unlock();
+  });
+  for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'] as const) fireBtn.addEventListener(n, e => firePointer.release(e.pointerId));
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => {
     if (!world || paused || world.over || world.factions[0].pending > 0) return;
     const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height);
@@ -720,11 +729,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       if (three && R3) {
         if (veh && spd > 70 && now - lastLook > 1100) { let d = veh.ang - R3.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; R3.yaw += d * Math.min(1, dt * 2.2); R3.pitch += (-0.12 - R3.pitch) * Math.min(1, dt * 2); }
         const c = Math.cos(R3.yaw), s = Math.sin(R3.yaw), fwd = -my; inp.mx = fwd * c - mx * s; inp.my = fwd * s + mx * c;
-        const ox = b ? b.x : 0, oy = b ? b.y : 0; inp.ax = ox + c * 600; inp.ay = oy + s * 600; inp.fire = ((mouse.down && (locked || lockFail)) || touchFire) && !ghost && !w.inside;
+        const ox = b ? b.x : 0, oy = b ? b.y : 0; inp.ax = ox + c * 600; inp.ay = oy + s * 600; inp.fire = ((mouse.down && (locked || lockFail)) || firePointer.active) && !ghost && !w.inside;
       } else {
         inp.mx = mx; inp.my = my;
         if (sticks.aim.id >= 0 && b) { const m = Math.hypot(sticks.aim.x, sticks.aim.y); if (m > 0.2) { inp.ax = b.x + sticks.aim.x / m * 300; inp.ay = b.y + sticks.aim.y / m * 300; } inp.fire = m > 0.35 && !ghost && !w.inside; }
-        else if (touch && b) { inp.fire = touchFire; if (Math.hypot(mx, my) > 0.2) { inp.ax = b.x + mx * 300; inp.ay = b.y + my * 300; } }
+        else if (touch && b) { inp.fire = firePointer.active && !ghost && !w.inside; if (Math.hypot(mx, my) > 0.2) { inp.ax = b.x + mx * 300; inp.ay = b.y + my * 300; } }
         else { const p = r.toWorld(mouse.x, mouse.y); inp.ax = p.x; inp.ay = p.y; inp.fire = mouse.down && !ghost; }
       }
       acc += dt; let n = 0; while (acc >= 1 / 60 && n < 4) { w.step(1 / 60); acc -= 1 / 60; n++; if (w.enteredByDoor) { w.enteredByDoor = false; enterBuilding(); } } if (n === 4) acc = 0;

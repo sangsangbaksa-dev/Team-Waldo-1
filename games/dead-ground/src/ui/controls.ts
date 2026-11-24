@@ -18,6 +18,7 @@ export class Controls {
   private fire = 0;
   private reload = 0;
   private mouseAiming = false;
+  private lockAttempt = 0;
 
   private get aiming(): boolean {
     return this.mouseAiming || this.keys.has('KeyK');
@@ -33,6 +34,9 @@ export class Controls {
     });
     window.addEventListener('blur', () => {
       if (this.active) this.pause();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.active) this.pause();
     });
     document.addEventListener('mousemove', event => {
       if (!this.active || (document.pointerLockElement !== this.canvas && !(this.fallback && event.target === this.canvas))) return;
@@ -56,10 +60,11 @@ export class Controls {
     }, { passive: false });
     document.addEventListener('keydown', event => {
       if (!this.active) return;
-      if (event.code === 'Escape') { this.pause(); return; }
-      if (GAME_KEYS.has(event.code)) event.preventDefault();
+      if (event.code === 'Escape') { if (!event.repeat) this.pause(); return; }
+      if (!GAME_KEYS.has(event.code) || event.ctrlKey || event.metaKey || event.altKey) return;
+      event.preventDefault();
+      if (event.repeat || this.keys.has(event.code)) return;
       this.keys.add(event.code);
-      if (event.repeat) return;
       if (event.code === 'Tab') this.score = true;
       if (event.code === 'KeyM') this.map = !this.map;
       if (event.code === 'KeyR') this.reload++;
@@ -73,11 +78,13 @@ export class Controls {
   }
 
   enable(): void {
+    if (this.active) return;
     this.active = true;
     this.fallback = false;
+    const attempt = ++this.lockAttempt;
     try {
       const result = this.canvas.requestPointerLock();
-      void result?.catch(() => { if (this.active) this.fallback = true; });
+      void result?.catch(() => { if (this.active && this.lockAttempt === attempt) this.fallback = true; });
     } catch {
       this.fallback = true;
     }
@@ -85,10 +92,16 @@ export class Controls {
 
   disable(): void {
     this.active = false;
+    this.lockAttempt++;
     this.fallback = false;
     this.keys.clear();
     this.mouseAiming = this.score = this.map = false;
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
+  resetSession(): void {
+    this.disable();
+    this.fire = this.reload = 0;
   }
 
   orient(yaw: number, pitch: number): void {

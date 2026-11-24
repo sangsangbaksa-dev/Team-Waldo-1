@@ -19,6 +19,7 @@ import { openGunsmith } from './gunsmith';
 import { ICON_DEFS, gearIcon } from './icons';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
 import { PVP_ENABLED } from '../net/config';
+import { acceptsGameplayInput, TouchButtons } from './input';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -132,7 +133,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {
     endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; shotsFired = shotsHit = 0; newKillRecord = false; zoneWarningPhase = zoneTick = -1; otherSteps.clear(); spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
-    keys.clear(); mouse.fire = mouse.ads = false; tc.fire = tc.ads = tc.crouch = false; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; interactHeld = reloadReq = swapReq = nadeReq = smokeReq = flashReq = jumpQueued = false; healReq = 0; slotReq = -1; hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = 0; rcIdle = 9; hitHead = hitKill = false;
+    resetInput(); hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = 0; rcIdle = 9; hitHead = hitKill = false;
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null; lastMapDraw = 0;
     // 지난 경기의 WebGL 컨텍스트는 dispose 에서 끝났으므로, 같은 캔버스를 다시 쓰면 렌더러가 죽은 컨텍스트를 받습니다(다시 시작이 안 됨). 경기마다 새 캔버스를 씁니다.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; fresh.addEventListener('contextmenu', noMenu); if (document.pointerLockElement === canvas) { swapUnlock = true; locked = false; } canvas.replaceWith(fresh); canvas = fresh;
@@ -359,14 +360,16 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (!locked && swapUnlock) { swapUnlock = false; return; }
     if (locked) { lockFailN = 0; lockFail = lockRejected = false; const b = q('#sz-banner'); if (b.textContent === CLICK_HINT) { b.classList.remove('show'); bannerT = 0; } }
     if (closeSmith) return;
+    if (!locked) resetInput();
     if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed) setPause(true);
     else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
   }
+  const inputAllowed = (): boolean => acceptsGameplayInput({ phase, closed, paused, hasMatch: !!match, overlay: !!closeSmith || !!room?.chat?.typing });
   const pvpRunning = (): boolean => ((!!pvp && !pvp.done) || (!!room && !room.done)) && !!match;
   function look(dx: number, dy: number): void { lastLook = performance.now(); const k = sens(); yaw += dx * k; pitch = clamp(pitch - dy * k, -1.4, 1.4); }
-  const onMove = (e: MouseEvent): void => { if (!match || closed || paused) return; if (locked) look(e.movementX, e.movementY); else if ((lockFail || lockRejected) && (e.buttons & 3)) look(e.movementX, e.movementY); /* 잠금이 거절된 동안은 버튼을 누른 채 끌어서 시점을 돌립니다 */ };
+  const onMove = (e: MouseEvent): void => { if (!inputAllowed()) return; if (locked) look(e.movementX, e.movementY); else if ((lockFail || lockRejected) && (e.buttons & 3)) look(e.movementX, e.movementY); /* 잠금이 거절된 동안은 버튼을 누른 채 끌어서 시점을 돌립니다 */ };
   const onDown = (e: MouseEvent): void => {
-    if (closed || !match || paused || closeSmith || e.target !== canvas || (phase !== 'play' && phase !== 'countdown')) return; audio.unlock();
+    if (!inputAllowed() || e.target !== canvas) return; audio.unlock();
     if (!locked && !touch) { lock(true); if (!lockFail) return; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.ads = true;
   };
@@ -377,7 +380,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.code === 'Escape') { if (!e.repeat) onEsc(); return; }
     if (paused || (e.repeat && ['KeyR', 'KeyE', 'KeyL', 'Tab', 'KeyQ', 'KeyG', 'KeyB', 'KeyV', 'KeyH', 'KeyU', 'Digit1', 'Digit2'].includes(e.code))) return;
     keys.add(e.code);
-    if (e.code === 'Enter' && room?.chat && !room.done && match && !paused && !closeSmith) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
+    if (e.code === 'Enter' && room?.chat && !room.done && match && !paused && !closeSmith) { resetInput(); if (document.pointerLockElement === canvas) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyB') smokeReq = true; else if (e.code === 'KeyV') flashReq = true; else if (e.code === 'KeyL' || e.code === 'Tab') openSmith(); else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyU') healReq = 2;
     else if (e.code === 'Space' && phase === 'countdown' && match && me().air === 1) queueJump();
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
@@ -390,31 +393,46 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   /** 카운트다운 중 Space(또는 줍기 버튼): 출격 신호와 동시에 뛰어내리도록 예약합니다. */
   function queueJump(): void { if (jumpQueued) return; jumpQueued = true; say('출격 신호와 함께 바로 뛰어내립니다', 1.6); }
-  const onWheel = (e: WheelEvent): void => { if (!match || paused || closed || phase !== 'play' || (!locked && e.target !== canvas)) return; if (e.cancelable) e.preventDefault(); if (Math.abs(e.deltaY) > 4) swapReq = true; };
+  const onWheel = (e: WheelEvent): void => { if (!inputAllowed() || phase !== 'play' || (!locked && e.target !== canvas)) return; if (e.cancelable) e.preventDefault(); if (Math.abs(e.deltaY) > 4) swapReq = true; };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: false }); canvas.addEventListener('contextmenu', noMenu);
-  const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; tc.fire = false; if (!pvpRunning() && !paused && !closeSmith) setPause(true); }; window.addEventListener('blur', blur);
+  const blur = (): void => { resetInput(); if (!pvpRunning() && !paused && !closeSmith) setPause(true); }; window.addEventListener('blur', blur);
   const onHidden = (): void => { if (document.hidden) blur(); }; document.addEventListener('visibilitychange', onHidden);
 
   // 터치: 왼쪽 절반은 이동 스틱, 오른쪽 절반 드래그는 시점
   const stickEl = q('#sz-stick');
+  const touchButtons = new TouchButtons();
+  function resetInput(): void {
+    keys.clear(); mouse.fire = mouse.ads = false;
+    reloadReq = swapReq = nadeReq = smokeReq = flashReq = jumpQueued = false;
+    healReq = 0; slotReq = -1;
+    tc.ads = tc.crouch = false;
+    tReset();
+  }
   function stickFrom(x: number, y: number): void { const m = tc.move, dx = x - m.ox, dy = y - m.oy, r = 56, d = Math.hypot(dx, dy), k = d > r ? r / d : 1; m.x = (dx * k) / r; m.y = (dy * k) / r; stickEl.firstElementChild!.setAttribute('style', `transform:translate(${dx * k}px,${dy * k}px)`); }
   const tStart = (e: PointerEvent): void => {
-    if (!touch || e.pointerType !== 'touch' || !match || (e.target as HTMLElement).closest('button')) return; audio.unlock();
+    if (!touch || e.pointerType !== 'touch' || !inputAllowed() || (e.target instanceof Element && e.target.closest('button'))) return; audio.unlock();
     if (e.clientX < innerWidth * 0.45 && tc.move.id < 0) { tc.move.id = e.pointerId; tc.move.ox = e.clientX; tc.move.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; stickFrom(e.clientX, e.clientY); }
     else if (e.clientX >= innerWidth * 0.45 && tc.look.id < 0) { tc.look.id = e.pointerId; tc.look.x = e.clientX; tc.look.y = e.clientY; }
   };
-  const tMove = (e: PointerEvent): void => { if (e.pointerId === tc.move.id) stickFrom(e.clientX, e.clientY); else if (e.pointerId === tc.look.id) { look((e.clientX - tc.look.x) * 1.6, (e.clientY - tc.look.y) * 1.6); tc.look.x = e.clientX; tc.look.y = e.clientY; } };
-  const tEnd = (e: PointerEvent): void => { if (e.pointerId === tc.move.id) { tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; } else if (e.pointerId === tc.look.id) tc.look.id = -1; };
+  const tMove = (e: PointerEvent): void => { if (!inputAllowed()) return; if (e.pointerId === tc.move.id) stickFrom(e.clientX, e.clientY); else if (e.pointerId === tc.look.id) { look((e.clientX - tc.look.x) * 1.6, (e.clientY - tc.look.y) * 1.6); tc.look.x = e.clientX; tc.look.y = e.clientY; } };
+  const tEnd = (e: PointerEvent): void => { if (e.pointerId === tc.move.id) { tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; } else if (e.pointerId === tc.look.id) tc.look.id = -1; releaseTouchButton(e.pointerId); };
   root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd);
   // 손가락을 창 밖·결과 창 위에서 떼도 스틱·시점 손가락이 남아 이후 터치가 먹히지 않는 일이 없게 창 전체에서도 끝을 받습니다.
-  const tReset = (): void => { tc.fire = false; interactHeld = false; root.querySelectorAll('.sz-tbuttons button.down:not([data-act=ads]):not([data-act=crouch])').forEach(b => b.classList.remove('down')); tc.look.id = -1; tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; };
-  window.addEventListener('pointerup', tEnd); window.addEventListener('pointercancel', tEnd); window.addEventListener('blur', tReset); document.addEventListener('visibilitychange', tReset);
+  const tReset = (): void => { touchButtons.clear(); tc.fire = false; interactHeld = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); tc.look.id = -1; tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; };
+  window.addEventListener('pointerup', tEnd); window.addEventListener('pointercancel', tEnd);
+  function releaseTouchButton(id: number): void {
+    const act = touchButtons.release(id);
+    if (!act) return;
+    if (act === 'fire') tc.fire = false;
+    else if (act === 'interact') interactHeld = false;
+    if (act !== 'ads' && act !== 'crouch') root.querySelector<HTMLButtonElement>(`.sz-tbuttons button[data-act="${act}"]`)?.classList.remove('down');
+  }
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') { interactHeld = true; if (phase === 'countdown' && match && me().air === 1) queueJump(); } else if (act === 'swap') swapReq = true; else if (act === 'smith') openSmith(); else if (act === 'nade') nadeReq = true; else if (act === 'smoke') smokeReq = true; else if (act === 'flash') flashReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else b.classList.add('down'); });
-    for (const n of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads' && act !== 'crouch') b.classList.remove('down'); });
+    b.addEventListener('pointerdown', e => { if (!inputAllowed() || e.button !== 0 || !touchButtons.press(act, e.pointerId)) return; e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') { interactHeld = true; if (phase === 'countdown' && match && me().air === 1) queueJump(); } else if (act === 'swap') swapReq = true; else if (act === 'smith') openSmith(); else if (act === 'nade') nadeReq = true; else if (act === 'smoke') smokeReq = true; else if (act === 'flash') flashReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else if (act === 'ads') b.classList.toggle('down', tc.ads); else if (touchButtons.owns(act, e.pointerId)) b.classList.add('down'); });
+    for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'] as const) b.addEventListener(n, e => releaseTouchButton(e.pointerId));
   });
 
   /** L: 가방에 있는 파츠로 들고 있는 총을 조립합니다. 혼자 하는 경기는 그동안 멈추고, 온라인은 시간이 계속 흐릅니다. */
@@ -422,7 +440,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (closeSmith || !match || closed || phase !== 'play' || paused) return; const m = match, p = me();
     if (!p.alive || p.veh >= 0) { say(p.veh >= 0 ? '차에서 내려야 조립할 수 있습니다' : '조립할 수 없습니다', 1.4); return; }
     if (!p.guns.some(g => g)) { say('조립할 총이 없습니다', 1.4); return; }
-    keys.clear(); mouse.fire = mouse.ads = tc.fire = tc.ads = false; interactHeld = false;
+    resetInput();
     const live = pvpRunning(); smithPaused = !live; if (smithPaused) paused = true;
     const done = (): void => { closeSmith = null; if (smithPaused) { smithPaused = false; paused = false; last = performance.now(); } if (!touch) lock(); };
     closeSmith = openGunsmith(root, { assets, touch, live, me, equip: (gi, slot, part) => { const ok = m.equipPart(me(), gi, slot, part); if (ok) audio.play('pickup'); return ok; }, onClose: done });
@@ -433,7 +451,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const p = me(), i = p.input, keyboardAim = keys.has('KeyK');
     const axis = (positive: string, negative: string): number => Number(keys.has(positive)) - Number(keys.has(negative));
     const lookX = axis('ArrowRight', 'ArrowLeft'), lookY = axis('ArrowUp', 'ArrowDown');
-    const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play' && !closeSmith;
+    const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play' && inputAllowed() && p.alive;
     if (active && keyboardAim && (lookX || lookY)) {
       yaw += lookX * dt * 0.8;
       pitch = clamp(pitch + lookY * dt * 0.8, -1.4, 1.4);
@@ -662,7 +680,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on; if (on) pausedAt = performance.now();
-    if (on) { keys.clear(); interactHeld = false; tReset(); reloadReq = swapReq = nadeReq = smokeReq = flashReq = jumpQueued = false; healReq = 0; slotReq = -1; mouse.fire = mouse.ads = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); card('ZERO ZONE', '일시정지', '', `<button class="primary" data-act="resume">이어하기</button><button data-act="again">다시 시작</button><button data-act="sound">소리 ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button>`); }
+    if (on) { resetInput(); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('ZERO ZONE', '일시정지', '', `<button class="primary" data-act="resume">이어하기</button><button data-act="again">다시 시작</button><button data-act="sound">소리 ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button>`); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });
@@ -733,7 +751,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   function exit(): void {
     if (closed) return; closed = true; closeSmith?.(); window.clearInterval(bgTimer); cancelAnimationFrame(raf); leavePvp(); leaveRoom(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
-    for (const [t, f] of [['mousemove', onMove], ['mousedown', onDown], ['mouseup', onUp], ['keydown', onKey], ['keyup', onKey], ['wheel', onWheel], ['resize', resize], ['blur', blur], ['pointerup', tEnd], ['pointercancel', tEnd], ['blur', tReset]] as const) window.removeEventListener(t, f as EventListener); document.removeEventListener('visibilitychange', tReset); document.removeEventListener('visibilitychange', onHidden);
+    for (const [t, f] of [['mousemove', onMove], ['mousedown', onDown], ['mouseup', onUp], ['keydown', onKey], ['keyup', onKey], ['wheel', onWheel], ['resize', resize], ['blur', blur], ['pointerup', tEnd], ['pointercancel', tEnd]] as const) window.removeEventListener(t, f as EventListener); document.removeEventListener('visibilitychange', onHidden);
     document.removeEventListener('pointerlockchange', onLock); endMatch(); audio.dispose(); root.remove(); onExit();
   }
   raf = requestAnimationFrame(frame);

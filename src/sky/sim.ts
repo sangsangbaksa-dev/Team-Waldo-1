@@ -1,7 +1,7 @@
-// SKY WAR — 공중전 시뮬레이션(렌더링과 무관한 순수 로직). 단순화한 비행 모델 + 웨이브 AI.
+// Combat simulation and vector integration. Scalar flight rules live in the domain.
 import * as THREE from 'three';
 
-import { WORLD_R, SEA_Y, MIN_SPEED, MAX_SPEED, CRUISE, GUN_RANGE, GUN_DMG, MISSILE_DMG, LOCK_CONE, LOCK_RANGE, LOCK_TIME, terrainY, advanceFlight, killPoints, type Team, type Kind, type Difficulty, type Input } from './domain/flight-rules';
+import { WORLD_R, SEA_Y, MIN_SPEED, CRUISE, GUN_RANGE, GUN_DMG, MISSILE_DMG, LOCK_CONE, LOCK_RANGE, LOCK_TIME, terrainY, advanceFlight, killPoints, type Team, type Kind, type Difficulty, type Input } from './domain/flight-rules';
 export { WORLD_R, SEA_Y, MIN_SPEED, MAX_SPEED, CRUISE, GUN_RANGE, GUN_DMG, MISSILE_DMG, LOCK_CONE, LOCK_RANGE, LOCK_TIME, terrainY, DIFFS } from './domain/flight-rules';
 export type { Team, Kind, Difficulty, Input } from './domain/flight-rules';
 

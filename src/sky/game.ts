@@ -6,6 +6,8 @@ import { SkySim, DIFFS, forward, GUN_RANGE, LOCK_TIME, MAX_SPEED, MIN_SPEED, ter
 import { SkyView } from './view';
 import { TapBuffer } from './tap-buffer';
 import { SkyAudio } from './audio';
+import { frameDelta } from './clock';
+import { createPauseLatch } from './pause-latch';
 import { readSkyRecords, recordSkyRun } from './records';
 import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
@@ -29,7 +31,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <button class="sk-pause" id="sk-pause" aria-label="일시정지">Ⅱ</button><div class="sk-hint" id="sk-hint"></div>
   </div>
   <div class="sk-modal wd-screen" id="sk-title"><div class="sk-card wd-panel">
-    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">끝없이 이어지는 하늘에서 나만의 기록을 세워보세요.</p>
+    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">군도 상공 · 무한 웨이브</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">속도가 떨어지면 기수가 처집니다. 수평을 유지한 채 웨이브를 넘기세요.</p>
     <div class="wd-field"><div class="sk-section-label wd-label">난이도</div><div class="sk-diff wd-seg" id="sk-diff"></div></div>
     <div class="wd-field"><div class="sk-section-label wd-label">설정</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label></div></div>
     <ul class="sk-how"><li><b>커서/손가락 위치</b>로 조종 — 클릭 없이 움직이면 기체가 따라갑니다 (화면 가운데 = 직진)</li>
@@ -39,8 +41,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <div class="sk-record"><span class="sk-section-label">FLIGHT RECORD</span><div class="sk-rec" id="sk-rec"></div></div>
     <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">게임 목록으로</button></div>
   </div></div>
-  <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">MISSION REPORT</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">게임 목록으로</button></div></div></div>
-  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-snd">소리 켜짐</button><button class="wd-btn" id="sk-restart">다시 시작</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
+  <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">귀환 보고</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">게임 목록으로</button></div></div></div>
+  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">대기</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">기체는 그 자세 그대로 떠 있습니다.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-snd">소리 켜짐</button><button class="wd-btn" id="sk-restart">다시 시작</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
   document.body.appendChild(root);
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
@@ -50,6 +52,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   let diff: Difficulty = DIFFS[1]!; let state: 'title' | 'play' | 'paused' | 'over' = 'title'; let closed = false; let raf = 0; let last = 0; let saved = false;
   let mTap = false, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
   const fireTap = new TapBuffer();
+  const pauseLatch = createPauseLatch();
+  const holds = new AbortController();
   // 조작 설정(저장): assist 0=끔(직접 조준) 1=약 2=강(자동 사격), sens 감도, inv 상하 반전
   const CTL_KEY = 'waldo-sky-ctl'; const ctl = { assist: 2, sens: 1, inv: false };
   try { Object.assign(ctl, JSON.parse(localStorage.getItem(CTL_KEY) || '{}')); } catch { /* 저장값 무시 */ }
@@ -74,10 +78,17 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked && state === 'play') togglePause(); };
   const onDown = (e: PointerEvent): void => {
     if (state !== 'play' || (e.target as HTMLElement).closest('button')) return; audio.unlock(); if (e.pointerType !== 'touch') lock();
-    if (e.pointerType === 'touch') { if (mouse.touchId < 0) { mouse.touchId = e.pointerId; mouse.ox = e.clientX; mouse.oy = e.clientY; mouse.x = mouse.y = 0; } return; }
+    if (e.pointerType === 'touch') {
+      if (mouse.touchId < 0) {
+        mouse.touchId = e.pointerId; mouse.ox = e.clientX; mouse.oy = e.clientY; mouse.x = mouse.y = 0;
+        try { canvas.setPointerCapture(e.pointerId); } catch { /* pointerup on window still releases the stick */ }
+      }
+      return;
+    }
     if (e.button === 2) mMissile = true; else { mFire = true; fireTap.press(); }
   };
-  const onUp = (e: PointerEvent): void => { if (e.pointerType === 'touch') { if (e.pointerId === mouse.touchId) { mouse.touchId = -1; mouse.x = mouse.y = 0; } } else if (e.button === 2) mMissile = false; else mFire = false; };
+  const releaseStick = (id: number): void => { if (id !== mouse.touchId) return; mouse.touchId = -1; mouse.x = mouse.y = 0; mouse.active = false; };
+  const onUp = (e: PointerEvent): void => { if (e.pointerType === 'touch' || e.type === 'lostpointercapture') releaseStick(e.pointerId); else if (e.button === 2) mMissile = false; else mFire = false; };
   const onWheel = (e: WheelEvent): void => { if (state !== 'play') return; e.preventDefault(); throttle = clamp(throttle - e.deltaY * 0.0016, 0, 1); }; // 두 손가락 위로 = 가속
   const onKey = (e: KeyboardEvent, down: boolean): void => {
     const k = e.key.toLowerCase();
@@ -92,7 +103,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const noMenu = (e: Event): void => e.preventDefault();
   const clearInput = (): void => { keys.clear(); mouse.touchId = -1; mouse.x = mouse.y = 0; mouse.active = false; fireTap.reset(); mFire = mMissile = mBoost = mTap = flare = false; };
   addEventListener('blur', clearInput); const onVis = (): void => { if (document.hidden && state === 'play') togglePause(); }; document.addEventListener('visibilitychange', onVis);
-  addEventListener('pointermove', onMove); addEventListener('pointerdown', onDown); addEventListener('pointerup', onUp); addEventListener('pointercancel', onUp); document.addEventListener('pointerlockchange', onLock);
+  addEventListener('pointermove', onMove); addEventListener('pointerdown', onDown); addEventListener('pointerup', onUp); addEventListener('pointercancel', onUp); addEventListener('lostpointercapture', onUp); document.addEventListener('pointerlockchange', onLock);
   root.addEventListener('wheel', onWheel, { passive: false }); addEventListener('keydown', kd); addEventListener('keyup', ku); root.addEventListener('contextmenu', noMenu);
 
   function readInput(p: Jet): Input {
@@ -116,11 +127,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   // ── HUD ──────────────────────────────────────────
   function hint(t: string): void { const el = $('sk-hint'); el.textContent = t; hintT = 3; }
-  let bannerTick = 0;
-  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; bannerTick = performance.now(); }
+  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; }
   function alertMsg(t: string, sec = 1): void { $('sk-alert').textContent = t; alertT = sec; }
   const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
-  function hud(p: Jet): void {
+  function hud(p: Jet, dt: number): void {
     $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
     $('sk-wave').textContent = `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`;
     $('sk-hp').style.width = `${Math.max(0, p.hp / p.maxHp * 100)}%`; $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
@@ -129,9 +139,9 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     setHtml($('sk-status'), [sim!.shield > 0 ? `${svgIcon('shield')}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${svgIcon('bolt')}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
     $('sk-fuel').style.width = `${p.fuel * 100}%`;
     $('sk-thr').style.width = `${throttle * 100}%`;
-    if (alertT > 0) { alertT -= 1 / 60; if (alertT <= 0) $('sk-alert').textContent = ''; }
-    if (bannerT > 0) { bannerT -= (performance.now() - bannerTick) / 1000; bannerTick = performance.now(); if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
-    if (hintT > 0) { hintT -= 1 / 60; if (hintT <= 0) $('sk-hint').textContent = ''; }
+    if (alertT > 0) { alertT -= dt; if (alertT <= 0) $('sk-alert').textContent = ''; }
+    if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
+    if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('sk-hint').textContent = ''; }
   }
   function overlay(p: Jet): void {
     const w = ov.width, h = ov.height, dpr = w / innerWidth; octx.clearRect(0, 0, w, h); octx.save(); octx.scale(dpr, dpr);
@@ -168,7 +178,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     const yaw = p.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw), range = 2400;
     for (const j of sim!.jets) { if (!j.alive || j === p) continue; const dx = j.pos.x - p.pos.x, dz = j.pos.z - p.pos.z; const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs; // 로컬 x(오른쪽), z(뒤쪽)
       const k = R / range; let px = lx * k, py = lz * k; const m = Math.hypot(px, py); if (m > R - 3) { px *= (R - 3) / m; py *= (R - 3) / m; }
-      octx.fillStyle = j.kind === 'ace' ? '#ffd23f' : '#ff5a4a'; octx.shadowColor = octx.fillStyle; octx.shadowBlur = 6; octx.beginPath(); octx.moveTo(rx + px, ry + py - 4); octx.lineTo(rx + px + 3.5, ry + py); octx.lineTo(rx + px, ry + py + 4); octx.lineTo(rx + px - 3.5, ry + py); octx.fill(); octx.shadowBlur = 0; }
+      octx.fillStyle = j.kind === 'ace' ? '#ffd23f' : '#ff5a4a'; octx.beginPath(); octx.moveTo(rx + px, ry + py - 4); octx.lineTo(rx + px + 3.5, ry + py); octx.lineTo(rx + px, ry + py + 4); octx.lineTo(rx + px - 3.5, ry + py); octx.fill(); }
     octx.fillStyle = '#9dffc4'; octx.beginPath(); octx.moveTo(rx, ry - 6); octx.lineTo(rx - 4, ry + 4); octx.lineTo(rx + 4, ry + 4); octx.fill();
     if (hitT > 0) { // 피격 표시: 화면 가장자리 붉은 번쩍임 + 공격자 방향 쐐기
       const a = hitT, g = octx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.7); g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, `rgba(255,40,30,${0.55 * a})`); octx.fillStyle = g; octx.fillRect(0, 0, W, H);
@@ -193,24 +203,28 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : '마우스를 움직여 조종하세요 (Esc: 일시정지)'); banner('출격!', 1.5);
     if (view) { view.camera.position.copy(sim.player.pos).add(new THREE.Vector3(0, 10, 40)); }
   }
-  function togglePause(): void { if (state === 'play') { clearInput(); audio.engine(false, 0); state = 'paused'; $('sk-paused').hidden = false; unlock(); } else if (state === 'paused') { state = 'play'; $('sk-paused').hidden = true; last = performance.now(); lock(); } }
+  function togglePause(resumeNow = false): void {
+    const now = performance.now();
+    if (state === 'play') { pauseLatch.arm(now); clearInput(); audio.engine(false, 0); state = 'paused'; $('sk-paused').hidden = false; unlock(); }
+    else if (state === 'paused' && (resumeNow || !pauseLatch.blocks(now))) { state = 'play'; $('sk-paused').hidden = true; last = now; lock(); }
+  }
   function finish(): void {
     state = 'over'; const prev = readSkyRecords(); if (!saved && sim) { saved = true; recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time); }
     unlock(); audio.engine(false, 0); audio.play('lose'); paintRec(); const s = sim!, acc = s.shots ? Math.round(s.hits / s.shots * 100) : 0, newBest = s.score > prev.bestScore;
     const cell = (v: string | number, l: string, hi = false): string => `<div class="sk-stat${hi ? ' hi' : ''}"><b>${v}</b><span>${l}</span></div>`;
     $('sk-end-t').textContent = '격추당했습니다';
-    $('sk-end-s').innerHTML = (newBest ? '<div class="sk-newrec">NEW RECORD</div>' : '') + `<div class="sk-stats">${cell(s.score, '점수', newBest)}${cell(s.wave, '웨이브')}${cell(s.kills, '격추')}${cell(acc + '%', '명중률')}${cell(Math.floor(s.time) + '초', '생존')}${cell(s.bestCombo > 0 ? '×' + s.bestCombo : '-', '최고 콤보')}</div><div class="sk-best">최고 기록 · 점수 ${Math.max(prev.bestScore, s.score)} · 콤보 ${Math.max(prev.bestCombo, s.bestCombo) > 0 ? '×' + Math.max(prev.bestCombo, s.bestCombo) : '-'} · 생존 ${Math.floor(Math.max(prev.longestTime, s.time))}초</div>`;
+    $('sk-end-s').innerHTML = (newBest ? '<div class="sk-newrec">최고 기록</div>' : '') + `<div class="sk-stats">${cell(s.score, '점수', newBest)}${cell(s.wave, '웨이브')}${cell(s.kills, '격추')}${cell(acc + '%', '명중률')}${cell(Math.floor(s.time) + '초', '생존')}${cell(s.bestCombo > 0 ? '×' + s.bestCombo : '-', '최고 콤보')}</div><div class="sk-best">최고 기록 · 점수 ${Math.max(prev.bestScore, s.score)} · 콤보 ${Math.max(prev.bestCombo, s.bestCombo) > 0 ? '×' + Math.max(prev.bestCombo, s.bestCombo) : '-'} · 생존 ${Math.floor(Math.max(prev.longestTime, s.time))}초</div>`;
     $('sk-end').hidden = false;
   }
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); if (!saved && sim && sim.time > 5) { saved = true; recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time); } delete (window as unknown as { __sky?: unknown }).__sky;
-    document.removeEventListener('pointerlockchange', onLock); unlock(); removeEventListener('blur', clearInput); document.removeEventListener('visibilitychange', onVis); removeEventListener('pointermove', onMove); removeEventListener('pointerdown', onDown); removeEventListener('pointerup', onUp); removeEventListener('pointercancel', onUp); removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('resize', resize);
+    holds.abort(); document.removeEventListener('pointerlockchange', onLock); unlock(); removeEventListener('blur', clearInput); document.removeEventListener('visibilitychange', onVis); removeEventListener('pointermove', onMove); removeEventListener('pointerdown', onDown); removeEventListener('pointerup', onUp); removeEventListener('pointercancel', onUp); removeEventListener('lostpointercapture', onUp); removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('resize', resize);
     audio.dispose(); try { view?.dispose(); } catch { /* 정리 실패 무시 */ } renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }
 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!renderer || !view || !sim) return;
+    const dt = frameDelta(now, last); if (Number.isFinite(now)) last = Math.max(now, last); if (!renderer || !view || !sim) return;
     if (state === 'play') {
       const p = sim.player, shots = sim.shots;
       sim.step(dt, readInput(p));
@@ -226,7 +240,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           case 'hit': { view.spark(ev.pos); if (mine(ev.id)) { audio.play('hurt'); view.kick(0.45); hitT = 1; hitBy = ev.by ?? 0; alertMsg('피격!', 0.7); } else audio.play('hit', dist(ev.pos)); break; }
           case 'kill': if (ev.by === p.id) banner(`격추! +${ev.points ?? 0}점${(ev.combo ?? 0) > 1 ? ` · 콤보 ×${ev.combo}` : ''}${ev.combo === 3 ? ' · 미사일 +1' : ''}`, 1); break;
           case 'nolock': audio.play('lock'); alertMsg('락온 대상 없음 — 적을 조준원에 두세요', 1.2); break; case 'lock': audio.play('lock'); break; case 'lockdone': audio.play('lockdone'); alertMsg('락온 — 미사일 발사!', 1.2); break;
-          case 'warn': audio.play('warn'); alertMsg('⚠ 미사일 접근 — 플레어(F)/기동!', 1); break;
+          case 'warn': audio.play('warn'); alertMsg('미사일 접근. 플레어 또는 급기동.', 1); break;
           case 'wave': audio.play('wave'); banner(`WAVE ${ev.n}${ev.modifier ? ` · ${ev.modifier}` : ''}`, 2.4); break;
           case 'flare': alertMsg('플레어 투하', 0.8); break;
           case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? '수리 +30' : ev.kind === 'shield' ? '방어막 +30' : '미사일 +2', 1); break;
@@ -240,16 +254,14 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       sim.events.length = 0;
       // 경고
       const gy = terrainY(p.pos.x, p.pos.z), agl = p.pos.y - Math.max(0, gy);
-      if (sim.edge(p) > 0.05) alertMsg('작전 구역 이탈 — 선회하세요!', 0.3); else if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('PULL UP!', 0.3);
-      // 구역 밖으로 나가면 서서히 기체를 안쪽으로 끌어줌
-      if (sim.edge(p) > 0.9) { const toC = scratch.set(-p.pos.x, 0, -p.pos.z).normalize(); const wantYaw = Math.atan2(-toC.x, -toC.z); let dy = wantYaw - p.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); p.yaw += clamp(dy, -1, 1) * dt * 0.9; }
+      if (sim.edge(p) > 0.05) alertMsg('작전 구역 이탈. 안쪽으로 선회하세요.', 0.3); else if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('기수를 올리세요', 0.3);
       audio.engine(true, throttle); audio.wind((p.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
       if (!p.alive) finish();
     }
     if (state !== 'paused') view.sync(sim, dt, now / 1000);
     if (state === 'play' || state === 'over') { view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1)); }
     renderer.render(view.scene, view.camera); if (state !== 'paused') adaptive?.tick();
-    if (state === 'play') { hud(sim.player); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
+    if (state === 'play') { hud(sim.player, dt); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
     if (state === 'title') { // 타이틀 배경: 느리게 선회하는 카메라
       const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);
     }
@@ -265,10 +277,21 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const dEl = $('sk-diff'); let sel = 1;
   DIFFS.forEach((d, i) => { const b = document.createElement('button'); b.textContent = ({ easy: '쉬움', normal: '보통', hard: '어려움' })[d.id]; b.className = i === sel ? 'on' : ''; b.setAttribute('aria-pressed', String(i === sel)); b.onclick = () => { sel = i; dEl.querySelectorAll('button').forEach((x, k) => { x.classList.toggle('on', k === i); x.setAttribute('aria-pressed', String(k === i)); }); }; dEl.appendChild(b); });
   function paintRec(): void { const rec = readSkyRecords(); $('sk-rec').textContent = rec.runs ? `최고 점수 ${rec.bestScore} · 최고 웨이브 ${rec.bestWave} · 누적 격추 ${rec.kills}` : '첫 출격을 기다립니다'; } paintRec();
-  $('sk-start').onclick = () => start(DIFFS[sel]!); $('sk-again').onclick = () => start(DIFFS[sel]!); $('sk-resume').onclick = togglePause; $('sk-restart').onclick = () => start(DIFFS[sel]!); const paintSnd = (): void => { $('sk-snd').textContent = `소리 ${audio.enabled ? '켜짐' : '꺼짐'}`; }; $('sk-snd').onclick = () => { audio.setEnabled(!audio.enabled); writeSound(audio.enabled); paintSnd(); }; paintSnd(); $('sk-pause').onclick = togglePause;
+  $('sk-start').onclick = () => start(DIFFS[sel]!); $('sk-again').onclick = () => start(DIFFS[sel]!); $('sk-resume').onclick = () => togglePause(true); $('sk-restart').onclick = () => start(DIFFS[sel]!); const paintSnd = (): void => { $('sk-snd').textContent = `소리 ${audio.enabled ? '켜짐' : '꺼짐'}`; }; $('sk-snd').onclick = () => { audio.setEnabled(!audio.enabled); writeSound(audio.enabled); paintSnd(); }; paintSnd(); $('sk-pause').onclick = () => togglePause(false);
   for (const id of ['sk-quit', 'sk-quit2', 'sk-quit3']) $(id).onclick = exit;
-  const hold = (id: string, set: (v: boolean) => void): void => { const b = $(id); b.addEventListener('pointerdown', e => { e.stopPropagation(); audio.unlock(); set(true); b.setPointerCapture(e.pointerId); }); b.addEventListener('pointerup', () => set(false)); b.addEventListener('pointercancel', () => set(false)); };
-  hold('sk-b-boost', v => { mBoost = v; }); hold('sk-b-fire', v => { mFire = v; if (v) fireTap.press(); }); hold('sk-b-mis', v => { mMissile = v; }); $('sk-b-flare').addEventListener('pointerdown', e => { e.stopPropagation(); flare = true; });
+  const hold = (id: string, set: (v: boolean) => void): void => {
+    const b = $(id); let active = -1; const opt = { signal: holds.signal };
+    const end = (e: PointerEvent): void => { if (active < 0 || e.pointerId !== active) return; active = -1; set(false); };
+    b.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || active >= 0) return;
+      e.stopPropagation(); audio.unlock(); active = e.pointerId; set(true);
+      if (id === 'sk-b-fire') fireTap.press();
+      try { b.setPointerCapture(e.pointerId); } catch { /* window pointerup still releases the button */ }
+    }, opt);
+    b.addEventListener('pointerup', end, opt); b.addEventListener('pointercancel', end, opt); b.addEventListener('lostpointercapture', end, opt);
+    addEventListener('pointerup', end, opt); addEventListener('pointercancel', end, opt);
+  };
+  hold('sk-b-boost', v => { mBoost = v; }); hold('sk-b-fire', v => { mFire = v; }); hold('sk-b-mis', v => { mMissile = v; }); $('sk-b-flare').addEventListener('pointerdown', e => { e.stopPropagation(); flare = true; });
   addEventListener('resize', resize);
 
   try {

@@ -10,6 +10,7 @@ export function createPointerOwner() {
       if(owner===null || owner!==id) return false;
       owner=null;return true;
     },
+    current() { return owner; },
     clear() { owner=null; },
   };
 }

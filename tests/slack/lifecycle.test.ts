@@ -42,6 +42,15 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
 
+it('clamps a stalled frame so a hitch cannot skip the watch window', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  advance(2000);
+  expect(sim.state.time).toBeCloseTo(0.25);
+});
+
 it('starts once, advances by elapsed play time, and cancels the frame on exit', async () => {
   const exit = vi.fn();
   openSlack(exit);
@@ -96,7 +105,7 @@ it('keeps an active dorm game target when switching away and back', async () => 
   openSlack(vi.fn());
   button('[data-stage="dorm"]').click(); button('[data-start]').click();
   await vi.dynamicImportSettled();
-  key('1'); advance(550);
+  key('1'); advance(200); advance(200); advance(200);
   expect(button('.sc-target').classList.contains('on')).toBe(true);
   key('2'); advance(100);
   expect(button('.sc-app-game').inert).toBe(true);

@@ -12,9 +12,10 @@
 .sl-board span{font-size:clamp(13px,2vw,25px);letter-spacing:.14em}
 .sl-clock{position:absolute;left:5%;top:14%;border:4px solid #e1dbc5;border-radius:50%;width:clamp(25px,4vw,45px);aspect-ratio:1;display:grid;place-items:center;background:#eee9d8;color:#45433e;font-size:8px}
 
-/* 문: 유리창 실루엣, 문틈 발 그림자 */
-.sl-door{position:absolute;right:4%;bottom:0;width:15%;height:96%;background:#80735f;border:6px solid #615b4e;transition:filter .4s,box-shadow .4s}
-.is-door .sl-door{filter:brightness(1.5);box-shadow:0 0 30px 12px #fff4b8aa}
+/* 문: 경첩을 축으로 열리고, 복도 빛이 문틀에 남는다 */
+.sl-door{position:absolute;z-index:1;right:4%;bottom:0;width:15%;height:96%;background:#80735f;border:6px solid #615b4e;transform-origin:0% 50%;transition:transform .62s cubic-bezier(.16,.8,.24,1)}
+.is-door .sl-door{transform:perspective(720px) rotateY(-62deg)}
+.is-door .sl-wall{box-shadow:inset -7vw 0 0 #cbb98a66}
 .sl-window{position:absolute;left:14%;right:14%;top:7%;height:38%;background:linear-gradient(120deg,#b0c0b8,#607970);border:4px solid #4e5149;overflow:hidden}
 .sl-shadow{position:absolute;inset:5% 10% -40%;border-radius:50% 50% 0 0;background:#202b29;opacity:0;transform:translateX(-120%)}
 .sl-room[data-hint="1"] .sl-shadow{opacity:.45;animation:sl-shadow 5s infinite}
@@ -44,8 +45,8 @@
 .sl-kid:after{content:'';position:absolute;left:-6%;right:-6%;bottom:-3%;height:9%;background:#8f7455;box-shadow:0 -5px 14px #7fb4ff55}
 
 /* 감독 선생님 */
-.sl-teacher{position:absolute;z-index:4;right:8%;bottom:50%;width:11%;height:30%;opacity:0;transform-origin:bottom;transform:scale(calc(.65 + var(--near) * 1.2));transition:opacity .5s,transform .5s;pointer-events:none}
-.sl-room[data-scan="true"] .sl-teacher{opacity:.95}
+.sl-teacher{position:absolute;z-index:4;right:8%;bottom:50%;width:11%;height:30%;opacity:0;transform-origin:bottom;transform:translateX(55%) scale(calc(.65 + var(--near) * 1.2));transition:opacity .45s,transform .55s cubic-bezier(.16,.8,.24,1);pointer-events:none}
+.sl-room[data-scan="true"] .sl-teacher{opacity:.95;transform:translateX(0) scale(calc(.65 + var(--near) * 1.2))}
 .sl-teacher-head{position:absolute;left:27%;top:0;width:46%;height:24%;background:#292f30;border-radius:50%}
 .sl-room[data-scan="true"] .sl-teacher-head{animation:sl-look 2.4s ease-in-out infinite alternate}
 .sl-teacher-body{position:absolute;inset:20% 0 0;background:#303b3b;border-radius:35% 35% 5% 5%}
@@ -181,7 +182,7 @@
 .sl-room{min-height:270px}
 .sl-rows{top:28%}
 }
-@media(prefers-reduced-motion:reduce){.sl-class *{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+@media(prefers-reduced-motion:reduce){.sl-class *{animation-duration:.01ms!important;animation-iteration-count:1!important}.sl-door,.sl-teacher{transition:none}}
 
 .sl-cover{touch-action:none}
 @media (any-pointer:coarse){

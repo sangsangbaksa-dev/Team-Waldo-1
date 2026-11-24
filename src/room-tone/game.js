@@ -26,6 +26,8 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
+import { frameDelta } from "./clock.mjs";
+import { createPauseLatch } from "./pause.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -93,7 +95,8 @@ let now = 0,
 let wasPointerLocked = false;
 const movePointer = createPointerOwner(),
   lookPointer = createPointerOwner(),
-  runPointer = createPointerOwner();
+  runPointer = createPointerOwner(),
+  pauseLatch = createPauseLatch();
 let lastPointerType = "mouse";
 let noticeUntil = 0,
   saveAt = 0,
@@ -186,7 +189,15 @@ function homepage() {
     ? "최근 탈출 기록  " + clock(completed.elapsed)
     : "";
 }
+function releaseCapture(element, owner) {
+  const id = owner.current();
+  if (id === null) return;
+  try { element.releasePointerCapture(id); } catch { /* Capture may already be gone. */ }
+}
 function clearInputs() {
+  releaseCapture($("stick"), movePointer);
+  releaseCapture($("run"), runPointer);
+  releaseCapture($("viewWrap"), lookPointer);
   keys.clear();
   pointer.x = pointer.y = 0;
   movePointer.clear();
@@ -286,6 +297,7 @@ function showPauseMenu() {
 }
 function pauseGame() {
   if (state !== "play") return;
+  pauseLatch.arm(performance.now());
   save();
   showPauseMenu();
 }
@@ -1421,8 +1433,8 @@ function showSceneOnce() {
 }
 function frame(ts) {
   frameId = null;
-  const dt = Math.min(0.075, Math.max(0, (ts - last) / 1000));
-  last = ts;
+  const dt = frameDelta(ts, last);
+  if (Number.isFinite(ts)) last = Math.max(ts, last);
   now = ts / 1000;
   if (document.hidden || !scene || $("game").hidden) return;
   const wasPlaying = state === "play";
@@ -1495,6 +1507,7 @@ document.addEventListener("keydown", (e) => {
     e.code === "Escape"
   ) {
     e.preventDefault();
+    if (state === "pause" && pauseLatch.blocks(performance.now())) return;
     if (state === "map") returnFromMap();
     else if (state === "help") returnFromHelp();
     else resume();
@@ -1555,6 +1568,7 @@ wrap.addEventListener("pointerdown", (e) => {
   if (state !== "play" || !renderer || e.target !== renderer.domElement ||
       document.pointerLockElement) return;
   lastPointerType = e.pointerType || "mouse";
+  if (lastPointerType === "touch") e.preventDefault();
   if (lastPointerType === "mouse") lockLook();
   if (!lookPointer.claim(e.pointerId)) return;
   lookLast = [e.clientX, e.clientY];
@@ -1581,6 +1595,7 @@ for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
 const stick = $("stick");
 stick.addEventListener("pointerdown", (e) => {
   if (state !== "play" || !movePointer.claim(e.pointerId)) return;
+  e.preventDefault();
   const b = stick.getBoundingClientRect();
   moveStart = [b.left + b.width / 2, b.top + b.height / 2];
   if (!tryCapture(stick, e.pointerId)) {
@@ -1610,6 +1625,7 @@ for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   });
 $("run").addEventListener("pointerdown", (e) => {
   if (state !== "play" || !runPointer.claim(e.pointerId)) return;
+  e.preventDefault();
   if (!tryCapture($("run"), e.pointerId)) {
     runPointer.release(e.pointerId);
     return;

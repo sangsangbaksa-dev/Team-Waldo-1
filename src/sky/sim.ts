@@ -113,6 +113,7 @@ export class SkySim {
   }
 
   step(dt: number, input: Input): void {
+    if (!(dt > 0) || !Number.isFinite(dt)) return;
     if (this.over) { this.events.length = 0; }
     this.time += dt; this.overdrive = Math.max(0, this.overdrive - dt);
     const p = this.player;
@@ -128,7 +129,20 @@ export class SkySim {
     for (const m of this.missiles) if (m.alive && m.target === p.id) warn = true;
     if (warn && this.warnT <= 0 && p.alive) { this.events.push({ t: 'warn' }); this.warnT = 0.7; }
     this.jets = this.jets.filter(j => j.alive || j.id === p.id);
+    if (p.alive) this.recoverEdge(p, dt);
     if (!p.alive && !this.over) this.over = true;
+  }
+
+  /** Keep the nose pointed back into the map and the attitude quaternion in step with yaw. */
+  private recoverEdge(p: Jet, dt: number): void {
+    if (this.edge(p) <= 0.75) return;
+    const inward = tmpV.set(-p.pos.x, 0, -p.pos.z);
+    if (inward.lengthSq() < 1e-6) return;
+    inward.normalize();
+    const wantYaw = Math.atan2(-inward.x, -inward.z);
+    let dy = wantYaw - p.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    p.yaw += THREE.MathUtils.clamp(dy, -1, 1) * dt * 0.9;
+    p.q.setFromEuler(eul.set(p.pitch, p.yaw, -p.roll, 'YXZ'));
   }
 
   private stepPlayer(p: Jet, inp: Input, dt: number): void {
@@ -170,7 +184,8 @@ export class SkySim {
     const player = j.team === 'player';
     const authority = player ? THREE.MathUtils.clamp((j.speed - MIN_SPEED * 0.6) / (MIN_SPEED * 0.3), 0.55, 1) : 1;
     const rudder = player ? THREE.MathUtils.clamp(yawIn, -1, 1) : 0;
-    j.roll += ((rollIn * 1.25 + rudder * 0.12) - j.roll) * Math.min(1, dt * 3.2 * authority);
+    const handsOff = player && Math.abs(rollIn) < 0.04 && Math.abs(pitchIn) < 0.04 && Math.abs(rudder) < 0.04;
+    j.roll += ((rollIn * 1.25 + rudder * 0.12) - j.roll) * Math.min(1, dt * (handsOff ? 5.5 : 3.2) * authority);
     const yawRate = -Math.sin(j.roll) * rate * 1.15 * authority - rudder * 0.5 * authority;
     j.yaw += yawRate * dt;
     let pitchRate = (pitchIn * rate * 0.9 + Math.abs(Math.sin(j.roll)) * 0.18) * authority;

@@ -16,8 +16,8 @@ const btn = (label, command, { glyph, primary = false, meta = '', disabled = fal
 const pip = '<i></i><i></i>';
 const fighter = (side, label, role) => `<section class="fighter ${side}" aria-label="${role}">
   <div class="fighter-id"><span class="fighter-icon">${icon('crest')}</span><div><span class="fighter-role">${role}</span><strong data-name>${label}</strong></div></div>
-  <div class="meter hp" role="meter" aria-label="${role} health" aria-valuemin="0" aria-valuemax="100"><i class="lag"></i><i class="value"></i></div>
-  <div class="fighter-bottom"><div class="meter stamina" role="meter" aria-label="${role} stamina" aria-valuemin="0" aria-valuemax="100"><i class="value"></i></div><div class="pips" aria-label="Round wins">${pip}</div></div>
+  <div class="meter hp" role="progressbar" aria-label="${role} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i class="lag"></i><i class="value"></i></div>
+  <div class="fighter-bottom"><div class="meter stamina" role="progressbar" aria-label="${role} stamina" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i class="value"></i></div><div class="pips" aria-label="Round wins">${pip}</div></div>
 </section>`;
 const keyboard = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
 
@@ -35,10 +35,10 @@ export class View {
           ${fighter('enemy', 'CHALLENGER', 'RIVAL')}
         </header>
         <div id="target" class="target" hidden><span></span></div>
-        <div id="announcer" class="announcer" role="status" hidden><span></span><strong></strong></div>
-        <div id="reaction" class="reaction" hidden><strong></strong><span></span></div>
+        <div id="announcer" class="announcer" role="status" aria-live="polite" aria-atomic="true" hidden><span></span><strong></strong></div>
+        <div id="reaction" class="reaction" role="status" aria-live="polite" aria-atomic="true" hidden><strong></strong><span></span></div>
         <div id="practice-help" class="practice-help" hidden><strong></strong><p></p><div></div></div>
-        <div class="hud-bottom"><div class="hints">${keyboard('W A S D','Move')}${keyboard('J','Light')}${keyboard('K','Heavy')}${keyboard('Q','Guard / Parry')}${keyboard('Space','Dodge')}</div>
+        <div class="hud-bottom"><div class="hints">${keyboard('W A S D','Move')}${keyboard('J','Light')}${keyboard('K','Heavy')}${keyboard('F','Feint')}${keyboard('Q','Guard / Parry')}${keyboard('Space','Dodge')}</div>
           <button type="button" class="icon-button pause-button" data-command="pause" aria-label="Pause or open match menu">${icon('pause')}</button>
         </div>
         <div id="touch-controls">

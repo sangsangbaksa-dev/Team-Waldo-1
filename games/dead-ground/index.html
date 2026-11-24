@@ -48,22 +48,22 @@
           <div class="compass"><div id="bearing-ticks"></div><i></i></div>
           <div id="sector-label" class="sector-label"></div>
         </div>
-        <ol id="killfeed" class="killfeed" aria-label="Kill feed"></ol>
+        <ol id="killfeed" class="killfeed" aria-label="Kill feed" aria-live="polite" aria-relevant="additions"></ol>
       </div>
 
       <div id="reticle" class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div id="hit-marker" class="hit-marker" aria-hidden="true"></div>
-      <div id="hit-note" class="hit-note" hidden></div>
+      <div id="hit-note" class="hit-note" role="status" aria-live="polite" aria-atomic="true" hidden></div>
       <div id="scope-readout" class="scope-readout" hidden><strong id="scope-zoom">16×</strong><span id="scope-range">— M</span></div>
       <div id="combat-status" class="combat-status" role="status" hidden></div>
 
       <div class="bottom-hud">
         <div class="vitals">
           <div class="hud-title"><span>VITALS</span><small id="protection" hidden>SPAWN SHIELD</small></div>
-          <div class="health-line"><strong id="health">100</strong><div class="meter"><i id="health-bar"></i></div></div>
-          <div id="breath-status" class="breath"><span>BREATH</span><div class="meter"><i id="breath-bar"></i></div></div>
+          <div class="health-line"><strong id="health">100</strong><div id="health-meter" class="meter" role="progressbar" aria-label="Health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="health-bar"></i></div></div>
+          <div id="breath-status" class="breath"><span>BREATH</span><div id="breath-meter" class="meter" role="progressbar" aria-label="Steady aim breath" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="breath-bar"></i></div></div>
         </div>
-        <div class="field-keys"><span><kbd>TAB</kbd> Score</span><span><kbd>M</kbd> Map</span><span><kbd>ESC</kbd> Menu</span></div>
+        <div class="field-keys" aria-label="Quick controls"><span><kbd>LMB</kbd> Fire</span><span><kbd>RMB</kbd> Scope</span><span><kbd>R</kbd> Reload</span><span><kbd>Z</kbd> Zoom</span><span><kbd>SPACE</kbd> Steady</span><span><kbd>TAB</kbd> Score</span><span><kbd>M</kbd> Map</span><span><kbd>ESC</kbd> Menu</span></div>
         <div class="weapon">
           <div class="hud-title">DG-16 <span>BOLT ACTION</span></div>
           <div class="ammunition"><strong id="ammo">05</strong><span>/ <b id="reserve">30</b></span></div>

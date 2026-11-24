@@ -1,4 +1,6 @@
 // SLACK OFF(딴짓) 공용 계약. sim/view/audio/game 이 모두 이 파일만 보고 맞춥니다. 수정 금지.
+import type { FocusState } from './domain/focus';
+
 export type StageId = 'class' | 'dorm';
 export type Level = 1 | 2 | 3;
 export type Phase = 'ready' | 'play' | 'caught' | 'done';
@@ -54,6 +56,8 @@ export type SlackEvent =
 
 export interface Sim {
   readonly state: SlackState;
+  readonly focus: FocusState;
+  activateFocus(): boolean;
   start(): void;
   /** dt 초만큼 진행. phase 가 play 가 아니면 아무 일도 안 함. */
   update(dt: number): void;

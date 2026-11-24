@@ -243,5 +243,6 @@
 }
 @media(prefers-reduced-motion:reduce){
   .rc-root .rc-msg,.rc-root .rc-opt,.rc-root .rc-touchpad button{transition:none}
-  .rc-count.show.go{animation:rcgo .7s linear forwards}
+  .rc-count.show.go{animation:rcgo-fade .7s linear forwards}
+  @keyframes rcgo-fade{0%,60%{opacity:1;transform:translate(-50%,-50%)}100%{opacity:0;transform:translate(-50%,-50%)}}
 }

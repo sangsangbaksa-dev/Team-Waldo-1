@@ -492,3 +492,5 @@
   .ty-root.touch .ty-hint{bottom:120px;max-width:48vw}
   .ty-root.touch .ty-drive{bottom:max(6px,env(safe-area-inset-bottom));padding:4px 8px}
 }
+
+.ty-title.wd-screen[hidden],.ty-hud[hidden]{display:none}

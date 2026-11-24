@@ -4,6 +4,7 @@ import '../shared/ui.css';
 import './tycoon.css';
 import './ui/map-directory.css';
 import './ui/teleport.css';
+import './ui/casino.css';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { loadCharacterKit, type CharacterKit } from '../shared/character';
@@ -22,7 +23,7 @@ import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, pointFromMapClick } from './ui/minimap';
 import { streetDistance } from './ui/road-route';
-import { esc, failHtml, ladderHtml, mapDirectoryHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
+import { esc, failHtml, ladderHtml, mapDirectoryHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml, type CasinoOutcome } from './ui/render';
 
 interface OpenOptions { loading?: LoadingScreen }
 type Phase = 'load' | 'title' | 'play';
@@ -55,7 +56,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ty-hint" id="ty-hint" hidden></div>
       <div class="ty-activity" id="ty-activity" hidden><b id="ty-act-label"></b><div class="ty-bar gold"><i id="ty-act-bar"></i></div><small>움직이면 취소됩니다</small></div>
       <button type="button" class="ty-prompt" id="ty-prompt" hidden></button>
-      <ul class="ty-toasts" id="ty-toasts"></ul>
+      <ul class="ty-toasts" id="ty-toasts" aria-live="polite" aria-relevant="additions"></ul>
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
       <div class="ty-route" id="ty-route" hidden><span class="ty-route-mark" id="ty-route-mark">➤</span><div><b>내 목적지</b><span id="ty-route-distance">0m</span></div><button type="button" id="ty-route-clear" aria-label="목적지 제거">✕</button></div>
@@ -87,6 +88,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
   let tutorialTime = -1;
+  let lastBet: CasinoOutcome | null = null;
   const waypointVector = new THREE.Vector3();
   let lastCrashAt = -100, lastHonkAt = -1000;
   let modalTrigger: HTMLElement | null = null;
@@ -111,7 +113,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (!modal) { modalEl.hidden = true; modalEl.innerHTML = ''; modalHtml = ''; return; }
     let h = '';
     switch (modal.kind) {
-      case 'spot': h = spotPanelHtml(core, modal.id, !!city.spotView(modal.id)?.locked); break;
+      case 'spot': h = spotPanelHtml(core, modal.id, !!city.spotView(modal.id)?.locked, lastBet); break;
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson, confirmRestart); break;
       case 'win': h = winHtml(core.state); break;
@@ -127,8 +129,15 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       }
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
-      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0; modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
+      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
+      const active = document.activeElement;
+      const action = active instanceof HTMLButtonElement && modalEl.contains(active) ? active.dataset.act : undefined;
+      modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
       const p = modalEl.querySelector('.ty-panel'); if (p) p.scrollTop = keep;
+      if (action) {
+        const actions = [...modalEl.querySelectorAll<HTMLButtonElement>('[data-act]:not(:disabled)')];
+        (actions.find(button => button.dataset.act === action) ?? actions[0] ?? modalEl.querySelector<HTMLButtonElement>('[data-close]'))?.focus({ preventScroll: true });
+      }
     }
     if (modal.kind === 'map') drawBig();
   }
@@ -239,10 +248,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function doAction(spotId: string, actionId: string): void {
     const before = core.state.cash, r = core.perform(spotId, actionId);
     if (!r.ok) { audio.deny(); toast(r.message, 'bad'); renderModal(); return; }
-    const spent = core.state.cash < before;
+    const delta = core.state.cash - before;
+    const spent = delta < 0;
     const bet = spotId === 'casino' && actionId.startsWith('casino_flip_');
     audio.click(); if (spent) audio.spend();
-    if (bet) save();
+    if (bet) { lastBet = { delta, message: r.message }; save(); }
     if (core.state.activity) { closeModal(); toast(r.message); }
     else { toast(r.message, bet && spent ? 'bad' : 'good'); renderModal(); }
     hudDirty = true;
@@ -251,7 +261,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function restartGame(): void {
     clearTycoon(); bindCore(createCore());
     modal = null; confirmRestart = false; renderModal(); toastList.length = 0; q('#ty-toasts').replaceChildren(); q('#ty-banner').classList.remove('show');
-    waypoint = null; cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true;
+    waypoint = null; lastBet = null; cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true;
     syncCity(false);
     if (rides?.driving) player.dist = 7.5;
     rebuildFleet();

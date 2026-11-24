@@ -27,8 +27,10 @@ function actionHtml(a: ActionDef, idx: number): string {
   return `<li><button type="button" class="ty-act" data-act="${esc(a.id)}" ${a.enabled ? '' : 'disabled'}><span class="no">${idx < 9 ? idx + 1 : ''}</span><span class="body"><b>${esc(a.label)}</b><small>${esc(a.desc)}</small>${!a.enabled && a.disabledReason ? `<em>${esc(a.disabledReason)}</em>` : ''}</span><span class="chips">${chips}</span></button></li>`;
 }
 
+export interface CasinoOutcome { delta: number; message: string }
+
 /** 장소 패널(행동 목록). */
-export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean): string {
+export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean, lastBet?: CasinoOutcome | null): string {
   const spot = core.spot(spotId); if (!spot) return '';
   const lot = spot.kind === 'lot' ? spot as LotView : null, d = DISTRICTS[spot.district];
   const status = lot ? (lot.owner === 'player' ? '내 가게' : lot.owner === 'rival' ? `라이벌 · ${esc(lot.rival?.rivalName ?? '')}` : `분양 중 · ${formatMoney(lot.price)}`) : esc(KIND_LABEL[spot.kind] ?? '');
@@ -36,11 +38,18 @@ export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean)
   const body = lot?.owner === 'player' && lot.shop ? shopHtml(lot.shop)
     : lot?.owner === 'rival' && lot.rival ? `<div class="ty-rivalbox" style="--c:${esc(lot.rival.color)}"><b>${esc(lot.rival.rivalName)}</b><span>${esc(lot.rival.kindName)} Lv${lot.rival.level}</span></div>`
     : lot ? `<div class="ty-chips"><span>부지 ${lot.size}</span><span>부지 가격 ${formatMoney(lot.price)}</span></div>` : '';
+  const casino = spot.id === 'casino' && !locked ? `
+    <section class="ty-casino-table"${lastBet ? ` data-result="${lastBet.delta > 0 ? 'win' : 'loss'}"` : ''}>
+      <span class="ty-casino-coin" aria-hidden="true">${lastBet && lastBet.delta < 0 ? '×' : '$'}</span>
+      <div><b>게임 내 현금 ${formatMoney(core.state.cash)}</b>
+      <p>${lastBet ? esc(lastBet.message) : '금액을 고르면 동전 결과와 손익이 바로 표시됩니다.'}</p></div>
+    </section>` : '';
   const minStage = STAGE_NAMES[spot.minStage];
   return `<div class="ty-panel" role="dialog" aria-label="${esc(spot.name)}">
-    <header><span class="ico">${esc(spot.icon)}</span><div><h2>${esc(spot.name)}</h2><p>${esc(d.name)} · ${status}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
+    <header><span class="ico">${esc(spot.icon)}</span><div><h2>${esc(spot.name)}</h2><p>${esc(d.name)} · ${spot.id === 'casino' ? '가상 카지노' : status}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
     ${locked ? `<p class="ty-locked">🔒 <b>${esc(minStage)}</b> 단계가 되면 열립니다.</p>` : ''}
     ${body}
+    ${casino}
     ${acts.length ? `<ul class="ty-acts">${acts.map(actionHtml).join('')}</ul>` : locked ? '' : '<p class="ty-none">지금 여기서 할 수 있는 일이 없습니다.</p>'}
     <footer><span>숫자 키로 선택 · Esc 닫기</span></footer>
   </div>`;

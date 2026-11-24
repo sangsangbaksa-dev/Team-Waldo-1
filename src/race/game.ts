@@ -61,7 +61,7 @@ function isSoftwareGL(): boolean {
 export function openRace(onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, softwareGL = isSoftwareGL();
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
-  root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
+  root.innerHTML = `<canvas class="rc-canvas"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
   <div class="rc-hud">
     <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">${ICON.flag}<span class="rc-lap-label">랩</span> <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div><div class="rc-ko" id="rc-ko"></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
@@ -74,11 +74,11 @@ export function openRace(onExit: () => void): void {
   <div class="rc-modal" id="rc-modal"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>엔진 예열 중…</h2></div></div>`;
   document.body.append(root);
   const $ = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
-  let canvas = $<HTMLCanvasElement>('.rc-canvas'); const fx = $<HTMLCanvasElement>('.rc-fx'), fg = fx.getContext('2d'), mini = $<HTMLCanvasElement>('#rc-map'), mg = mini.getContext('2d'), modal = $('#rc-modal');
+  let canvas = $<HTMLCanvasElement>('.rc-canvas'); const mini = $<HTMLCanvasElement>('#rc-map'), mg = mini.getContext('2d'), modal = $('#rc-modal');
   const audio = new RaceAudio(); audio.enabled = prefs.sound;
   const garage = { value: readGarage() };
   let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = buildMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
-  let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, fxIntensity = 0, wrongT = 0, raceGen = 0;
+  let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, wrongT = 0, raceGen = 0;
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
@@ -296,16 +296,15 @@ export function openRace(onExit: () => void): void {
     }
   }
   function resize(): void {
-    const w = innerWidth, h = innerHeight; view?.resize(w, h); fx.width = Math.floor(w / 2); fx.height = Math.floor(h / 2);
+    const w = innerWidth, h = innerHeight; view?.resize(w, h);
   }
 
-  /** 화면 전체에 그리던 방사형 속도선은 없앴습니다. 바람 줄기는 3D 장면에서 차 주변에만 그립니다(view.updateStreaks). */
-  function drawFx(_intensity: number): void { if (fg) fg.clearRect(0, 0, fx.width, fx.height); }
 
   // 미니맵(코스마다 한 번 그린 경로를 재사용)
-  let mpath = new Path2D(), mscale = 1, minX = 0, minZ = 0;
+  let mpath = new Path2D(), mscale = 1, minX = 0, minZ = 0, nextMini = 0;
   const mx = (x: number): number => 15 + (x - minX) * mscale, mz = (z: number): number => 15 + (z - minZ) * mscale;
   function prepareMinimap(): void {
+    nextMini = 0;
     minX = Infinity; minZ = Infinity; let maxX = -Infinity, maxZ = -Infinity;
     for (let i = 0; i < track.n; i++) { minX = Math.min(minX, track.x[i]); maxX = Math.max(maxX, track.x[i]); minZ = Math.min(minZ, track.z[i]); maxZ = Math.max(maxZ, track.z[i]); }
     mscale = 190 / Math.max(maxX - minX, maxZ - minZ, 1); mpath = new Path2D();
@@ -315,7 +314,7 @@ export function openRace(onExit: () => void): void {
   function drawMini(): void {
     if (!mg) return; mg.clearRect(0, 0, 220, 220); mg.lineJoin = 'round'; mg.strokeStyle = 'rgba(8,4,24,.8)'; mg.lineWidth = 9; mg.stroke(mpath); mg.strokeStyle = '#8f7dff'; mg.lineWidth = 4; mg.stroke(mpath);
     mg.fillStyle = '#fff'; mg.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
-    for (const r of [...race.racers].reverse()) { if (r.out !== undefined) continue; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) {
+    for (let i = race.racers.length - 1; i >= 0; i--) { const r = race.racers[i]; if (r.out !== undefined) continue; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) {
       // 진행 방향 화살표: 점에서 앞으로 길게 뻗고 끝이 뾰족한 삼각형
       const ax = mx(r.car.x), az = mz(r.car.z), h = r.car.h, tip = 20, wing = 10;
       mg.beginPath(); mg.arc(ax, az, 6, 0, 7); mg.fillStyle = r.color; mg.fill(); mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke();
@@ -350,6 +349,7 @@ export function openRace(onExit: () => void): void {
 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame); audio.setPaused(paused);
+    if (document.hidden) { last = now; return; }
     if (race.player.out !== undefined && finishedShown) return;
     // 시계는 시뮬레이션만 움직입니다. 느린 화면에서도 카운트다운·시계·차가 같은 속도로 가야 하므로, 프레임이 길면 한 프레임에 스텝을 더 돌립니다.
     const elapsed = Math.max(0, (now - last) / 1000 || 0.016), dt = Math.min(MAX_FRAME, elapsed); last = now;
@@ -364,8 +364,8 @@ export function openRace(onExit: () => void): void {
       if (nitroNow && !nitroWas) { audio.sfx('nitro'); view.punchFov(0.9); }
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
-      view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(dt); drawMini();
+      view.update(race, dt, wallHit); wallHit = 0;
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(dt); if (now >= nextMini) { drawMini(); nextMini = now + 50; }
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }
@@ -374,7 +374,7 @@ export function openRace(onExit: () => void): void {
     if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; if (on) clearControls(); modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = `<div class="rc-card wd-panel"><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">일시정지</h2>${reason ? `<p>${reason}</p>` : ''}<div class="rc-actions"><button class="wd-btn primary" data-act="resume">이어하기</button><button class="wd-btn ghost" data-act="mute" data-text>소리 ${audio.enabled ? '켜짐' : '꺼짐'}</button><button class="wd-btn ghost" data-act="restart">다시 시작</button><button class="wd-btn ghost" data-act="setup">설정</button><button class="wd-btn ghost" data-act="exit">게임 목록으로</button></div></div>`; } else modal.innerHTML = '';
   };
   const exit = (): void => {
-    if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);
+    if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
     leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
   };
   let settingsBack = '';
@@ -418,6 +418,8 @@ export function openRace(onExit: () => void): void {
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
   const onBlur = (): void => { clearControls(); if (race.phase === 'racing' && !setupUi) setPaused(true, '창이 비활성화되어 일시정지'); };
+  const onVisibility = (): void => { last = performance.now(); if (document.hidden) onBlur(); };
+  document.addEventListener('visibilitychange', onVisibility);
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });
   root.querySelectorAll<HTMLElement>('[data-hold]').forEach(b => {
@@ -429,15 +431,24 @@ export function openRace(onExit: () => void): void {
       try { b.setPointerCapture(e.pointerId); } catch { /* 캡처를 거절해도 누르고 있는 동안은 조향이 유지됩니다. */ }
       hold[k] = true; b.classList.add('down');
     });
-    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release);
+    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('lostpointercapture', release);
     b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(); });
     b.addEventListener('contextmenu', e => e.preventDefault());
   });
 
   // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
   void (async () => {
-    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
-    try { setDriverKit(await loadCharacterKit(import.meta.env.BASE_URL)); } catch { setDriverKit(null); }
-    if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
+    const [gltf, kit] = await Promise.allSettled([
+      new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`),
+      loadCharacterKit(import.meta.env.BASE_URL),
+    ]);
+    if (closed) return;
+    if (gltf.status === 'fulfilled') {
+      const found: Record<string, THREE.Object3D> = {};
+      gltf.value.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; });
+      carTemplate = found;
+    }
+    setDriverKit(kit.status === 'fulfilled' ? kit.value : null);
+    last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

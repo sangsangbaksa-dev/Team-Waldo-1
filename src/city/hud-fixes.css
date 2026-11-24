@@ -1,11 +1,11 @@
 /* LAST CITY 플레이테스트 수정(2026-11-22): HUD 겹침·가격 표기·좁은 화면 배치. city.css 뒤에 불러옵니다. */
 
 /* 하단 중앙 지휘 줄이 좌하단 보스 패널(최대 342px)을 덮지 않도록 패널 오른쪽에서 시작해 가운데 정렬 */
-.c-bc{left:356px;right:12px;transform:none;justify-content:center;flex-wrap:wrap}
+.c-bc{left:356px;right:12px;transform:none;justify-content:flex-end;flex-wrap:wrap}
 .touch .c-bc{display:none}
 
 /* 크리스탈·현금 가격이 겹치지 않고 나란히 */
-.c-row{grid-template-columns:1fr auto auto}
+.c-row{grid-template-columns:minmax(0,1fr) auto auto}
 .c-row i{grid-column:2;grid-row:1/span 2;white-space:nowrap}
 .c-row i+i{grid-column:3;grid-row:1/span 2}
 .c-row i:only-of-type{grid-column:2/span 2}
@@ -14,8 +14,7 @@
 .city-hud:has(.c-panel:not([hidden])) .c-quest{visibility:hidden}
 
 /* 부활 보호 표시 */
-.c-skills .shield{margin-left:auto;color:#8dffbd;font-weight:800;animation:c-shield 1s ease-in-out infinite}
-@keyframes c-shield{50%{opacity:.55}}
+.c-skills .shield{margin-left:auto;color:#9be2b4;font-weight:700}
 
 /* 지역 이름표는 지휘 줄과 겹치지 않게 오른쪽 위(미니맵 아래)에 */
 .c-area{bottom:auto;top:240px}
@@ -31,8 +30,8 @@
 .c-legend .box{background:#ffe27a;border-radius:50%}
 .c-legend .zone{background:#8040dc88;border:1px solid #c59bff}
 .c-legend .next{background:none;border:1.5px dashed #fff;border-radius:50%}
-.c-bigmap>div{display:flex;flex-direction:column;align-items:center;max-height:100%;padding:8px}
-.c-bigmap canvas{width:min(70vmin,620px);height:min(70vmin,620px)}
+.c-bigmap>div{display:flex;flex-direction:column;align-items:center;max-height:100%;padding:8px;box-sizing:border-box;max-width:100%;overflow:auto;touch-action:pan-y}
+.c-bigmap canvas{width:min(70vmin,620px);height:auto;aspect-ratio:1;flex:none}
 
 /* 좁은 화면: 인구·시계·배너가 겹치지 않게, 터치 버튼이 보스 패널을 덮지 않게 */
 @media (max-width:560px){
@@ -67,4 +66,95 @@
   .c-res span{padding:3px 7px;white-space:nowrap}
   .c-res small{display:none}
   .c-banner{top:46px;font-size:15px;padding:6px 14px}
+}
+
+/* HUD sizing and viewport constraints */
+.city-root { --hud-left: max(12px, env(safe-area-inset-left)); --hud-right: max(12px, env(safe-area-inset-right)); --hud-top: max(12px, env(safe-area-inset-top)); --hud-bottom: max(12px, env(safe-area-inset-bottom)); }
+.c-tl { left:var(--hud-left); top:var(--hud-top); }
+.c-tr { right:var(--hud-right); top:var(--hud-top); }
+.c-bl { left:var(--hud-left); bottom:var(--hud-bottom); box-sizing:border-box; }
+.c-bc { right:var(--hud-right); bottom:var(--hud-bottom); }
+.c-res span,.c-tc,.c-bl,.c-topbtns button,.c-bc button { border-radius:6px; }
+.c-tc { top:var(--hud-top); max-width:calc(100% - 24px); box-sizing:border-box; }
+.c-tc span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.c-tc span:nth-child(2) { color:#d9dfd8; }
+.c-bars>div { background:#0b1111; box-shadow:none; }
+.c-bars .hp { height:19px; }
+.c-bars .hp span { line-height:19px; }
+.c-ammo b { font-size:28px; }
+.c-ammo span { min-width:0; overflow-wrap:anywhere; }
+.c-slots button { min-width:0; text-overflow:ellipsis; }
+.c-topbtns { flex-wrap:wrap; justify-content:flex-end; max-width:280px; }
+.c-topbtns button { min-height:36px; }
+.c-panel,.c-modal section { box-sizing:border-box; }
+.c-body { min-height:0; overscroll-behavior:contain; touch-action:pan-y; }
+.c-panel header button { min-width:0; }
+.c-row b,.c-row span { min-width:0; overflow-wrap:anywhere; }
+.c-row:disabled { opacity:.65; }
+.c-modal { align-items:safe center; touch-action:pan-y; }
+.c-modal section { max-height:calc(100dvh - 32px); overflow:auto; overscroll-behavior:contain; touch-action:pan-y; }
+.c-modal .c-setup .c-class { border-radius:6px; box-shadow:none; }
+.c-modal .c-setup .c-class p,.c-modal .c-setup .c-class small { font-size:12px; line-height:1.5; }
+.c-modal .wd-panel .c-actions button { min-height:44px; }
+.c-prompt,.c-toast,.c-banner { box-sizing:border-box; white-space:normal; overflow-wrap:anywhere; text-align:center; border-radius:6px; }
+.c-feed { overflow-wrap:anywhere; }
+.c-bigmap p { line-height:1.4; }
+.touch .c-touch { right:var(--hud-right); bottom:var(--hud-bottom); }
+.touch .c-touch button { min-height:44px; border-radius:6px; background:#17221fee; }
+.touch .c-fire { background:#963c34ed; border-color:#e8c8b7; font-weight:700; }
+@media (max-width:1000px) {
+  .c-tl { max-width:calc(100vw - 220px); }
+  .c-tc { left:var(--hud-left); top:calc(var(--hud-top) + 44px); transform:none; max-width:calc(100vw - 220px); }
+  .c-quest { margin-top:36px; }
+  .c-topbtns { max-width:200px; }
+  .c-banner { top:calc(var(--hud-top) + 88px); }
+}
+@media (max-width:760px) {
+  .c-tl { max-width:calc(100vw - 148px); }
+  .c-tc { max-width:calc(100vw - 148px); }
+  .c-res { flex-wrap:wrap; gap:4px; }
+  .c-res span { padding:4px 6px; white-space:nowrap; }
+  .c-res b { font-size:13px; }
+  .c-topbtns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:126px; gap:4px; }
+  .c-topbtns button { padding:4px; font-size:11px; min-height:36px; }
+  .c-topbtns .wd-ico { margin-right:2px; }
+  .c-feed { top:calc(var(--hud-top) + 252px); max-width:40vw; }
+  .c-area { top:calc(var(--hud-top) + 252px); }
+  .c-panel { top:var(--hud-top); bottom:var(--hud-bottom); max-width:calc(100vw - 24px); }
+  .city-root:not(.touch) .c-bc { left:var(--hud-left); bottom:calc(var(--hud-bottom) + 180px); justify-content:flex-start; }
+  .c-bc button { padding:6px; }
+}
+@media (max-width:560px) and (orientation:portrait) {
+  .c-tc { top:calc(var(--hud-top) + 66px); gap:5px; flex-wrap:wrap; white-space:normal; padding:4px 6px; }
+  .c-res span { font-size:11px; }
+  .c-tl { max-width:calc(100vw - 150px); }
+  .touch .c-bl { width:calc(100vw - 198px - env(safe-area-inset-left)); min-width:0; }
+  .touch .c-touch { grid-template-columns:repeat(3,52px); gap:5px; }
+  .touch .c-fire { bottom:calc(var(--hud-bottom) + 164px); right:calc(var(--hud-right) + 4px); width:72px; height:72px; }
+  .touch .c-prompt { bottom:calc(var(--hud-bottom) + 245px); max-width:calc(100vw - 32px); }
+  .touch .c-toast { bottom:calc(var(--hud-bottom) + 294px); }
+  .touch .c-banner { top:calc(var(--hud-top) + 150px); max-width:calc(100vw - 32px); }
+  .c-modal .wd-panel .c-actions { grid-template-columns:1fr; }
+  .c-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-height:520px) and (orientation:landscape) {
+  .c-res { max-width:100%; flex-wrap:wrap; }
+  .c-tl { max-width:calc(100vw - 170px); }
+  .c-tc { left:var(--hud-left); transform:none; top:calc(var(--hud-top) + 32px); max-width:calc(100vw - 170px); }
+  .c-quest { display:none; }
+  .touch .c-tr { gap:3px; }
+  .touch #c-mini { width:76px; height:76px; }
+  .touch .c-topbtns { width:138px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3px; }
+  .touch .c-topbtns button { min-height:32px; padding:4px; font-size:11px; }
+  .touch .c-topbtns .wd-ico { display:none; }
+  .touch .c-topbtns [data-act="pause"] .wd-ico { display:inline-block; }
+  .touch .c-touch { grid-template-columns:repeat(3,48px); gap:4px; }
+  .touch .c-fire { right:calc(var(--hud-right) + 156px); bottom:var(--hud-bottom); width:64px; height:64px; }
+  .touch .c-bl { width:min(230px,34vw); transform:none; }
+  .touch .c-prompt { top:calc(var(--hud-top) + 88px); max-width:45vw; }
+  .touch .c-toast { top:calc(var(--hud-top) + 126px); max-width:45vw; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .c-tc .warn { animation:none; }
+  .c-banner,.c-toast,.c-prompt,.c-bars i { transition:none; }
 }

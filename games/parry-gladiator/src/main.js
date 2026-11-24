@@ -7,7 +7,9 @@ import { ArenaAudio } from './infrastructure/audio.js';
 import { Network, parseServerUrl } from './infrastructure/network.js';
 import { RelayNetwork } from './infrastructure/relay-network.js';
 import { Controls } from './ui/input.js';
-import { readSettings, saveSettings } from './ui/settings.js';
+import { readSettings, saveSettings } from './infrastructure/local-settings.js';
+import { relativeDirection as toArenaDirection } from './application/direction.js';
+import { actionStaminaCost } from './domain/combat.js';
 import { View, showGraphicsError } from './ui/view.js';
 
 const settings = readSettings();
@@ -284,11 +286,7 @@ async function copyCode() {
 }
 
 function relativeDirection() {
-  const input = controls.direction;
-  const me = state.players[local], rival = state.players[1 - local];
-  const dx = rival.x - me.x, dz = rival.z - me.z;
-  const distance = Math.hypot(dx, dz) || 1;
-  return { x: (dx * input.z - dz * input.x) / distance, z: (dz * input.z + dx * input.x) / distance };
+  return toArenaDirection(controls.direction, state.players[local], state.players[1 - local]);
 }
 
 function action(command) {
@@ -296,7 +294,7 @@ function action(command) {
   audio.unlock();
   const direction = command === 'dodge' ? relativeDirection() : undefined;
   const p = state.players[local];
-  const minimum = command === 'dodge' ? 23 : command === 'heavy' ? 30 : command === 'light' ? (p.riposte > 0 ? 12 : 17) : 0;
+  const minimum = actionStaminaCost(p, command);
   const available = p.stamina;
   if (mode === 'online') network?.send({ type: 'action', action: command, direction });
   else game.input(local, command, direction);

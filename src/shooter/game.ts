@@ -114,10 +114,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const row = (k: string, v: string): string => `<li><b>${k}</b><span>${v}</span></li>`;
     const main = touch
       ? [row('왼쪽 스틱', '이동'), row('오른쪽 화면', '시점'), row('사격 · 조준', '버튼'), row('줍기', '무기 줍기 · 차 타기 · 뛰어내리기'), row('장전', '버튼'), row('Ⅱ', '일시정지')]
-      : [row('WASD', '이동'), row('마우스', '시점 · 좌클릭 사격 · 우클릭 조준'), row('Shift', '달리기'), row('E', '줍기 · 차 타고 내리기'), row('R', '장전'), row('Esc', '일시정지')];
+      : [row('WASD', '이동'), row('마우스', '시점 · 좌클릭 사격 · 우클릭 조준'), row('J · K', '사격 · 누르는 동안 조준'), row('K + 방향키', '조준 방향 이동'), row('Shift', '달리기'), row('E', '줍기 · 차 타고 내리기'), row('R', '장전'), row('Esc', '일시정지')];
     const more = touch
       ? [row('웅크림', '웅크리기 · 차 핸드브레이크'), row('교체', '무기 바꾸기'), row('수류탄 · 연막 · 섬광', '투척'), row('붕대 · 구급', '회복'), row('조립', '총기 파츠 조립')]
-      : [row('Space', '비행기에서 뛰어내리기 · 낙하산 펴기'), row('C', '웅크리기'), row('1 / 2 · 휠', '무기 바꾸기'), row('G · B · V', '수류탄 · 연막 · 섬광'), row('H · J', '붕대 · 구급상자'), row('Tab', '총기 조립 · 배낭')];
+      : [row('Space', '비행기에서 뛰어내리기 · 낙하산 펴기'), row('C', '웅크리기'), row('1 / 2 · 휠', '무기 바꾸기'), row('G · B · V', '수류탄 · 연막 · 섬광'), row('H · U', '붕대 · 구급상자'), row('Tab', '총기 조립 · 배낭')];
     return `<ul class="sz-help sz-help-main">${main.join('')}</ul><details class="sz-more"><summary>전체 조작 · 낙하 요령</summary><ul class="sz-help">${more.join('')}</ul>
       <p class="sz-help-note">낙하 중 W 로 앞으로 활강하고 Shift 로 급강하합니다. 낙하산은 ${AIR.open}m 에서 자동으로 펴집니다. 탄약·회복·방탄복은 닿으면 자동으로 줍고, 총기 파츠는 가방에 담겨 ${touch ? '<b>조립</b> 버튼' : '<b>Tab</b>'}으로 끼웁니다. 붉은 원은 폭격 구역입니다. 한 판 약 12분.</p></details>`;
   }
@@ -375,10 +375,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
     if (closed || room?.chat?.typing || !match || (phase !== 'play' && phase !== 'countdown') || closeSmith || (e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     if (e.code === 'Escape') { if (!e.repeat) onEsc(); return; }
-    if (paused || (e.repeat && ['KeyR', 'KeyE', 'KeyL', 'Tab', 'KeyQ', 'KeyG', 'KeyB', 'KeyV', 'KeyH', 'KeyJ', 'Digit1', 'Digit2'].includes(e.code))) return;
+    if (paused || (e.repeat && ['KeyR', 'KeyE', 'KeyL', 'Tab', 'KeyQ', 'KeyG', 'KeyB', 'KeyV', 'KeyH', 'KeyU', 'Digit1', 'Digit2'].includes(e.code))) return;
     keys.add(e.code);
     if (e.code === 'Enter' && room?.chat && !room.done && match && !paused && !closeSmith) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
-    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyB') smokeReq = true; else if (e.code === 'KeyV') flashReq = true; else if (e.code === 'KeyL' || e.code === 'Tab') openSmith(); else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
+    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyB') smokeReq = true; else if (e.code === 'KeyV') flashReq = true; else if (e.code === 'KeyL' || e.code === 'Tab') openSmith(); else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyU') healReq = 2;
     else if (e.code === 'Space' && phase === 'countdown' && match && me().air === 1) queueJump();
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
@@ -429,11 +429,20 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
-  function applyInput(): void {
-    const p = me(), i = p.input, kx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), kz = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+  function applyInput(dt: number): void {
+    const p = me(), i = p.input, keyboardAim = keys.has('KeyK');
+    const axis = (positive: string, negative: string): number => Number(keys.has(positive)) - Number(keys.has(negative));
+    const lookX = axis('ArrowRight', 'ArrowLeft'), lookY = axis('ArrowUp', 'ArrowDown');
     const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play' && !closeSmith;
+    if (active && keyboardAim && (lookX || lookY)) {
+      yaw += lookX * dt * 0.8;
+      pitch = clamp(pitch + lookY * dt * 0.8, -1.4, 1.4);
+      lastLook = performance.now();
+    }
+    const kx = Number(keys.has('KeyD') || (!keyboardAim && keys.has('ArrowRight'))) - Number(keys.has('KeyA') || (!keyboardAim && keys.has('ArrowLeft')));
+    const kz = Number(keys.has('KeyW') || (!keyboardAim && keys.has('ArrowUp'))) - Number(keys.has('KeyS') || (!keyboardAim && keys.has('ArrowDown')));
     i.yaw = yaw; i.pitch = pitch; i.mx = active ? clamp(kx + sx, -1, 1) : 0; i.mz = active ? clamp(kz + sy, -1, 1) : 0;
-    i.fire = active && (mouse.fire || tc.fire); i.ads = active && (mouse.ads || tc.ads); i.sprint = active && (keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(sx, sy) > 0.92);
+    i.fire = active && (mouse.fire || tc.fire || keys.has('KeyJ')); i.ads = active && (mouse.ads || tc.ads || keys.has('KeyK')); i.sprint = active && (keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(sx, sy) > 0.92);
     i.crouch = active && (keys.has('KeyC') || tc.crouch); i.nade = active && nadeReq; nadeReq = false; i.smoke = active && smokeReq; smokeReq = false; i.flash = active && flashReq; flashReq = false; i.heal = active ? healReq : 0; healReq = 0; i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || jumpQueued || (p.air > 0 && interactHeld) || (p.veh >= 0 && tc.crouch)); if (active) jumpQueued = false; reloadReq = false;
     if (swapReq) { slotReq = p.guns[1 - p.cur] ? 1 - p.cur : -1; swapReq = false; } i.slot = active ? slotReq : -1; slotReq = -1;
   }
@@ -514,7 +523,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     { const H = p.healKind === 'kit' ? HEAL.kit : HEAL.bandage, on = p.healT > 0; q('#sz-cast').classList.toggle('show', on); if (on) { set(q('#sz-castl'), 'castl', `${H.name} 사용 중`); q('#sz-castb').style.width = `${clamp((1 - p.healT / H.time) * 100, 0, 100)}%`; } }
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : ''); q('#sz-mag').classList.toggle('low', !!g && g.mag <= Math.max(2, Math.ceil(WEAPONS[g.id].mag * 0.2))); q('#sz-mag').classList.toggle('reloading', p.reload > 0);
     const ic = (svg: string): string => `<i class="gi">${svg}</i>`;
-    const gear = [p.bandages > 0 ? `<span class="gear heal">${ic(gearIcon.bandage())}붕대 ${p.bandages} <small>H</small></span>` : '', p.kits > 0 ? `<span class="gear heal">${ic(gearIcon.medkit())}구급상자 ${p.kits} <small>J</small></span>` : '', p.armorLv > 0 ? `<span class="gear">${ic(gearIcon.vest(p.armorLv))}${ARMOR_NAMES[p.armorLv]}</span>` : '', p.nades > 0 ? `<span class="gear">${ic(gearIcon.nade())}수류탄 ${p.nades} <small>G</small></span>` : '', p.smokes > 0 ? `<span class="gear">${ic(gearIcon.smoke())}연막탄 ${p.smokes} <small>B</small></span>` : '', p.flashes > 0 ? `<span class="gear">${ic(gearIcon.flash())}섬광탄 ${p.flashes} <small>V</small></span>` : '', p.helmet > 0 ? `<span class="gear">${ic(gearIcon.helmet(p.helmet))}${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">${ic(gearIcon.boost())}부스트 ${Math.ceil(p.boost)}초</span>` : '', p.parts.length > 0 ? `<span class="gear heal">${ic(gearIcon.parts())}파츠 ${p.parts.length} <small>${touch ? '조립' : 'L'}</small></span>` : ''].join('');
+    const gear = [p.bandages > 0 ? `<span class="gear heal">${ic(gearIcon.bandage())}붕대 ${p.bandages} <small>H</small></span>` : '', p.kits > 0 ? `<span class="gear heal">${ic(gearIcon.medkit())}구급상자 ${p.kits} <small>U</small></span>` : '', p.armorLv > 0 ? `<span class="gear">${ic(gearIcon.vest(p.armorLv))}${ARMOR_NAMES[p.armorLv]}</span>` : '', p.nades > 0 ? `<span class="gear">${ic(gearIcon.nade())}수류탄 ${p.nades} <small>G</small></span>` : '', p.smokes > 0 ? `<span class="gear">${ic(gearIcon.smoke())}연막탄 ${p.smokes} <small>B</small></span>` : '', p.flashes > 0 ? `<span class="gear">${ic(gearIcon.flash())}섬광탄 ${p.flashes} <small>V</small></span>` : '', p.helmet > 0 ? `<span class="gear">${ic(gearIcon.helmet(p.helmet))}${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">${ic(gearIcon.boost())}부스트 ${Math.ceil(p.boost)}초</span>` : '', p.parts.length > 0 ? `<span class="gear heal">${ic(gearIcon.parts())}파츠 ${p.parts.length} <small>${touch ? '조립' : 'L'}</small></span>` : ''].join('');
     html(q('#sz-slots'), 'slots', gear + p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}${x && Object.keys(x.att).length ? `<small>${Object.values(x.att).map(a => PARTS[a].name.replace(' 조준경', '').replace(' 사이트', '')).join(' · ')}</small>` : ''}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
     if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? adsSpread(g!.att) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
@@ -556,7 +565,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     while (feed.length && now - feed[0].at > 6000) feed.shift();
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}"><span>${esc(f.text)}</span><b>⌖ ${esc(f.weapon)}</b></li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
-    html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
+    html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>J / 좌클릭</b> 사격</span><span><b>K / 우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
     if (now - lastMapDraw >= 150) { drawMap(m, p); lastMapDraw = now; } drawCompass(m, p);
   }
 
@@ -690,7 +699,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         comboT -= dt; if (comboT <= 0) combo = 0;
         if (p.alive && !p.air && p.speed > 2.2 && p.crouch < 0.4) { stepAcc += p.speed * dt; const stride = p.speed > 6 ? 2.3 : 1.85; if (stepAcc >= stride) { stepAcc -= stride; audio.play(waterDepth(m.map.terrain, p.x, p.z) ? 'splash' : p.speed > 6 ? 'stepRun' : 'step'); } } else stepAcc = Math.min(stepAcc, 1);
         for (const other of m.players) { if (other.id === p.id || !other.alive || other.air || other.veh >= 0 || other.speed <= 2.2 || other.crouch >= 0.4) { otherSteps.delete(other.id); continue; } const dist = Math.hypot(other.x - p.x, other.z - p.z); if (dist > 35) { otherSteps.delete(other.id); continue; } const acc = (otherSteps.get(other.id) ?? 0) + other.speed * dt, stride = other.speed > 6 ? 2.3 : 1.85; if (acc >= stride) audio.play(other.speed > 6 ? 'stepRun' : 'step', dist * 4); otherSteps.set(other.id, acc % stride); }
-        applyInput();
+        applyInput(dt);
         // 운전 중에는 마우스를 놓고 달리면 시점이 차의 정면으로 천천히 돌아옵니다
         if (p.veh >= 0) { const v = m.vehicles[p.veh]; if (v && Math.abs(v.speed) > 4 && performance.now() - lastLook > 900) { const d = Math.atan2(Math.sin(v.yaw - yaw), Math.cos(v.yaw - yaw)); yaw += d * Math.min(1, dt * 1.6); pitch += (0 - pitch) * Math.min(1, dt * 1.2); } }
       }

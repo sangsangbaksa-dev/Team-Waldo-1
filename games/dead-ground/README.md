@@ -28,8 +28,8 @@ Open [http://localhost:8080](http://localhost:8080). The Node server serves the 
 | --- | --- |
 | W A S D / mouse | Move / look |
 | Shift / C | Sprint forward / crouch |
-| Left click | Fire one round |
-| Hold right click | Scope in |
+| J / Left click | Fire one round |
+| Hold K / right click | Scope in |
 | Scroll while scoped / Z | Select 4×, 8×, or 16× zoom |
 | Hold Space while scoped | Steady aim while the breath meter lasts |
 | R | Reload |

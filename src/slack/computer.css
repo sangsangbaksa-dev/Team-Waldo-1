@@ -4,7 +4,7 @@
 .sc-room{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;background:radial-gradient(ellipse at 55% 80%,#283849 0,#151d2d 40%,#0b101c 100%);isolation:isolate}
 .sc-room:before{content:"";position:absolute;inset:0;background:linear-gradient(transparent 73%,#090d15 73%);opacity:.6}
 .sc-wall-light{position:absolute;inset:0;background:radial-gradient(ellipse at 48% 70%,#698bc126,transparent 50%);transition:background .4s}
-.sc-slacking .sc-wall-light{background:radial-gradient(ellipse at 48% 60%,color-mix(in srgb,var(--sc-glow) 28%,transparent),transparent 58%)}
+.sc-slacking .sc-wall-light{background:radial-gradient(ellipse at 48% 60%,color-mix(in srgb,var(--sc-glow) 14%,transparent),transparent 62%)}
 /* 문 / 손전등 / 발소리 */
 .sc-door{position:absolute;z-index:5;right:4%;top:8%;width:15%;height:69%;background:linear-gradient(100deg,#222936,#131b28);border:5px solid #0b1019;box-shadow:0 0 0 2px #394052;transform-origin:left center;transition:transform .62s cubic-bezier(.16,.8,.24,1)}
 .slack-computer[data-mode=scan] .sc-door{transform:perspective(820px) rotateY(-70deg)}
@@ -45,7 +45,7 @@
 .slack-computer[data-mode=scan] .sc-friend-monitor,.slack-computer[data-mode=peek] .sc-friend-monitor{background:#2c4a42;box-shadow:0 0 18px #7dcab055}
 /* 모니터/책상 */
 .sc-monitor{position:absolute;z-index:2;left:20%;top:7%;width:60%;height:73%;padding:9px 9px 20px;background:#0b0e14;border:2px solid #303c49;border-radius:10px;box-shadow:0 0 70px #749cc456,0 18px 35px #0008;transition:box-shadow .4s}
-.sc-slacking .sc-monitor{box-shadow:0 0 90px color-mix(in srgb,var(--sc-glow) 45%,transparent),0 18px 35px #0008}
+.sc-slacking .sc-monitor{box-shadow:0 14px 28px #000a,0 0 16px color-mix(in srgb,var(--sc-glow) 18%,transparent)}
 .sc-screen{width:100%;height:100%;overflow:hidden;background:#537c99}
 .sc-desktop{position:relative;height:100%;overflow:hidden;background:linear-gradient(145deg,#2b576b,#7496a6 58%,#b9a7a2)}
 .sc-wallpaper{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;color:#ffffff9c;letter-spacing:.12em;font-size:clamp(14px,2vw,25px)}
@@ -54,7 +54,7 @@
 .sc-monitor-stand{position:absolute;top:100%;left:42%;width:16%;height:16%;background:linear-gradient(90deg,#151b24,#333e4b,#151b24);clip-path:polygon(28% 0,72% 0,80% 75%,100% 90%,100% 100%,0 100%,0 90%,20% 75%)}
 .sc-keyboard{position:absolute;bottom:10%;left:35%;width:30%;height:4%;background:repeating-linear-gradient(90deg,#26313e 0 6px,#121922 7px 9px);transform:perspective(60px) rotateX(25deg);border:4px solid #111722}
 .sc-face-glow{position:absolute;z-index:3;bottom:-9%;left:36%;width:28%;height:18%;border-radius:50% 50% 0 0;background:linear-gradient(#1d2a37,#0c1018);box-shadow:0 -8px 35px #85a8c333;transition:box-shadow .4s}
-.sc-slacking .sc-face-glow{box-shadow:0 -10px 30px color-mix(in srgb,var(--sc-glow) 60%,transparent),0 -2px 0 color-mix(in srgb,var(--sc-glow) 70%,transparent)}
+.sc-slacking .sc-face-glow{box-shadow:0 -8px 16px color-mix(in srgb,var(--sc-glow) 24%,transparent)}
 .sc-covered .sc-face-glow{box-shadow:0 -8px 30px #dfe9f044}
 /* 작업표시줄 */
 .sc-taskbar{position:absolute;z-index:5;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#152130ed;backdrop-filter:blur(8px)}
@@ -186,7 +186,7 @@
 .sc-shop{background:#fff;padding:10px;font-size:10px;position:relative}
 .sc-shop-head{font-size:15px;font-weight:bold}
 .sc-shop-head span{float:right;font-size:10px}
-.sc-sale{display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px;background:#e9c1b7;color:#703b3a;font-size:12px;border-radius:6px;animation:sc-glowbox 1.6s ease-in-out infinite alternate}
+.sc-sale{display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px;background:#e9c1b7;color:#703b3a;font-size:12px;border-radius:6px;border:1px solid #703b3a44}
 .sc-deal-ico{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:6px;background:#fff8;font-size:22px}
 .sc-deal-txt{flex:1;min-width:0}
 .sc-deal-txt small,.sc-deal-txt b,.sc-deal-txt em{display:block;font-style:normal}
@@ -249,7 +249,6 @@
 @keyframes sc-cloud{to{left:110%}}
 @keyframes sc-shine{to{transform:translateX(100%)}}
 @keyframes sc-in{from{opacity:0;transform:translateY(6px)}}
-@keyframes sc-glowbox{to{box-shadow:0 0 14px #f4a59a}}
 @keyframes sc-bump{50%{transform:scale(1.15)}}
 @keyframes sc-spin{to{transform:rotate(360deg)}}
 @keyframes sc-lec{to{transform:scaleX(1)}}

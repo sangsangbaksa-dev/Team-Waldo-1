@@ -7,6 +7,7 @@ import { createSim, GOALS } from './sim';
 import { createSlackAudio } from './audio';
 import { readSlackRecord, recordSlackRun } from './records';
 import type { ActivityId, Level, Sim, SlackState, StageId, StageView } from './types';
+import { tensionView } from './domain/tension';
 
 const stageInfo: Record<StageId, { name: string; blurb: string }> = {
   class: { name: '교실 저녁 자습', blurb: '학교 노트북으로 몰래 게임 영상·게임. 수업 자료 창으로 얼른 전환!' },
@@ -162,6 +163,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     for (const ev of sim.drain()) {
       view.onEvent(ev);
       if (ev.t === 'strike') { audio.play('alert'); toast(`들켰어요! ${ev.reason}`); tally.reasons.push(ev.reason); tally.maxSus = 100; }
+      else if (ev.t === 'fun') { const bar = $('[data-fun-bar]'); bar.classList.remove('is-gain'); void bar.offsetWidth; bar.classList.add('is-gain'); }
       else if (ev.t === 'toast') toast(ev.text);
       else if (ev.t === 'friend-warn') tally.warns++;
     }
@@ -172,11 +174,10 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     $('[data-fun]').textContent = `${Math.round(s.fun)} / ${Math.round(s.goal)}`; $('[data-fun-bar]').style.width = `${Math.min(100, s.fun)}%`; $('[data-goal]').style.left = `${Math.min(100, s.goal)}%`;
     $('[data-strikes]').textContent = String(s.strikes); $('[data-pips]').querySelectorAll('i').forEach((p, i) => p.classList.toggle('on', i < s.strikes));
     $('[data-battery]').textContent = String(Math.round(s.battery)); $('[data-battery-chip]').classList.toggle('low', s.battery < 25); $('[data-combo]').textContent = String(s.combo);
-    $('[data-risk]').style.width = `${Math.max(0, Math.min(100, s.sus))}%`; $('[data-risk-chip]').classList.toggle('hot', s.sus > 70);
-    // 긴장도 → 비네팅·심장 박동 연동: 45 부터 박동이 시작해 100 에서 0.5초 간격·큰 소리. 박동 간격과 붉은 화면 맥박 속도를 같이 맞춘다.
-    const tension = Math.max(0, Math.min(1, (s.sus - 45) / 55)), interval = 1.15 - tension * 0.65;
-    root.style.setProperty('--danger', String(Math.max(0, (s.sus - 25) / 75))); root.style.setProperty('--pulse-speed', `${s.sus > 45 ? interval : 1.4}s`);
-    beat -= dt; if (s.sus > 45 && beat <= 0) { audio.play('hum', 0.3 + tension * 0.7); beat = interval; }
+    const tension = tensionView(s.sus);
+    $('[data-risk]').style.width = `${Math.max(0, Math.min(100, s.sus))}%`; $('[data-risk-chip]').classList.toggle('hot', tension.hot);
+    root.style.setProperty('--danger', tension.danger.toFixed(3)); root.style.setProperty('--pulse-speed', `${tension.pulseSeconds}s`);
+    beat -= dt; if (tension.heartbeat && beat <= 0) { audio.play('hum', 0.3 + Math.max(0, Math.min(1, (s.sus - 45) / 55)) * 0.7); beat = tension.beatInterval; }
     if (s.phase === 'caught' || s.phase === 'done') finish();
     scheduleFrame();
   };

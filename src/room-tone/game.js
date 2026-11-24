@@ -27,6 +27,7 @@ import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 import { frameDelta } from "./clock.mjs";
+import { breathLabel, meterScale, threatLabel, threatLevel } from "./presence.mjs";
 import { createPauseLatch } from "./pause.mjs";
 
 const $ = createIdLookup(document),
@@ -854,7 +855,7 @@ function drawMap(canvas) {
   for (const id of level.reachable) {
     const x = id % w,
       z = Math.floor(id / w);
-    ctx.fillStyle = seen.has(id) ? "#777777" : "#303030";
+    ctx.fillStyle = seen.has(id) ? "#8d8d8d" : "#1c1c1c";
     ctx.fillRect(x * S, z * S, S, S);
   }
   if (guidance && guidePath.length) {
@@ -865,28 +866,31 @@ function drawMap(canvas) {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = "#dddddd";
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "#f4f4f2";
+    ctx.lineWidth = 3;
     ctx.lineJoin = "round";
     ctx.stroke();
   }
-  const dot = (id, color, shape) => {
+  const dot = (id, shape) => {
     const x = ((id % w) + 0.5) * S,
       y = (Math.floor(id / w) + 0.5) * S;
-    ctx.fillStyle = color;
     ctx.beginPath();
-    if (shape === "square") ctx.rect(x - 4, y - 4, 8, 8);
+    if (shape === "square") ctx.rect(x - 4.5, y - 4.5, 9, 9);
     else if (shape === "diamond") {
-      ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y);
-      ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath();
-    } else ctx.arc(x, y, 4.6, 0, Math.PI * 2);
-    ctx.fill();
+      ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y);
+      ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y); ctx.closePath();
+    } else ctx.arc(x, y, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = shape === "diamond" ? "#111" : "#f7f7f5";
+    ctx.strokeStyle = "#f7f7f5";
+    ctx.lineWidth = shape === "circle" ? 2.4 : 1.6;
+    if (shape === "circle" || shape === "diamond") ctx.stroke();
+    if (shape !== "circle") ctx.fill();
   };
   level.items.forEach((id, i) => {
-    if (!found[i]) dot(id, "#f0f0f0", "square");
+    if (!found[i]) dot(id, "square");
   });
-  dot(level.start, "#dddddd", "circle");
-  dot(level.exit, "#dddddd", "diamond");
+  dot(level.start, "circle");
+  dot(level.exit, "diamond");
   const pos = cellOf(player),
     px = ((pos % w) + 0.5) * S,
     pz = (Math.floor(pos / w) + 0.5) * S;
@@ -1309,8 +1313,10 @@ function enemyUpdate(dt, running) {
     : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
   $("danger").style.opacity = String(threat * 0.53);
-  $("strain").textContent =
-    threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+  const label = threatLabel(threat);
+  if ($("strain").textContent !== label) $("strain").textContent = label;
+  const band = threatLevel(threat);
+  if ($("strain").dataset.level !== band) $("strain").dataset.level = band;
   if (!hiddenSpot && !grace && !exitGrace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
@@ -1413,7 +1419,14 @@ function update(dt) {
   $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
-  $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  const pace = breathLabel(!!hiddenSpot, winded, running);
+  if ($("breath").textContent !== pace) $("breath").textContent = pace;
+  const bar = $("stamina").parentElement;
+  const barState = hiddenSpot ? "hold" : winded ? "winded" : "ready";
+  if (bar.dataset.state !== barState) bar.dataset.state = barState;
+  const barLabel = hiddenSpot ? "숨 참기" : "달리기 체력";
+  if (bar.getAttribute("aria-label") !== barLabel) bar.setAttribute("aria-label", barLabel);
+  $("stamina").style.transform = "scaleX(" + meterScale(hiddenSpot ? hideBreath : stamina) + ")";
   const timeLabel = clock(elapsed);
   if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";

@@ -25,6 +25,20 @@ it('opens the classroom door and steps the teacher in when the scan starts', () 
   expect(room.classList.contains('is-door')).toBe(false);
 });
 
+it('moves the classroom clocks with the study timer', () => {
+  const audio: SlackAudio = {
+    resume() {}, hold() {}, play() {}, ambience() {}, muffle() {}, setMuted() {}, dispose() {},
+  };
+  const sim = createSim('class', 8, 1);
+  sim.start();
+  sim.state.time = 60;
+  const view = createClassroomView(sim, audio);
+  dispose = () => view.dispose();
+  view.frame(0);
+  expect(view.el.querySelector('.sl-clock')?.textContent).toBe('10:25');
+  expect(view.el.querySelector('.sl-trayclock')?.textContent).toBe('10:25');
+});
+
 it('labels the embedded classroom RTS as a Slack Off activity', () => {
   const audio: SlackAudio = {
     resume() {}, hold() {}, play() {}, ambience() {}, muffle() {}, setMuted() {}, dispose() {},

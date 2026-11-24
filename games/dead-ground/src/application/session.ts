@@ -2,6 +2,7 @@ import { Bot } from '../domain/bot.js';
 import { neutralInput, TICK, type Input } from '../domain/combat.js';
 import { Match, type Snapshot } from '../domain/match.js';
 import type { World } from '../domain/world.js';
+import type { ClientMessage } from './protocol.js';
 
 export interface RoomInfo {
   code: string;
@@ -18,6 +19,11 @@ export interface Session {
   update(input: Input, dt: number): void;
   restart(): void;
   close(): void;
+}
+
+export interface SessionFactory {
+  solo(world: World, name: string): Session;
+  online(request: Extract<ClientMessage, { type: 'create' | 'join' }>, world: World): Session;
 }
 
 const BOT_NAMES = ['ROOK', 'SABLE', 'KITE', 'REED', 'MOTH'];

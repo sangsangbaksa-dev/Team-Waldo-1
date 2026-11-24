@@ -1,12 +1,12 @@
 import './style.css';
 import { callsign, roomCode, type ClientMessage } from '../application/protocol.js';
-import { SoloSession, type Session } from '../application/session.js';
-import { movePlayer, type Input, type Movement, type Player } from '../domain/combat.js';
+import type { Session, SessionFactory } from '../application/session.js';
+import { PlayerPrediction } from '../application/prediction.js';
 import type { Snapshot } from '../domain/match.js';
-import { horizontalDistance, lerp } from '../domain/math.js';
 import { createWorld, type World } from '../domain/world.js';
 import { FieldAudio } from '../infrastructure/audio.js';
-import { OnlineSession } from '../infrastructure/online.js';
+import { readPreference as cfg, writePreference as remember } from '../infrastructure/preferences.js';
+import { browserSessionFactory } from '../infrastructure/session-factory.js';
 import { FieldRenderer } from '../infrastructure/renderer.js';
 import { Controls } from './controls.js';
 import { element, notice, setText } from './elements.js';
@@ -15,14 +15,6 @@ import { Hud, renderStandings } from './hud.js';
 type Panel = 'online' | 'room' | 'pause' | 'controls' | 'result';
 
 const panelNames: Panel[] = ['online', 'room', 'pause', 'controls', 'result'];
-const cfg = (key: string) => {
-  try { return localStorage.getItem(`dead-ground.${key}`); }
-  catch { return null; }
-};
-function remember(key: string, value: string): void {
-  try { localStorage.setItem(`dead-ground.${key}`, value); }
-  catch { /* Storage is optional for play. */ }
-}
 
 class Game {
   private readonly landing = element('landing');
@@ -52,13 +44,12 @@ class Game {
   private seenSnapshot?: Snapshot;
   private drawnLobby = '';
   private resultsHost?: string;
-  private prediction?: Movement;
-  private predictionSnapshot?: Snapshot;
+  private readonly prediction = new PlayerPrediction();
   private onField = false;
   private rangeAt = 0;
   private lastFrame = 0;
 
-  constructor() {
+  constructor(private readonly sessions: SessionFactory) {
     element<HTMLAnchorElement>('hub-return').hidden = !/\/dead-ground\/(?:index\.html)?$/.test(location.pathname);
     this.name.value = callsign(cfg('name') ?? 'NOMAD');
     const sensitivity = element<HTMLInputElement>('sensitivity');
@@ -145,14 +136,14 @@ class Game {
   private deploySolo(): void {
     notice(element('menu-status'));
     const world = this.world ??= createWorld();
-    this.session = new SoloSession(world, this.playerName());
+    this.session = this.sessions.solo(world, this.playerName());
     const snapshot = this.session.snapshot;
     if (snapshot && this.openField(snapshot)) this.resume();
   }
 
   private connect(request: Extract<ClientMessage, { type: 'create' | 'join' }>): void {
     this.session?.close();
-    this.session = new OnlineSession(request, this.world ??= createWorld());
+    this.session = this.sessions.online(request, this.world ??= createWorld());
     this.onlineBusy(true);
     notice(element('online-status'), 'Connecting…');
   }
@@ -202,8 +193,7 @@ class Game {
     this.generation = -1;
     this.latestEvent = 0;
     this.seenSnapshot = undefined;
-    this.predictionSnapshot = undefined;
-    this.prediction = undefined;
+    this.prediction.reset();
     this.drawnLobby = '';
     this.onlineBusy(false);
     this.show();
@@ -227,8 +217,7 @@ class Game {
     this.onField = true;
     this.generation = -1;
     this.controls.orient(self.yaw, self.pitch);
-    this.prediction = undefined;
-    this.predictionSnapshot = undefined;
+    this.prediction.reset();
     this.previousPhase = 'active';
     this.renderer.reset();
     this.hud.reset();
@@ -285,24 +274,6 @@ class Game {
     this.show('result');
   }
 
-  private predict(player: Player, input: Input, snapshot: Snapshot, dt: number, latency: number): Player {
-    const world = this.world!;
-    if (!this.prediction || !player.alive) this.prediction = player;
-    if (snapshot !== this.predictionSnapshot && player.alive) {
-      const lead = Math.min(0.09, latency / 2000 + 0.021);
-      const target = movePlayer(world, player, input, lead);
-      const distance = horizontalDistance(this.prediction.position, target.position);
-      const blend = distance > 3.5 ? 1 : 0.25;
-      const x = lerp(this.prediction.position.x, target.position.x, blend);
-      const z = lerp(this.prediction.position.z, target.position.z, blend);
-      this.prediction = { ...this.prediction, position: { x, y: world.heightAt(x, z), z },
-        height: lerp(this.prediction.height, player.height, blend) };
-      this.predictionSnapshot = snapshot;
-    }
-    if (player.alive) this.prediction = movePlayer(world, this.prediction, input, dt);
-    return { ...player, ...this.prediction, alive: player.alive, yaw: input.yaw, pitch: input.pitch,
-      aiming: input.aim, steady: input.aim && input.breath && !player.breathExhausted };
-  }
 
   private frame = (now: number): void => {
     requestAnimationFrame(this.frame);
@@ -325,7 +296,7 @@ class Game {
     if (this.onField && current && current.generation !== this.generation) {
       this.generation = current.generation;
       this.controls.orient(current.yaw, current.pitch);
-      this.prediction = undefined;
+      this.prediction.reset();
     }
     const input = this.controls.sample(dt);
     if (session.room || this.controls.active) session.update(input, dt);
@@ -347,9 +318,9 @@ class Game {
       this.controls.orient(auth.yaw, auth.pitch);
       input.yaw = auth.yaw;
       input.pitch = auth.pitch;
-      this.prediction = undefined;
+      this.prediction.reset();
     }
-    const shown = session.room && snapshot.phase === 'active' ? this.predict(auth, input, snapshot, dt, session.latency ?? 0)
+    const shown = session.room && snapshot.phase === 'active' ? this.prediction.predict(this.world!, auth, input, snapshot, dt, session.latency ?? 0)
       : this.controls.active ? { ...auth, aiming: input.aim && auth.alive, yaw: input.yaw, pitch: input.pitch } : auth;
     if (this.seenSnapshot !== snapshot) {
       this.seenSnapshot = snapshot;
@@ -377,4 +348,4 @@ class Game {
   };
 }
 
-new Game();
+new Game(browserSessionFactory);

@@ -193,6 +193,7 @@ export class Rides {
         return Math.hypot(this.scratch.x - x, this.scratch.z - z) < 0.04 &&
           worldDistance({ x, z }, car) > 2.3 &&
           !this.trafficBlocks(x, z, 0.48) &&
+          !this.pedestrianBlocks(x, z, 0.48) &&
           !this.cars.some(other => other !== car && pointWithinCar(x, z, 0.48, other));
       });
       if (!exit) return { ok: false, message: '내릴 공간이 없습니다. 차를 조금 움직여 보세요' };

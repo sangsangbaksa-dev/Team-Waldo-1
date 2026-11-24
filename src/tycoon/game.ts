@@ -251,7 +251,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function restartGame(): void {
     clearTycoon(); bindCore(createCore());
     modal = null; confirmRestart = false; renderModal(); toastList.length = 0; q('#ty-toasts').replaceChildren(); q('#ty-banner').classList.remove('show');
-    waypoint = null; cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true; syncCity(false); startPlay(); save();
+    waypoint = null; cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true;
+    syncCity(false);
+    if (rides?.driving) player.dist = 7.5;
+    rebuildFleet();
+    player.setFirstPerson(player.firstPerson);
+    startPlay(); save();
   }
   function menuAction(m: string): void {
     if (m !== 'restart') confirmRestart = false;
@@ -522,7 +527,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   function updateHud(s: TycoonState): void {
     const route = q('#ty-route');
-    if (waypoint && Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z) < 8) { waypoint = null; toast('목적지에 도착했습니다', 'good'); }
+    if (modal?.kind !== 'map' && waypoint && Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z) < 8) { waypoint = null; toast('목적지에 도착했습니다', 'good'); }
     route.hidden = !waypoint;
     route.classList.toggle('has-task', !!s.task);
     if (waypoint) {

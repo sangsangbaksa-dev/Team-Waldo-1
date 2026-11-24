@@ -1,6 +1,7 @@
 ﻿import './classroom.css';
 import type { CreateView, SlackEvent } from './types';
 import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
+import { studyClock } from './domain/clock-face';
 
 // 교실 딴짓은 노트북 하나: video = 다리 점령전 하이라이트 영상, game = 같은 전술 게임 직접 플레이. 수업 자료는 보스키(cover) 화면.
 type Pick = 'video' | 'game';
@@ -36,7 +37,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
             <div class="sl-win gm"><div class="sl-tb"><i></i><span>다리 점령전 · 지휘 모드</span></div>
               <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-end"></div></div>
               <div class="sl-gbar"><span class="sl-res">광물 <b data-ore>0</b></span><button type="button" data-train="w">일꾼 ${COST.w}</button><button type="button" data-train="i">보병 ${COST.i}</button><button type="button" data-train="t">전차 ${COST.t}</button><span class="sl-sc">점수 <b data-sc>0</b></span></div></div>
-            <div class="sl-task"><b class="sl-start"></b><span data-w="doc">문제집</span><span data-w="video">영상</span><span data-w="game">게임</span><em class="sl-tbat">100%</em><em>10:24</em></div>
+            <div class="sl-task"><b class="sl-start"></b><span data-w="doc">문제집</span><span data-w="video">영상</span><span data-w="game">게임</span><em class="sl-tbat">100%</em><em class="sl-trayclock">10:24</em></div>
           </div><i class="sl-label">○○고 학교자산 NO.0231</i></div>
           <div class="sl-deck"><i class="sl-trk"></i><div class="sl-keys">${KEYS}</div><i class="sl-res1"></i><i class="sl-res2"></i></div>
           <div class="sl-hand l"><i class="sl-sleeve"></i><i class="sl-cuff"></i><i class="sl-palm"></i></div>
@@ -159,6 +160,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
       for (let i = 0; i < actions.length; i++) { const b = actions[i], on = b.dataset.activity === s.activity; if (b.classList.contains('is-active') !== on) { b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', String(on)); } }
       cover.classList.toggle('is-active', s.cover);
       txt(batEl, `${Math.round(s.battery)}%`);
+      const face = studyClock(s.time); txt(q('.sl-clock'), face); txt(q('.sl-trayclock'), face);
       // 게임은 창을 가려도 계속 진행(실시간), 영상은 보는 동안만 흐른다
       game.update(dt);
       let fl = v === 'doc' ? 0.1 : 0;

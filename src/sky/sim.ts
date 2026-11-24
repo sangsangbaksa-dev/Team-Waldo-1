@@ -1,5 +1,6 @@
 // SKY WAR — 공중전 시뮬레이션(렌더링과 무관한 순수 로직). 단순화한 비행 모델 + 웨이브 AI.
 import * as THREE from 'three';
+import { edgeRecoveryRate } from './domain/flight';
 
 export const WORLD_R = 3200;        // 이 반경 밖에서는 경고 후 기수를 안쪽으로 돌립니다
 export const SEA_Y = 0;
@@ -135,13 +136,14 @@ export class SkySim {
 
   /** Keep the nose pointed back into the map and the attitude quaternion in step with yaw. */
   private recoverEdge(p: Jet, dt: number): void {
-    if (this.edge(p) <= 0.75) return;
+    const rate = edgeRecoveryRate(this.edge(p));
+    if (rate <= 0) return;
     const inward = tmpV.set(-p.pos.x, 0, -p.pos.z);
     if (inward.lengthSq() < 1e-6) return;
     inward.normalize();
     const wantYaw = Math.atan2(-inward.x, -inward.z);
     let dy = wantYaw - p.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-    p.yaw += THREE.MathUtils.clamp(dy, -1, 1) * dt * 0.9;
+    p.yaw += THREE.MathUtils.clamp(dy, -1, 1) * dt * rate;
     p.q.setFromEuler(eul.set(p.pitch, p.yaw, -p.roll, 'YXZ'));
   }
 

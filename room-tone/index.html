@@ -87,8 +87,9 @@
       <div class="statusfoot">
         <span class="rec">REC</span><b id="timer">00:00</b
         ><span class="statusline"></span
-        ><span>수신 <strong id="strain">안정</strong></span>
-        <div class="stambar" aria-label="달리기 체력"><i id="stamina"></i></div>
+        ><span>수신 <strong id="strain" data-level="calm">안정</strong></span>
+        <span id="breath">걸음</span>
+        <div class="stambar" data-state="ready" aria-label="달리기 체력"><i id="stamina"></i></div>
       </div>
       <div id="prompt" hidden><kbd>E</kbd> <span id="promptText"></span></div>
       <div id="toast" role="status" aria-live="polite"></div>
@@ -137,8 +138,8 @@
           고정이 꺼져 있으면 화면을 드래그하거나 좌우 방향키로 돌릴 수 있습니다.
         </p>
         <p>
-          잠긴 문은 구역의 제어 장치에서 엽니다. 도면의 주황색 장비를 찾고,
-          청록색 장치로 돌아오세요. 길 안내를 켜면 도면에 경로가 표시되고,
+          잠긴 문은 구역의 제어 장치에서 엽니다. 도면의 네모가 회수 장비,
+          속이 빈 원이 제어 장치입니다. 길 안내를 켜면 도면에 경로가 표시되고,
           이동 화면에서 다음 방향을 볼 수 있습니다. 숙이면 느려지지만 발소리가 줄어듭니다.
         </p>
       </div>

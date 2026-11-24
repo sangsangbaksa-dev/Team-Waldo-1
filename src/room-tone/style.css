@@ -948,6 +948,15 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
 @media (max-width: 359px) and (pointer: coarse) {
   .hud { padding-top: max(0.55rem, env(safe-area-inset-top)); }
 }
+#strain[data-level="near"] { text-decoration: underline; text-underline-offset: 3px; }
+#breath { min-width: 3.2rem; }
+.stambar { width: 92px; height: 8px; border-radius: 2px; overflow: hidden; }
+.stambar[data-state="winded"] i { background: #8a8a86; }
+.stambar[data-state="hold"] i { background: #cfcfc8; }
+@media (max-width: 700px) {
+  .statusfoot .stambar { width: 72px; height: 8px; }
+}
+
 @media (pointer: coarse) and (orientation: portrait) {
   .mast {
     padding-top: max(1.4rem, env(safe-area-inset-top));

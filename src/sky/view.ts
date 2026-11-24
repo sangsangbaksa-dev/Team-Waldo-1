@@ -193,6 +193,10 @@ export class SkyView {
     const d = pos.distanceTo(this.camera.position); if (d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
   }
   spark(pos: THREE.Vector3): void { for (let i = 0; i < 3; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60), 0.25, 8, 0.2, 'fire', 0xffe08a); }
+  muzzle(j: Jet): void {
+    const tip = this.v1.set(0, -0.35, -8).applyQuaternion(j.q).add(j.pos);
+    this.emit(tip, forward(j, this.v2).multiplyScalar(30), 0.05, j.team === 'player' ? 7 : 5, 0.4, 'fire', j.team === 'player' ? 0xfff6d2 : 0xffb060);
+  }
   kick(a: number): void { this.shake = Math.max(this.shake, a); }
 
   sync(sim: SkySim, dt: number, time: number): void {

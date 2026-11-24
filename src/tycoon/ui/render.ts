@@ -47,7 +47,7 @@ export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean,
   const minStage = STAGE_NAMES[spot.minStage];
   return `<div class="ty-panel" role="dialog" aria-label="${esc(spot.name)}">
     <header><span class="ico">${esc(spot.icon)}</span><div><h2>${esc(spot.name)}</h2><p>${esc(d.name)} · ${spot.id === 'casino' ? '가상 카지노' : status}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
-    ${locked ? `<p class="ty-locked">🔒 <b>${esc(minStage)}</b> 단계가 되면 열립니다.</p>` : ''}
+    ${locked ? `<p class="ty-locked"><b>${esc(minStage)}</b> 단계부터 이용 가능</p>` : ''}
     ${body}
     ${casino}
     ${acts.length ? `<ul class="ty-acts">${acts.map(actionHtml).join('')}</ul>` : locked ? '' : '<p class="ty-none">지금 여기서 할 수 있는 일이 없습니다.</p>'}
@@ -65,9 +65,9 @@ function reportHtml(r: DayReport): string {
 export function statusHtml(s: TycoonState): string {
   const goal = s.goal;
   return `<div class="ty-panel wide" role="dialog" aria-label="현황">
-    <header><span class="ico">📊</span><div><h2>${esc(s.stageName)}</h2><p>${s.day}일차 · 순자산 ${formatMoney(s.netWorth)}${s.debt ? ` · 빚 ${formatMoney(s.debt)}` : ''}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
+    <header><div><h2>${esc(s.stageName)}</h2><p>${s.day}일차 · 순자산 ${formatMoney(s.netWorth)}${s.debt ? ` · 빚 ${formatMoney(s.debt)}` : ''}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
     <section><h3>다음 목표 — ${esc(goal.label)}</h3>${bar(goal.progress, 'gold')}<ul class="ty-steps">${goal.steps.map(st => `<li class="${st.done ? 'done' : ''}"><span>${st.done ? '✔' : '○'} ${esc(st.label)}</span>${st.done ? '' : bar(st.progress)}</li>`).join('')}</ul></section>
-    <section><h3>내 가게 (${s.owned.length})</h3>${s.owned.length ? s.owned.map(shopHtml).join('') : '<p class="ty-none">아직 가게가 없습니다. 부지를 사서 시작해 보세요.</p>'}</section>
+    <section><h3>내 가게 (${s.owned.length})</h3>${s.owned.length ? s.owned.map(shopHtml).join('') : '<p class="ty-none">보유 가게 없음</p>'}</section>
     ${s.rivals.length ? `<section><h3>라이벌</h3><ul class="ty-list">${s.rivals.map(r => `<li style="--c:${esc(r.color)}"><i></i><b>${esc(r.name)}</b><span>${r.acquired ? '인수 완료' : `가게 ${r.shops} · 가치 ${formatMoney(r.value)}`}</span></li>`).join('')}</ul></section>` : ''}
     ${s.stageIndex >= 5 ? `<section><h3>세계 시장</h3><ul class="ty-list">${s.regions.map(r => `<li><b>${esc(r.name)}</b><span>${Math.round(r.share * 100)}%${r.conquered ? ' · 정복' : ''}</span>${bar(r.share, r.conquered ? 'gold' : '')}</li>`).join('')}</ul></section>` : ''}
     ${s.events.length ? `<section><h3>진행 중인 일</h3><ul class="ty-list">${s.events.map(e => `<li><b>${esc(e.name)}</b><span>${esc(e.desc)} (${e.daysLeft}일)</span></li>`).join('')}</ul></section>` : ''}
@@ -77,7 +77,7 @@ export function statusHtml(s: TycoonState): string {
 
 export function menuHtml(sound: boolean, firstPerson: boolean, confirmRestart = false): string {
   return `<div class="ty-pause-screen wd-screen"><div class="ty-panel narrow ty-pause-panel wd-panel" role="dialog" aria-label="일시정지">
-    <p class="wd-eyebrow">HUSTLE / PAUSED</p><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요. 진행 상황은 자동으로 저장됩니다.</p>
+    <p class="wd-eyebrow">HUSTLE</p><h2 class="wd-title">일시정지</h2><p class="wd-lead">진행 상황은 자동 저장됩니다.</p>
     <div class="ty-acts wd-actions">
       <button type="button" class="ty-act wd-btn primary" data-menu="resume">이어하기</button>
       <button type="button" class="ty-act wd-btn ghost" data-menu="save">저장하기</button>
@@ -90,7 +90,7 @@ export function menuHtml(sound: boolean, firstPerson: boolean, confirmRestart = 
 
 export function titleHtml(has: boolean, summary: string, confirmNew = false): string {
   return `<div class="ty-titlebox wd-panel">
-    <p class="kick wd-eyebrow">WALDO / CITY TYCOON</p><h1 class="wd-title">HUSTLE</h1><p class="sub wd-lead">작은 일부터 시작해 나만의 도시를 만들어 보세요.</p>
+    <p class="kick wd-eyebrow">WALDO / CITY TYCOON</p><h1 class="wd-title">HUSTLE</h1><p class="sub wd-lead">일해서 자금을 모으고, 가게를 운영해 사업을 확장하세요.</p>
     <div class="ty-ladder-lg">${STAGES.map(s => `<span>${STAGE_NAMES[s]}</span>`).join('<i>›</i>')}</div>
     <p class="ty-first-route"><b>첫 목표</b> 빈 병 줍기 → 고물상에서 팔기 → 일자리로 첫 가게 자금 모으기</p>
     <div class="ty-title-btns wd-actions">
@@ -102,12 +102,12 @@ export function titleHtml(has: boolean, summary: string, confirmNew = false): st
 }
 
 export function failHtml(): string {
-  return `<div class="ty-titlebox wd-panel"><p class="kick wd-eyebrow">HUSTLE</p><h1 class="wd-title">그래픽을 시작하지 못했어요</h1><p class="sub wd-lead">WebGL을 지원하는 브라우저에서 다시 시도해 주세요.</p>
+  return `<div class="ty-titlebox wd-panel"><p class="kick wd-eyebrow">HUSTLE</p><h1 class="wd-title">그래픽 초기화 실패</h1><p class="sub wd-lead">WebGL을 지원하는 브라우저에서 다시 시도해 주세요.</p>
     <div class="ty-title-btns wd-actions"><button type="button" class="wd-btn primary" data-title="exit">게임 목록으로</button></div></div>`;
 }
 
 export function winHtml(s: TycoonState): string {
-  return `<div class="ty-win-screen wd-screen"><div class="ty-titlebox win wd-panel"><p class="kick wd-eyebrow">HUSTLE / MILESTONE</p><h1 class="wd-title">세계 정복</h1><p class="sub wd-lead">${s.day}일 만에 세계를 손에 넣었습니다. 순자산 ${formatMoney(s.netWorth)}</p>
+  return `<div class="ty-win-screen wd-screen"><div class="ty-titlebox win wd-panel"><p class="kick wd-eyebrow">HUSTLE</p><h1 class="wd-title">세계 정복</h1><p class="sub wd-lead">달성까지 ${s.day}일 · 순자산 ${formatMoney(s.netWorth)}</p>
     <div class="ty-title-btns wd-actions"><button type="button" class="wd-btn primary" data-title="keep">이어하기</button><button type="button" class="wd-btn ghost" data-title="exit">게임 목록으로</button></div></div></div>`;
 }
 /** Accessible map directory: pure HTML renderer, independent of scene and save state. */

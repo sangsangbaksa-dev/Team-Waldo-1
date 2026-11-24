@@ -21,7 +21,7 @@ const fighter = (side, label, role) => `<section class="fighter ${side}" aria-la
 </section>`;
 const keyboard = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
 const hubReturn = /\/parry-gladiator\/(?:index\.html)?$/.test(window.location.pathname)
-  ? '<a class="button hub-return" href="../">Return to WALDO hub</a>' : '';
+  ? '<a class="button hub-return" href="../">Back to game hub</a>' : '';
 
 export class View {
   constructor(root, handlers) {
@@ -42,7 +42,7 @@ export class View {
         <div id="combat-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
         <div id="practice-help" class="practice-help" hidden><strong></strong><p></p><div></div></div>
         <div class="hud-bottom"><div class="hints">${keyboard('W A S D','Move')}${keyboard('J','Light')}${keyboard('K','Heavy')}${keyboard('F','Feint')}${keyboard('Q','Guard / Parry')}${keyboard('Space','Dodge')}</div>
-          <button type="button" class="icon-button pause-button" data-command="pause" aria-label="Pause or open match menu">${icon('pause')}</button>
+          <button type="button" class="icon-button pause-button" data-command="pause" aria-label="Pause / match menu">${icon('pause')}</button>
         </div>
         <div id="touch-controls">
           <div class="touch-pad" aria-label="Movement pad"><i></i></div>
@@ -111,7 +111,7 @@ export class View {
 
   home() {
     this.screen('home', 'Parry <em>Gladiator</em>', `
-      <p class="lede">Read the blade. Break their guard. Win two rounds.</p>
+      <p class="lede">Win two rounds. Parry, dodge and counter.</p>
       <div class="menu-actions">
       ${btn('Solo duel', 'solo', { glyph: 'swords', primary: true, meta: 'VS AI' })}
       ${btn('Online duel', 'online', { glyph: 'link', meta: '1 VS 1' })}
@@ -127,10 +127,10 @@ export class View {
   }
 
   online(settings, notice = '') {
-    this.screen('online', 'Online duel', `<p class="lede">Host a private room or enter a friend’s five-character code.</p>
+    this.screen('online', 'Online duel', `<p class="lede">Create a room or join with a five-character code.</p>
       <form class="online-form" autocomplete="off">
         <label for="server-url">Room server (optional)</label>
-        <input id="server-url" type="url" placeholder="Leave empty to play online with no server" spellcheck="false">
+        <input id="server-url" type="url" placeholder="Optional custom server URL" spellcheck="false">
         <label for="room-code">Room code</label>
         <input id="room-code" maxlength="5" placeholder="5 characters" autocapitalize="characters" spellcheck="false">
         <div class="menu-secondary">${btn('Create room', 'create', { primary: true })}<button type="submit" class="button">Join room</button></div>
@@ -160,7 +160,7 @@ export class View {
       <p><strong>Leave enough stamina.</strong> Attacking, dodging, and absorbing hits use it. An empty guard breaks. Back off to recover.</p>
       <p><strong>Make space.</strong> Dodge with a movement direction, or dodge backward when standing still. Press F during a heavy windup to feint.</p>
       </div><div class="manual-keys hints">${keyboard('W A S D / Arrows','Move')}${keyboard('J / Left click','Light')}${keyboard('K','Heavy')}${keyboard('Q / Right click','Guard')}${keyboard('Space','Dodge')}${keyboard('F','Heavy feint')}${keyboard('Esc','Menu')}</div>
-      <div class="menu-actions">${btn('Practice the parry', 'practice', { glyph: 'shield', primary: true })}</div>`, { back: true });
+      <div class="menu-actions">${btn('Start practice', 'practice', { glyph: 'shield', primary: true })}</div>`, { back: true });
   }
 
   settings(settings, paused = false) {

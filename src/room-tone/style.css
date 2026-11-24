@@ -954,3 +954,6 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
     height: max(78px, calc(env(safe-area-inset-top) + 54px));
   }
 }
+
+#decoy:disabled{opacity:.6;cursor:default}
+@media(max-width:480px){.touch .gear{gap:.25rem}.touch .gear button{padding-inline:.42rem}}

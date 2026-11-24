@@ -4,8 +4,8 @@ import { GRAZE_LIMIT, aiInput, newCar, separateCars, stayOnTrack, stepCar, type 
 import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
 import { mapById } from './maps';
-import { GhostRecorder, type Ghost } from './ghost';
-import { createDrift, flushDrift, nitroForChain, stepDrift, type DriftScore } from './driftscore';
+import { GhostRecorder, type Ghost } from './domain/ghost';
+import { createDrift, flushDrift, nitroForChain, stepDrift, type DriftScore } from './domain/drift-score';
 
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;

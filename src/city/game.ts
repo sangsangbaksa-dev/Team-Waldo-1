@@ -8,7 +8,7 @@ import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
 import { loadModels, type Models } from './models';
 import { showLoading, type LoadingScreen } from '../loading';
-import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type TutState } from './tutorial';
+import { STEPS, advance, newCounters, newTutState, type Counters, type TutState } from './tutorial';
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
@@ -24,7 +24,10 @@ import { arenaInfo, arenaOf } from './arena';
 import { CityRoom, ROOM_LIVES, ROOM_TIME, roomRanking, roomWinner } from './room';
 import { CityDuel, TARGET_KILLS, TIME_LIMIT, duelOutcome } from './duel';
 import { DuelArmy, parseArmy } from './duelarmy';
-import { CITY_KEY, readCityCareer } from '../records';
+import { selectAimTarget } from './domain/aim-target';
+import { aimLabel } from './ui/aim-label';
+import { MatchClock } from './application/match-clock';
+import { readDifficulty, saveDifficulty, readTutorialDone, saveTutorialDone, saveCityResult } from './infrastructure/local-progress';
 import { PVP_ENABLED } from '../net/config';
 import { ChatLimiter, cleanChat, pushChat, visibleChat, type ChatLine } from './chat';
 import { gemIcon, starIcon } from '../shared/glyphs';
@@ -35,9 +38,9 @@ const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${Strin
 
 /** '으로/로' 고르기: 받침이 없거나 ㄹ 받침이면 '로'. */
 function josaRo(name: string): string { const c = name.charCodeAt(name.length - 1) - 0xac00; if (c < 0 || c > 11171) return '로'; const jong = c % 28; return jong === 0 || jong === 8 ? '로' : '으로'; }
-function readTutDone(): boolean { try { return localStorage.getItem(TUT_KEY) === '1'; } catch { return false; } }
 export function openCity(onExit: () => void, options: { difficulty?: string; loading?: LoadingScreen } = {}): void {
-  let diffSel: Difficulty = 'd4'; try { const sv = localStorage.getItem('waldo-city-diff'); if (sv && sv in DIFFICULTY) diffSel = sv as Difficulty; } catch { /* 저장 불가 환경 */ }
+  let diffSel = readDifficulty();
+  const matchClock = new MatchClock();
   void options;
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'city-root' + (touch ? ' touch' : ''); root.style.setProperty('--wd-hue', '#d8bc80');
@@ -61,10 +64,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const canvas = q<HTMLCanvasElement>('.city-canvas'), canvas3 = q<HTMLCanvasElement>('.city-canvas3d'), layer = q('#c-layer'), cross = q('#c-cross'), hurtEl = q('#c-hurt'), hud = q('.city-hud'), modal = q('#c-modal'), panel = q('#c-panel'), bigmap = q('#c-bigmap');
   const audio = new CityAudio(); audio.enabled = prefs.sound;
   type View = 'fp' | 'tp' | 'top';
-  let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
+  let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutorialDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0, heartbeatT = 0;
-  let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
+  let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
   let demolishArmed: { id: number; at: number } | null = null;
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
   interface Duel { s: PvpSession; net: CityDuel; army: DuelArmy; oppHqDown: boolean; hqSent: boolean; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
@@ -111,7 +114,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
+    keys.clear(); mouse.down = false; touchFire = false; matchClock.reset(); killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
@@ -158,7 +161,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // ---------- 동작 ----------
   function act(code: string, ev?: Event): void {
     const [a, ...rest] = code.split(':'), arg = rest.join(':'), w = world; audio.unlock();
-    if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
+    if (a === 'diff') { diffSel = arg as Difficulty; saveDifficulty(diffSel); setup(); audio.play('click'); return; }
     if (a === 'chat') { openChat(); return; }
     if (a === 'sq') { if (w) { w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); toast(w.squadSel ? `${w.squadSel}분대 선택 — 명령이 이 분대에만 적용됩니다` : '전체 병력 선택', false); if (!panel.hidden) renderPanel(); } return; }
     if (a === 'squadsplit') { if (w) { w.splitSquads(0, Number(arg)); put(q('#c-squads'), squadBar(w)); toast(Number(arg) > 1 ? `${arg}개 분대로 편성` : '분대 편성 해제', false); renderPanel(); } return; }
@@ -497,8 +500,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function showResult(): void {
     const w = world!, f = w.factions[0], win = w.winner === 0, place = win ? 1 : f.place || w.aliveCount() + 1; resultShown = true; unlock(); audio.setEngine(-1); audio.play(win ? 'win' : 'lose');
     recordMatch(win, w.time, f.kills);
-    try { const c = readCityCareer(); localStorage.setItem(CITY_KEY, JSON.stringify({ matches: c.matches + 1, wins: c.wins + Number(win), best: c.best ? Math.min(c.best, place) : place })); } catch { /* 기록은 선택 사항 */ }
-    modal.innerHTML = `<section class="c-result wd-panel ${win ? 'win' : ''}"><div class="c-kicker wd-eyebrow">경기 결과</div><h2 class="wd-title">${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '도시의 모든 것이 이제 당신의 것입니다.' : place <= 3 ? '거의 다 왔습니다. 한 판 더!' : '경제를 먼저 굴리고, 병력과 함께 움직여 보세요.'}</p>
+    saveCityResult(win, place);
+    modal.innerHTML = `<section class="c-result wd-panel ${win ? 'win' : ''}"><div class="c-kicker wd-eyebrow">경기 결과</div><h2 class="wd-title">${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '모든 라이벌 왕국을 제압했습니다.' : place <= 3 ? '최종 순위 3위 이내' : '사업체와 병력 확보가 중요합니다.'}</p>
       <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${w.businesses.filter(z => z.owner === 0).length}</b><span>보유 사업체</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
       <div class="c-actions wd-actions"><button data-act="retry" class="c-primary wd-btn primary">다시 시작</button><button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
   }
@@ -650,7 +653,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     for (const sel of st.pulse ?? []) root.querySelectorAll(sel).forEach(el => { if (el instanceof HTMLElement && el.offsetParent !== null) el.classList.add('c-pulse'); });
   }
   function finishTutorial(skipped: boolean): void {
-    try { localStorage.setItem(TUT_KEY, '1'); } catch { /* 기록은 선택 사항 */ }
+    saveTutorialDone();
     tutDone = true; q('#c-tut').hidden = true; root.querySelectorAll('.c-pulse').forEach(el => el.classList.remove('c-pulse')); unlock(); audio.setEngine(-1); paused = true; panel.hidden = true; bigmap.hidden = true;
     modal.innerHTML = `<section class="c-result win"><div class="c-kicker">${skipped ? 'TUTORIAL SKIPPED' : 'TUTORIAL COMPLETE'}</div><h2>${skipped ? '연습 종료' : '준비 완료!'}</h2><p class="c-lead">${skipped ? '튜토리얼은 시작 화면에서 언제든 다시 할 수 있습니다.' : '이동·사격·사업체·기지·병력·차량·시장을 모두 익혔습니다. 이제 진짜 전쟁입니다. 경제를 먼저 굴리고, 병력과 함께 움직이세요.'}</p><div class="c-actions"><button data-act="tutdone" class="c-primary">영웅 고르고 시작</button><button data-act="tutorial">튜토리얼 다시</button><button data-act="exit">메뉴로</button></div></section>`;
   }
@@ -701,10 +704,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     });
   }
   function crossTarget(): string {
-    const w = world!, b = w.boss(0); if (!b || !R3 || w.inside) return ''; const f = w.factions[0], range = WEAPONS[f.slots[f.cur].id].range, dx = Math.cos(R3.yaw), dy = Math.sin(R3.yaw); let best = range, html = '', hostile = false;
-    for (const a of w.actors) { if (!a.alive || a === b || a.inVeh) continue; const rx = a.x - b.x, ry = a.y - b.y, t = rx * dx + ry * dy; if (t < 0 || t > best || Math.abs(rx * dy - ry * dx) > a.r + 7) continue; if (!w.canSee(b.x, b.y, a.x, a.y)) continue; best = t; hostile = w.hostile(0, a.f); html = `<b style="color:${a.f < 8 ? FACTIONS[a.f].color : a.f === 8 ? '#8fb0ff' : '#ccc'}">${a.f < 8 ? FACTIONS[a.f].name + ' ' : ''}${ACTORS[a.kind].name}</b><i><u style="width:${Math.max(0, a.hp / a.maxHp * 100)}%;background:${a.f === 0 ? '#5dfc9b' : '#ff5d5d'}"></u></i>`; }
-    for (const s of w.structures) { if (!s.alive) continue; const cx = s.x + s.w / 2 - b.x, cy = s.y + s.h / 2 - b.y, t = cx * dx + cy * dy; if (t < 0 || t > best + 60 || Math.abs(cx * dy - cy * dx) > Math.max(s.w, s.h) / 2) continue; best = t; hostile = s.f !== 0; html = `<b style="color:${FACTIONS[s.f].color}">${FACTIONS[s.f].name} ${STRUCTS[s.kind].name}</b><i><u style="width:${Math.max(0, s.hp / s.maxHp * 100)}%"></u></i>`; }
-    cross.classList.toggle('hostile', hostile && !!html); return html;
+    const target = world && R3 ? selectAimTarget(world, R3.yaw) : null;
+    cross.classList.toggle('hostile', !!target?.hostile);
+    return aimLabel(target);
   }
 
   // ---------- 루프 ----------
@@ -727,7 +729,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         else if (touch && b) { inp.fire = touchFire; if (Math.hypot(mx, my) > 0.2) { inp.ax = b.x + mx * 300; inp.ay = b.y + my * 300; } }
         else { const p = r.toWorld(mouse.x, mouse.y); inp.ax = p.x; inp.ay = p.y; inp.fire = mouse.down && !ghost; }
       }
-      acc += dt; let n = 0; while (acc >= 1 / 60 && n < 4) { w.step(1 / 60); acc -= 1 / 60; n++; if (w.enteredByDoor) { w.enteredByDoor = false; enterBuilding(); } } if (n === 4) acc = 0;
+      matchClock.advance(w, dt, () => {
+        if (w.enteredByDoor) { w.enteredByDoor = false; enterBuilding(); }
+      });
       // 이벤트 → 화면·소리
       if (three) R3!.consume(w.events); else r.consume(w.events);
       const lx = b ? b.x : r.cam.x, ly = b ? b.y : r.cam.y;

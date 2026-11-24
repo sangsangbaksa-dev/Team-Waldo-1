@@ -1,6 +1,7 @@
 import './ui/style.css';
 import { Game } from './application/game.js';
 import { Practice } from './application/practice.js';
+import { Rooms } from './application/rooms.js';
 import { roomCode, validRoom, validSnapshot } from './application/room-protocol.js';
 import { Scene } from './infrastructure/scene.js';
 import { ArenaAudio } from './infrastructure/audio.js';
@@ -195,7 +196,7 @@ function connect(type) {
     if (status === 'missing') networkLost('missing');
     if (status === 'timeout' || status === 'closed' || status === 'error') networkLost(status);
   };
-  const connection = server ? new Network(receive, onStatus) : new RelayNetwork(receive, onStatus, { kind: relayKind });
+  const connection = server ? new Network(receive, onStatus) : new RelayNetwork(receive, onStatus, { kind: relayKind, createRooms: options => new Rooms(options) });
   network = connection;
   relayRoom = !server;
   try { connection.connect(server, type, entered); }

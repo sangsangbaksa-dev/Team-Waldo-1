@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from '../application/room-protocol.js';
+import { PROTOCOL_VERSION } from '../domain/protocol.js';
 
 export function parseServerUrl(value) {
   let url;

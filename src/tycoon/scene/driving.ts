@@ -3,6 +3,31 @@ export interface DriveState { x: number; z: number; heading: number; speed: numb
 export interface DriveInput { throttle: number; steer: number; brake: boolean }
 export interface DriveTuning { forward: number; reverse: number; turnRate: number; response: number }
 const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n));
+export const DRIVE_STEP = 1 / 60;
+const MAX_DRIVE_STEPS = 6;
+
+/** Fixed slices so a long frame cannot take a different path from several short ones. */
+export function planDriveSteps(delta: number, leftover = 0): { steps: number; leftover: number } {
+  const dt = clamp(Number.isFinite(delta) ? delta : 0, 0, 0.1);
+  let acc = Number.isFinite(leftover) && leftover > 0 ? leftover + dt : dt;
+  let steps = 0;
+  while (acc >= DRIVE_STEP && steps < MAX_DRIVE_STEPS) {
+    acc -= DRIVE_STEP;
+    steps++;
+  }
+  if (steps === MAX_DRIVE_STEPS) acc = 0;
+  return { steps, leftover: acc };
+}
+
+/** Keyboard and the stick share one axis. Brake drops throttle so the two cannot fight. */
+export function driveCommand(
+  keys: { left: boolean; right: boolean; forward: boolean; back: boolean; brake: boolean },
+  stickX: number, stickY: number,
+): DriveInput {
+  const steer = clamp((keys.left ? 1 : 0) - (keys.right ? 1 : 0) - stickX, -1, 1);
+  const raw = clamp((keys.forward ? 1 : 0) - (keys.back ? 1 : 0) - stickY, -1, 1);
+  return { steer, throttle: keys.brake ? 0 : raw, brake: keys.brake };
+}
 
 /** Uses short sweeps so large frame times cannot pass through walls. Returns true on impact. */
 export function stepDrive(

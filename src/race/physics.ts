@@ -37,6 +37,8 @@ export const GRAZE_LIMIT = 12;
 /** 벽에 붙어 달릴 때의 마찰(1/s). 조향을 계속 눌러 벽을 타는 것이 정상 주행보다 빨라지지 않게 합니다. */
 export const SCRAPE_DRAG = 0.75;
 export const kmh = (c: Pick<CarState, 'vf'>): number => Math.abs(c.vf) * 3.6;
+/** Ground speed, including the sideways slide, so a drift does not look like the car slowed to a crawl. */
+export const groundKmh = (c: Pick<CarState, 'vf' | 'vl'>): number => Math.hypot(c.vf, c.vl) * 3.6;
 export const boosting = (c: CarState): boolean => c.boostT > 0;
 
 export function newCar(t: Track, idx: number, lat: number): CarState {

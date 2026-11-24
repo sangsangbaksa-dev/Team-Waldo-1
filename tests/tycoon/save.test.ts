@@ -78,4 +78,30 @@ describe('타이쿤 저장', () => {
     const ids = g.spots().flatMap(s => g.actionsAt(s.id).map(a => `${a.id} ${a.label}`)).join('\n');
     expect(ids).not.toMatch(/upgrade|perk|skill|업그레이드|능력치/i);
   });
+
+  it('진행 중인 일을 이어서 끝내고, 깨진 결산과 이벤트는 버린다', () => {
+    const core = createCore({ seed: 4 });
+    core.setPresence('alley');
+    expect(core.perform('alley', 'collect').ok).toBe(true);
+    core.tick(0.4);
+    const save = core.serialize() as Record<string, unknown>;
+    const again = createCore({ save: JSON.parse(JSON.stringify(save)) });
+    expect(again.state.activity?.actionId).toBe('collect');
+    expect(again.state.activity?.progress).toBeGreaterThan(0);
+    for (let i = 0; i < 16 && again.state.activity; i++) again.tick(0.25);
+    expect(again.state.bottles).toBeGreaterThan(0);
+
+    const cleaned = createCore({
+      save: {
+        ...save,
+        activity: { spotId: 'missing', actionId: 'collect', duration: 2 },
+        lastReport: { day: 'nope', revenue: 12 },
+        events: [{ id: 'nope', daysLeft: 2 }, { id: 'festival', daysLeft: 1, district: 'moon' }],
+      },
+    });
+    expect(cleaned.state.activity).toBeNull();
+    expect(cleaned.state.lastReport).toBeNull();
+    expect(cleaned.data.events.some(e => e.id === 'nope')).toBe(false);
+    expect(cleaned.data.events.find(e => e.id === 'festival')?.district).toBeUndefined();
+  });
 });

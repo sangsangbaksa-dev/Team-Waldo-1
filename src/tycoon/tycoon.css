@@ -32,7 +32,7 @@
 .ty-ladder li.done i { background: #7a8cff; }
 .ty-ladder li.now i { background: var(--gold); box-shadow: 0 0 8px rgba(255, 207, 90, .7); }
 .ty-clock { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.ty-clock #ty-sun { font-size: 20px; }
+.ty-clock #ty-sun { font-size: 13px; font-weight: 700; letter-spacing: .08em; }
 .ty-clock b { font-size: 22px; font-variant-numeric: tabular-nums; }
 .ty-clock em { font-style: normal; color: var(--mute); font-size: 13px; }
 .ty-speed { display: flex; gap: 3px; margin-left: 6px; }

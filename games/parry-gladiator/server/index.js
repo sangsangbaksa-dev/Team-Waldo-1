@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Rooms } from '../src/application/rooms.js';
-import { PROTOCOL_VERSION, ROOM_ALPHABET, ROOM_LENGTH } from '../src/application/room-protocol.js';
+import { PROTOCOL_VERSION, ROOM_ALPHABET, ROOM_LENGTH } from '../src/domain/protocol.js';
 
 const MAX_ROOMS = 500;
 

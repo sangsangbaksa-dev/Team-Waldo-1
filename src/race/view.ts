@@ -8,7 +8,7 @@ import { instantiate } from '../city/models';
 import { ghostAt } from './ghost';
 import { type CharacterKit, type CharacterRig } from '../shared/character';
 import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chevronFacing, fovRate, stepChaseAnchor, type ChaseAnchor } from './camera';
-import { wrapAngle, boosting, kmh } from './physics';
+import { wrapAngle, boosting, groundKmh } from './physics';
 import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
 import { type Theme } from './maps';
@@ -739,7 +739,7 @@ export class RaceView {
   }
 
   /** HUD 용: 화면 속도감 수치(0..1.4) */
-  static intensity(race: RaceState): number { return Math.min(1.4, kmh(race.player.car) / 270 + (boosting(race.player.car) ? 0.25 : 0)); }
+  static intensity(race: RaceState): number { return Math.min(1.4, groundKmh(race.player.car) / 270 + (boosting(race.player.car) ? 0.25 : 0)); }
 
   dispose(): void {
     const seen = new Set<object>();

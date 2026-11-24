@@ -67,6 +67,8 @@ export interface GameData {
   lastReport: DayReport | null;
   nextId: number;
   shopsOpened: number;
+  /** 진행 중인 일. 없는 저장은 이어지지 않는다. */
+  activity: ActivityData | null;
 }
 
 export const SPOT_BY_ID: ReadonlyMap<string, SpotDef> = new Map(SPOTS.map(s => [s.id, s]));
@@ -109,6 +111,7 @@ export function newGame(seed = Date.now()): GameData {
     lastReport: null,
     nextId: 1,
     shopsOpened: 0,
+    activity: null,
   };
 }
 

@@ -1,3 +1,5 @@
+import { claimPointer, releasePointer, stickFromPoint } from './pointers.js';
+
 const movement = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']);
 const actions = new Map([['KeyJ', 'light'], ['KeyK', 'heavy'], ['KeyQ', 'block'], ['KeyF', 'feint'], ['Space', 'dodge']]);
 
@@ -58,6 +60,7 @@ export class Controls {
   clear() {
     this.keys.clear();
     this.touchDirection.x = this.touchDirection.z = 0;
+    this.resetPointers?.();
     if (this.guard.size) {
       this.guard.clear();
       this.action('release');
@@ -74,45 +77,62 @@ export class Controls {
 
   bindTouch(pad, stick, buttons) {
     let pointer = null;
+    let guardPointer = null;
+    const endStick = id => {
+      const next = releasePointer(pointer, id);
+      if (next === pointer) return;
+      pointer = next;
+      this.touchDirection = { x: 0, z: 0 };
+      stick.style.transform = '';
+    };
+    const endGuard = id => {
+      const next = releasePointer(guardPointer, id);
+      if (next === guardPointer) return;
+      guardPointer = next;
+      this.releaseGuard('touch');
+    };
     const update = event => {
-      const box = pad.getBoundingClientRect();
-      const radius = box.width * 0.39;
-      const x = (event.clientX - box.left - box.width / 2) / radius;
-      const y = (event.clientY - box.top - box.height / 2) / radius;
-      const scale = Math.max(1, Math.hypot(x, y));
-      this.touchDirection = { x: x / scale, z: -y / scale };
-      stick.style.transform = `translate(${x / scale * radius}px, ${y / scale * radius}px)`;
+      const stickPoint = stickFromPoint(event.clientX, event.clientY, pad.getBoundingClientRect());
+      this.touchDirection = { x: stickPoint.x, z: stickPoint.z };
+      stick.style.transform = `translate(${stickPoint.px}px, ${stickPoint.py}px)`;
+    };
+    this.resetPointers = () => {
+      pointer = null;
+      guardPointer = null;
+      this.touchDirection = { x: 0, z: 0 };
+      stick.style.transform = '';
     };
     pad.addEventListener('pointerdown', event => {
       if (pointer !== null || !this.enabled()) return;
-      pointer = event.pointerId;
-      pad.setPointerCapture(pointer);
+      pointer = claimPointer(pointer, event.pointerId);
+      try { pad.setPointerCapture(pointer); } catch { /* window listeners still track the finger */ }
       update(event);
     });
-    pad.addEventListener('pointermove', event => {
-      if (event.pointerId === pointer) update(event);
-    });
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(type, event => {
-      if (event.pointerId !== pointer) return;
-      pointer = null;
-      this.touchDirection = { x: 0, z: 0 };
-      stick.style.transform = '';
-    });
+    const move = event => { if (event.pointerId === pointer) update(event); };
+    pad.addEventListener('pointermove', move);
+    window.addEventListener('pointermove', move);
+    const stopStick = event => endStick(event.pointerId);
+    for (const type of ['pointerup', 'pointercancel']) {
+      pad.addEventListener(type, stopStick);
+      window.addEventListener(type, stopStick);
+    }
+    pad.addEventListener('lostpointercapture', stopStick);
     for (const button of buttons) {
       button.addEventListener('pointerdown', event => {
         if (!this.enabled()) return;
         event.preventDefault();
         const command = button.dataset.feint === 'true' ? 'feint' : button.dataset.action;
         if (command === 'block') {
-          button.setPointerCapture(event.pointerId);
+          if (guardPointer !== null) return;
+          guardPointer = event.pointerId;
+          try { button.setPointerCapture(event.pointerId); } catch { /* release is also watched on window */ }
           this.holdGuard('touch');
         } else this.action(command);
       });
-      if (button.dataset.action === 'block') {
-        for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-          button.addEventListener(type, () => this.releaseGuard('touch'));
-        }
-      }
     }
+    const stopGuard = event => endGuard(event.pointerId);
+    window.addEventListener('pointerup', stopGuard);
+    window.addEventListener('pointercancel', stopGuard);
+    window.addEventListener('lostpointercapture', stopGuard);
   }
 }

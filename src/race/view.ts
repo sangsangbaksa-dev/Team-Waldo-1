@@ -5,7 +5,7 @@ import { AdaptiveQuality } from '../shared/adaptive';
 import { LodSet, splitInstanced } from '../shared/lod';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { instantiate } from '../city/models';
-import { ghostAt } from './ghost';
+import { ghostAt } from './domain/ghost';
 import { type CharacterKit, type CharacterRig } from '../shared/character';
 import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chevronFacing, fovRate, stepChaseAnchor, type ChaseAnchor } from './camera';
 import { wrapAngle, boosting, kmh } from './physics';

@@ -14,7 +14,7 @@
 
 /* 문: 유리창 실루엣, 문틈 발 그림자 */
 .sl-door{position:absolute;right:4%;bottom:0;width:15%;height:96%;background:#80735f;border:6px solid #615b4e;transition:filter .4s,box-shadow .4s}
-.is-door .sl-door{filter:brightness(1.5);box-shadow:0 0 30px 12px #fff4b8aa}
+.is-door .sl-door{filter:none;box-shadow:none}
 .sl-window{position:absolute;left:14%;right:14%;top:7%;height:38%;background:linear-gradient(120deg,#b0c0b8,#607970);border:4px solid #4e5149;overflow:hidden}
 .sl-shadow{position:absolute;inset:5% 10% -40%;border-radius:50% 50% 0 0;background:#202b29;opacity:0;transform:translateX(-120%)}
 .sl-room[data-hint="1"] .sl-shadow{opacity:.45;animation:sl-shadow 5s infinite}
@@ -54,10 +54,7 @@
 .sl-room[data-scan="true"] .sl-cast:before{opacity:var(--near)}
 .sl-cast:after{content:'';position:absolute;inset:0;background:#000;opacity:calc(var(--near) * .22)}
 .sl-flick{position:absolute;z-index:6;inset:0;background:#000;opacity:0;animation:sl-flickd 9s infinite}
-.sl-room[data-hint="1"] .sl-light{animation:sl-flicker2 1.9s infinite}
-.sl-room[data-hint="1"] .sl-flick{animation:sl-flickd2 1.9s infinite}
-.sl-room[data-hint="2"] .sl-light,.sl-room[data-scan="true"] .sl-light{animation:sl-flicker2 .8s infinite}
-.sl-room[data-hint="2"] .sl-flick,.sl-room[data-scan="true"] .sl-flick{animation:sl-flickd2 .8s infinite}
+/* The patrol changes the doorway and silhouette, not the ceiling lights. */
 .sl-hush{position:absolute;z-index:8;inset:0;display:grid;place-items:center;background:radial-gradient(#0000 35%,#000c);opacity:0;transition:opacity .6s;font-size:clamp(30px,8vw,70px);letter-spacing:.3em;color:#fff4}
 .is-quiet .sl-hush{opacity:1}
 
@@ -190,4 +187,35 @@
   .sl-win.gm{container-type:inline-size}
   .sl-gbar{height:44px;gap:1cqw}
   .sl-gbar button{height:44px;min-width:44px;padding-inline:4px}
+}
+
+/* Door leaf remains attached to its hinge; patrol pose comes from the view. */
+.sl-room { --door-open:0; --watcher-visible:0; --watcher-near:0; --watcher-gait:0; }
+.sl-door { background:#303630; perspective:480px; overflow:visible; }
+.sl-door-leaf { position:absolute; inset:0; transform-origin:0 50%; transform:rotateY(calc(var(--door-open) * 67deg)); background:linear-gradient(90deg,#6d6253,#897b66 80%,#63594b); box-shadow:inset 0 0 0 1px #413c32, 2px 0 1px #51483b; }
+.sl-door::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,#a6a28b80,#4a5048); opacity:var(--door-open); }
+.sl-door .sl-gap { height:4%; opacity:.65; }
+.sl-room[data-step="2"] .sl-gap,.sl-room[data-step="3"] .sl-gap { height:7%; }
+.sl-window { background:linear-gradient(120deg,#a4b0a9,#526960); border-color:#4d5149; }
+.sl-face { background:#766c5d; }
+.sl-light { box-shadow:0 0 9px 3px #fff2bd55; animation:none; }
+.sl-flick { animation:none; }
+.sl-teacher,.sl-room[data-scan="true"] .sl-teacher {
+  bottom:42%; opacity:var(--watcher-visible);
+  transform:translate(calc(var(--watcher-near) * -130%),calc(var(--watcher-gait) * -1.4%)) scale(calc(.72 + var(--watcher-near) * .56));
+  transition:opacity .12s linear,transform .12s linear;
+}
+.sl-teacher-head { width:40%; left:30%; height:22%; background:linear-gradient(100deg,#272c2a 55%,#55544a); }
+.sl-teacher-body { inset:20% 12% 25%; border-radius:25% 25% 4% 4%; background:linear-gradient(90deg,#333d37,#48544a 46%,#28332d); }
+.sl-teacher-body::before { content:""; position:absolute; width:23%; height:70%; top:5%; left:-14%; border-radius:30%; background:#303a34; transform:rotate(calc(var(--watcher-gait) * 9deg)); transform-origin:top; }
+.sl-teacher-body::after { content:""; position:absolute; width:23%; height:70%; top:5%; right:-14%; border-radius:30%; background:#303a34; transform:rotate(calc(var(--watcher-gait) * -9deg)); transform-origin:top; }
+.sl-teacher-legs { position:absolute; inset:70% 22% 0; display:flex; gap:9%; }
+.sl-teacher-legs i { width:46%; background:#232b28; border-radius:0 0 12% 12%; transform-origin:top; transform:rotate(calc(var(--watcher-gait) * 5deg)); }
+.sl-teacher-legs i + i { transform:rotate(calc(var(--watcher-gait) * -5deg)); }
+.sl-room[data-scan="true"] .sl-teacher-head { animation:none; }
+.sl-room[data-scan="true"] .sl-cast::before { opacity:calc(var(--near) * .6); }
+.sl-room .sl-cast::after { opacity:calc(var(--near) * .12); }
+@media (prefers-reduced-motion:reduce) {
+  .sl-teacher,.sl-room[data-scan="true"] .sl-teacher { transform:translateX(calc(var(--watcher-near) * -130%)) scale(calc(.72 + var(--watcher-near) * .56)); transition:none; }
+  .sl-teacher-body::before,.sl-teacher-body::after,.sl-teacher-legs i { transform:none; }
 }

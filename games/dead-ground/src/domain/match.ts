@@ -1,5 +1,5 @@
 import {
-  advanceBullet, aimSway, eye, hitPlayer, MAX_PLAYERS, movePlayer, neutralInput, PLAYER_HEIGHT,
+  advanceBullet, aimSway, BODY_FLINCH, eye, hitPlayer, MAX_PLAYERS, movePlayer, neutralInput, PLAYER_HEIGHT,
   PROTECTION_SECONDS, ranked, RESPAWN_SECONDS, RIFLE, ROUND_SECONDS, SCORE_LIMIT, TICK,
   type Bullet, type Input, type Player,
 } from './combat.js';
@@ -11,7 +11,7 @@ type EventData =
   | { type: 'shot'; player: string; position: Vec3 }
   | { type: 'reload' | 'bolt' | 'spawn'; player: string }
   | { type: 'impact'; player: string; position: Vec3 }
-  | { type: 'hit'; player: string; target: string; headshot: boolean; lethal: boolean; position: Vec3 }
+  | { type: 'hit'; player: string; target: string; headshot: boolean; lethal: boolean; position: Vec3; source: Vec3 }
   | { type: 'kill'; player: string; attacker: string; victim: string; headshot: boolean };
 
 export type MatchEvent = EventData & { serial: number; time: number };
@@ -42,7 +42,7 @@ export class Match {
       id, name, bot, position: vec(), yaw: 0, pitch: 0, height: PLAYER_HEIGHT,
       crouched: false, aiming: false, sprinting: false, moving: false,
       health: 100, alive: false, protectedUntil: 0, respawnAt: 0,
-      breath: 1, breathExhausted: false, steady: false,
+      breath: 1, breathExhausted: false, steady: false, flinch: 0,
       ammo: RIFLE.magazine, reserve: RIFLE.reserve, boltUntil: 0, reloadUntil: 0,
       kills: 0, deaths: 0, headshots: 0, generation: 0,
     };
@@ -151,7 +151,7 @@ export class Match {
       moving: false, aiming: false, sprinting: false, health: 100, alive: true,
       protectedUntil: this.time + PROTECTION_SECONDS, respawnAt: 0,
       ammo: RIFLE.magazine, reserve: RIFLE.reserve, boltUntil: 0, reloadUntil: 0,
-      breath: 1, steady: false, breathExhausted: false, generation: player.generation + 1,
+      breath: 1, steady: false, breathExhausted: false, flinch: 0, generation: player.generation + 1,
     });
     const command = this.commands.get(player.id);
     if (command) {
@@ -169,6 +169,7 @@ export class Match {
     }
     const command = this.commands.get(player.id);
     if (!command) return;
+    player.flinch = Math.max(0, player.flinch - dt);
     const { input } = command;
     const firing = input.fire > command.fired;
     const reloading = input.reload > command.reloaded;
@@ -261,7 +262,11 @@ export class Match {
     const attacker = this.players.get(owner);
     if (!attacker) return;
     target.health = Math.max(0, target.health - (headshot ? 100 : RIFLE.bodyDamage));
-    this.emit({ type: 'hit', player: owner, target: target.id, headshot, lethal: target.health === 0, position });
+    if (target.health > 0) target.flinch = BODY_FLINCH;
+    this.emit({
+      type: 'hit', player: owner, target: target.id, headshot, lethal: target.health === 0, position,
+      source: { ...attacker.position },
+    });
     if (target.health > 0) return;
     target.alive = false;
     target.deaths++;

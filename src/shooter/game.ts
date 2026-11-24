@@ -4,7 +4,7 @@ import './shooter.css';
 import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
-import { AIR, BAG_MAX, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
+import { AIR, BAG_MAX, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, hitFlinch, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
@@ -578,11 +578,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (e.attacker === p.id && e.victim >= 0) {
           hitT = 0.3; hitHead = e.head; hitKill = false; combo = Math.min(6, combo + 1); comboT = 1.8; audio.play(e.head ? 'headshot' : 'hitmark', 0, combo);
           const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop');
-          const n = document.createElement('b'); n.textContent = `${e.dmg}${combo > 1 ? ` / ${combo} HIT` : ''}`; n.className = e.head ? 'head' : ''; n.style.left = `${(Math.random() - 0.5) * 70}px`; q('#sz-nums').append(n); window.setTimeout(() => n.remove(), 700);
+          const n = document.createElement('b'); n.textContent = combo > 1 ? `${e.dmg} ×${combo}` : String(e.dmg); n.className = e.head ? 'head' : ''; n.style.left = `${(Math.random() - 0.5) * 70}px`; q('#sz-nums').append(n); window.setTimeout(() => n.remove(), 700);
         }
         if (e.victim === p.id) {
           audio.play('hurt'); const rel = (m.players[e.attacker] ? Math.atan2(m.players[e.attacker].z - p.z, m.players[e.attacker].x - p.x) : p.hurtYaw) - yaw, d = document.createElement('i');
           d.style.transform = `rotate(${(rel * 180) / Math.PI + 90}deg)`; q('#sz-dmgs').append(d); window.setTimeout(() => d.remove(), 900);
+          const flinch = prefs.reducedMotion ? 0 : hitFlinch(e.dmg);
+          if (flinch) { pitch = clamp(pitch + flinch, -1.4, 1.4); rcP += flinch; }
           if (pvp && e.attacker >= 0) pvp.net.sendAck(e.dmg, e.head);
         }
       } else if (e.t === 'kill') {

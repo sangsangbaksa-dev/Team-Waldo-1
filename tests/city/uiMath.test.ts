@@ -15,7 +15,7 @@ describe('LAST CITY minimap hit testing', () => {
 });
 
 import {
-  LOOK_PITCH_MAX, LOOK_PITCH_MIN, applyLook, areaChipRect, clampLabelScreenPos, clampLookPitch,
+  LOOK_PITCH_MAX, LOOK_PITCH_MIN, applyLook, areaChipRect, clampLabelScreenPos, clampLookPitch, hurtPitchKick,
   declutterFromAreaChip, doorFacingYaw, isLookSpike, labelSpriteCenter,
 } from '../../src/city/uiMath';
 
@@ -25,6 +25,9 @@ describe('look pitch and spikes', () => {
     expect(clampLookPitch(2)).toBe(LOOK_PITCH_MAX);
     expect(clampLookPitch(-0.05)).toBeCloseTo(-0.05);
     expect(clampLookPitch(Number.NaN)).toBe(0);
+    expect(hurtPitchKick(0)).toBe(0);
+    expect(hurtPitchKick(21)).toBeCloseTo(0.05);
+    expect(hurtPitchKick(400)).toBe(0.055);
   });
   it('ignores pointer-lock spikes and still clamps a legal look', () => {
     expect(isLookSpike(0, 400)).toBe(true);

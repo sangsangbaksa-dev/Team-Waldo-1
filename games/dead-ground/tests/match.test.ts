@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eye, MAX_PLAYERS, neutralInput, PROTECTION_SECONDS, RESPAWN_SECONDS, RIFLE, SCORE_LIMIT, TICK } from '../src/domain/combat.js';
+import { aimSway, eye, MAX_PLAYERS, neutralInput, PROTECTION_SECONDS, RESPAWN_SECONDS, RIFLE, SCORE_LIMIT, TICK } from '../src/domain/combat.js';
 import { Match } from '../src/domain/match.js';
 import { vec } from '../src/domain/math.js';
 import type { World } from '../src/domain/world.js';
@@ -32,6 +32,9 @@ describe('match rules', () => {
     tick(PROTECTION_SECONDS + TICK);
     projectile(1.05);
     expect(b.health).toBe(35);
+    expect(b.flinch).toBeGreaterThan(0.4);
+    expect(Math.hypot(aimSway(b, 1.2).yaw, aimSway(b, 1.2).pitch))
+      .toBeGreaterThan(Math.hypot(aimSway({ ...b, flinch: 0 }, 1.2).yaw, aimSway({ ...b, flinch: 0 }, 1.2).pitch) * 2);
     expect(a.kills).toBe(0);
     projectile(eye(b).y);
     expect(b.alive).toBe(false);

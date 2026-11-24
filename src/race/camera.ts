@@ -21,6 +21,12 @@ export function chaseShake(speedFrac: number, boosting: boolean, kick: number): 
   return speedFrac * speedFrac * SPEED_SHAKE + (boosting ? NITRO_SHAKE : 0) + Math.max(0, kick) * IMPACT_SHAKE;
 }
 
+/** 벽·차체 충격. kick 은 한 프레임 위치 흔들림(0–1), punch 는 짧은 시야각 킥. 스치기는 시야를 벌리지 않습니다. */
+export function impactResponse(power: number): { kick: number; punch: number } {
+  const hit = Math.max(0, power);
+  return { kick: Math.min(0.9, hit * 0.05), punch: hit > 6 ? Math.min(0.4, hit * 0.018) : 0 };
+}
+
 /** 추적 시야각(도). 속도에 따라 최대 +22도, 니트로는 +9도, punch 는 순간적인 킥입니다. */
 export function chaseFov(speedFrac: number, boosting: boolean, punch: number): number {
   return 60 + speedFrac * speedFrac * 22 + (boosting ? BOOST_FOV : 0) + punch * 9;

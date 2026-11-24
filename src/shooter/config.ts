@@ -19,6 +19,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 /** 사격 손맛: 한 발마다 시점이 실제로 튀는 정도(라디안 = 반동 × kickPitch), 손을 떼면 되돌아오는 비율과 속도 */
 export const FEEL = { kickPitch: 0.5, kickYaw: 0.32, adsKick: 0.7, recover: 7, recoverShare: 0.65, sprintFov: 1.07, strafeRoll: 0.012 };
+/** 피격 시 시선이 잠깐 들렸다가 반동 회복으로 돌아옵니다. 약한 긁힘은 시선을 흔들지 않습니다. */
+export function hitFlinch(damage: number): number {
+  if (!Number.isFinite(damage) || damage < 4) return 0;
+  return Math.min(0.07, 0.012 + damage / 700);
+}
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
 /** 총기 파츠: 슬롯마다 하나씩 달 수 있고, 무기마다 달 수 있는 슬롯과 파츠가 정해져 있습니다. */

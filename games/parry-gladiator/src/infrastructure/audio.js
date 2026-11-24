@@ -93,6 +93,7 @@ export class ArenaAudio {
       case 'parry':
       case 'clash':
       case 'block':
+        thump(event === 'parry' ? 168 : 118, 64, 0.14, event === 'parry' ? 0.32 : 0.18);
         this.hiss(t, 0.13, 4800, 1500, 0.35, pan);
         ring(event === 'parry' ? 1040 : 580, 0.38, 0.33);
         ring(event === 'parry' ? 1580 : 920, 0.24, 0.18);

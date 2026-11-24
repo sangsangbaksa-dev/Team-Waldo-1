@@ -15,7 +15,7 @@ const btn = (label, command, { glyph, primary = false, meta = '', disabled = fal
   `<button type="button" class="button ${primary ? 'primary' : ''}" data-command="${command}" ${disabled ? 'disabled' : ''}>${glyph ? icon(glyph) : ''}<span>${label}</span>${meta ? `<small>${meta}</small>` : ''}</button>`;
 const pip = '<i></i><i></i>';
 const fighter = (side, label, role) => `<section class="fighter ${side}" aria-label="${role}">
-  <div class="fighter-id"><span class="fighter-icon">${icon('crest')}</span><div><span class="fighter-role">${role}</span><strong data-name>${label}</strong></div></div>
+  <div class="fighter-id"><span class="fighter-icon">${icon('crest')}</span><div><span class="fighter-role">${role}</span><strong data-name>${label}</strong><em data-state hidden></em></div></div>
   <div class="meter hp" role="meter" aria-label="${role} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i class="lag"></i><i class="value"></i></div>
   <div class="fighter-bottom"><div class="meter stamina" role="meter" aria-label="${role} stamina" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i class="value"></i></div><div class="pips" aria-label="Round wins">${pip}</div></div>
 </section>`;
@@ -77,7 +77,7 @@ export class View {
     this.fighters = ['.player', '.enemy'].map(side => {
       const base = this.find(side);
       return {
-        name: base.querySelector('[data-name]'), hp: base.querySelector('.hp'),
+        name: base.querySelector('[data-name]'), posture: base.querySelector('[data-state]'), hp: base.querySelector('.hp'),
         stamina: base.querySelector('.stamina'), pips: base.querySelector('.pips'),
         memo: {},
       };
@@ -272,6 +272,17 @@ export class View {
         item.memo.hp = hp;
         item.hp.style.setProperty('--fill', hp / 100);
         item.hp.setAttribute('aria-valuenow', hp);
+      }
+      const posture = player.state === 'stunned' ? 'Staggered'
+        : player.riposte > 0 && state.phase === 'fight' ? 'Riposte'
+          : player.state === 'block' ? 'Guard'
+            : player.state === 'dodge' ? 'Dodge'
+              : player.state === 'feint' ? 'Feint' : '';
+      if (item.memo.posture !== posture) {
+        item.memo.posture = posture;
+        item.posture.hidden = !posture;
+        item.posture.textContent = posture;
+        item.posture.dataset.tone = player.state === 'stunned' ? 'open' : player.riposte > 0 ? 'gold' : 'quiet';
       }
       if (item.memo.stamina !== stamina) {
         item.memo.stamina = stamina;

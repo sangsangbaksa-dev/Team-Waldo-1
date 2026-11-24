@@ -31,7 +31,7 @@ export interface Player {
   position: Vec3; yaw: number; pitch: number; height: number;
   crouched: boolean; aiming: boolean; sprinting: boolean; moving: boolean;
   health: number; alive: boolean; protectedUntil: number; respawnAt: number;
-  breath: number; breathExhausted: boolean; steady: boolean;
+  breath: number; breathExhausted: boolean; steady: boolean; flinch: number;
   ammo: number; reserve: number; boltUntil: number; reloadUntil: number;
   kills: number; deaths: number; headshots: number;
   generation: number;
@@ -68,9 +68,24 @@ export function movePlayer(world: World, state: Movement, input: Input, dt: numb
 export const eye = (player: Pick<Player, 'position' | 'height'>) =>
   vec(player.position.x, player.position.y + player.height - 0.15, player.position.z);
 
-export function aimSway(state: Pick<Player, 'aiming' | 'steady' | 'moving' | 'crouched'>, time: number) {
+export const BODY_FLINCH = 0.62;
+
+/** Aim point ahead of a moving target, including drop. Velocity is clamped so a bad sample cannot throw the shot. */
+export function shotLead(aimAt: Vec3, velocity: Vec3, distance: number): Vec3 {
+  const flight = Math.max(0, distance) / RIFLE.velocity;
+  const speed = Math.hypot(velocity.x, velocity.z);
+  const scale = speed > 12 ? 12 / speed : 1;
+  return vec(
+    aimAt.x + velocity.x * scale * flight,
+    aimAt.y + RIFLE.gravity * flight * flight / 2 - 0.32,
+    aimAt.z + velocity.z * scale * flight,
+  );
+}
+
+export function aimSway(state: Pick<Player, 'aiming' | 'steady' | 'moving' | 'crouched'> & { flinch?: number }, time: number) {
+  const kicked = 1 + Math.min(0.7, Math.max(0, state.flinch ?? 0)) * 5.5;
   const amplitude = (state.aiming ? 0.0035 : 0.008) * (state.steady ? 0.12 : state.crouched ? 0.72 : 1)
-    * (state.moving ? 2 : 1);
+    * (state.moving ? 2 : 1) * kicked;
   return {
     yaw: amplitude * (Math.sin(time * 2.1) + 0.34 * Math.sin(time * 3.7)),
     pitch: amplitude * (0.78 * Math.cos(time * 1.7) + 0.22 * Math.sin(time * 4.3)),

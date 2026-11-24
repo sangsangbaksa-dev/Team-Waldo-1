@@ -213,6 +213,8 @@ kbd{color:var(--paper);display:inline-block;border:1px solid #d6c4a550;padding:.
 .hit-marker{position:absolute;left:50%;top:50%;width:21px;height:21px;transform:translate(-50%,-50%) rotate(45deg);opacity:0}
 .hit-marker::before,.hit-marker::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--sand) 33%,transparent 33% 67%,var(--sand) 67%) center / 100% 2px no-repeat}
 .hit-marker::after{transform:rotate(90deg)}
+.hit-marker.head::before,.hit-marker.head::after{background:linear-gradient(90deg,#f4efe2 33%,transparent 33% 67%,#f4efe2 67%) center / 100% 3px no-repeat}
+.incoming{position:absolute;left:50%;top:50%;width:9.5rem;height:9.5rem;margin:-4.75rem;pointer-events:none;opacity:0;background:#c4553c;clip-path:polygon(46% 7%,54% 7%,50% 36%)}
 .hit-note,.combat-status,.scope-readout{position:absolute;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap}
 .hit-note{top:calc(50% + 1.55rem);color:var(--sand);font:700 1.23rem/1 var(--heading);letter-spacing:.13em}
 .combat-status{top:67%;padding:.45rem .73rem;background:#161811bf;border:1px solid var(--line);color:var(--paper);font-size:.75rem;letter-spacing:.075em}

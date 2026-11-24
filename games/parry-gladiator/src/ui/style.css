@@ -288,6 +288,16 @@ svg { width: 1.25rem; height: 1.25rem; display: block; flex: none; }
   font: 700 clamp(0.71rem, 1.5vw, 1.12rem)/1.1 var(--display);
   letter-spacing: 0.08em;
 }
+.fighter-id em[data-state]:not([hidden]) {
+  display: block;
+  margin-top: 0.22rem;
+  font: 700 0.72rem/1 var(--condensed);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #d8c3ae;
+}
+.fighter-id em[data-tone='open'] { color: #e7b2a2; }
+.fighter-id em[data-tone='gold'] { color: #f0d7a4; }
 .fighter-role, .clock span {
   display: block;
   font: 600 0.83rem/1.1 var(--condensed);

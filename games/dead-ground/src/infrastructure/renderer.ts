@@ -34,6 +34,8 @@ export class FieldRenderer {
   private lowDetail = false;
   private slowFrames = 0;
   private sharpness = 1;
+  private kick = 0;
+  private hurtRoll = 0;
 
   constructor(canvas: HTMLCanvasElement, world: World) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -91,6 +93,7 @@ export class FieldRenderer {
   reset(): void {
     this.incoming.length = 0;
     this.aim = 0;
+    this.kick = this.hurtRoll = 0;
     for (const view of this.tracks.values()) { this.scene.remove(view.root); view.dispose(); }
     this.tracks.clear();
     for (const { mesh } of this.impacts) { this.scene.remove(mesh); (mesh.material as THREE.Material).dispose(); }
@@ -105,9 +108,12 @@ export class FieldRenderer {
   }
 
   event(event: MatchEvent, self: string): void {
+    if (event.type === 'shot' && event.player === self) this.kick = 1;
+    if (event.type === 'hit' && event.target === self) this.hurtRoll = 1;
     if (event.type !== 'impact' && event.type !== 'hit') return;
     const material = new THREE.MeshBasicMaterial({
-      color: event.type === 'hit' ? '#dfac69' : '#ad9c7f', transparent: true, opacity: 0.85, depthWrite: false,
+      color: event.type === 'hit' ? (event.headshot ? '#f3e6c4' : '#dfac69') : '#ad9c7f',
+      transparent: true, opacity: 0.85, depthWrite: false,
     });
     const mesh = new THREE.Mesh(this.impactGeometry, material);
     const p = event.position;
@@ -143,8 +149,15 @@ export class FieldRenderer {
     const p = eye(player);
     const bob = player.moving ? Math.sin(time * (player.sprinting ? 14 : 9)) * 0.033 * (1 - this.aim) : 0;
     this.camera.position.set(p.x, p.y + bob - (player.alive ? 0 : 0.85), p.z);
+    this.kick = Math.max(0, this.kick - dt * 4.5);
+    this.hurtRoll = Math.max(0, this.hurtRoll - dt * 3.2);
     const sway = aimSway(player, time);
-    this.camera.rotation.set(player.pitch + sway.pitch, player.yaw + sway.yaw, 0, 'YXZ');
+    this.camera.rotation.set(
+      player.pitch + sway.pitch + this.kick * this.kick * 0.03,
+      player.yaw + sway.yaw,
+      Math.sin(this.renderTime * 46) * this.hurtRoll * 0.012,
+      'YXZ',
+    );
     this.landscape(this.renderTime, this.camera);
 
     if (this.renderer.shadowMap.enabled && (this.shadowPosition.distanceTo(this.camera.position) > 3 || this.renderTime % 0.24 < dt)) {

@@ -20,7 +20,7 @@
 #c-wanted{font-weight:800;color:#ff9d9d;background:#0e1a19e6;border-radius:8px;padding:3px 9px}#c-wanted:empty{display:none}#c-wanted .stars{color:#ffd24a;letter-spacing:2px}
 .c-topbtns{display:flex;gap:6px}.c-topbtns button{background:#0e1618e8;border:1px solid #ffffff2b;border-radius:8px;padding:6px 12px;font-weight:600;backdrop-filter:blur(8px)}
 .c-feed{right:12px;top:262px;display:grid;gap:4px;justify-items:end;max-width:min(380px,56vw)}
-.c-feed div{background:#0e1a19d9;border-right:3px solid;border-radius:6px 0 0 6px;padding:4px 9px;font-size:12px;font-weight:600}
+.c-feed div{background:#141c1ae8;color:#f4efe6;border-right:3px solid;border-radius:2px 0 0 2px;padding:5px 10px;font-size:13px;font-weight:650;letter-spacing:.01em}
 .c-banner{left:50%;top:58px;transform:translate(-50%,-8px);font-size:clamp(14px,1.5vw,18px);font-weight:700;letter-spacing:-.02em;line-height:1.35;color:#f6f1e6;text-shadow:none;background:#0c1418d8;border:1px solid #d8bc8055;border-radius:999px;padding:9px 20px;backdrop-filter:blur(12px);box-shadow:0 10px 28px #0007;opacity:0;transition:opacity .35s,transform .35s;text-align:center;width:max-content;max-width:min(720px,86vw)}
 .c-banner.show{opacity:1;transform:translate(-50%,0)}
 .city-hud:has(.c-missions:not([hidden])) .c-banner,.city-hud:has(.c-modal:not(:empty)) .c-banner{opacity:0;pointer-events:none}

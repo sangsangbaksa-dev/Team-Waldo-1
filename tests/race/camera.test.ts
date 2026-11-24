@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { BOOST_FOV, BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chevronFacing, fovRate, stepChaseAnchor } from '../../src/race/camera';
+import { BOOST_FOV, BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chevronFacing, fovRate, impactResponse, stepChaseAnchor } from '../../src/race/camera';
 
 describe('SPEED RUSH camera', () => {
   it('keeps positional shake tiny while nitro and speed still widen the FOV a lot', () => {
@@ -10,6 +10,11 @@ describe('SPEED RUSH camera', () => {
     expect(BOOST_FOV).toBeGreaterThanOrEqual(8);
     expect(chaseFov(1, false, 0)).toBeGreaterThan(chaseFov(0.4, false, 0) + 10);
     expect(chaseFov(0, false, 1) - chaseFov(0, false, 0)).toBeGreaterThan(5);
+    expect(impactResponse(3).kick).toBeCloseTo(0.15);
+    expect(impactResponse(3).punch).toBe(0);
+    expect(impactResponse(20).punch).toBeGreaterThan(0.2);
+    expect(impactResponse(20).kick).toBeLessThanOrEqual(0.9);
+    expect(impactResponse(-4).kick).toBe(0);
   });
   it('rumbles only a few thousandths of a radian and not at all when parked', () => {
     expect(chaseRumble(0, false, 0)).toBe(0);

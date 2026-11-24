@@ -475,7 +475,7 @@ export class ShooterView {
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
     const vx = view.x, vz = view.z;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const distance = Math.abs(p.x - vx) + Math.abs(p.z - vz); const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || distance > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, distance); if (!p.alive) rig.flash.visible = false; }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 6);
     const drv = view.veh >= 0 ? m.vehicles[view.veh] ?? null : null;

@@ -27,6 +27,7 @@ export class SoloSession implements Session {
   private readonly match: Match;
   private readonly bots: Bot[];
   private accumulator = 0;
+  private cachedSnapshot?: Snapshot;
 
   constructor(world: World, name: string) {
     this.match = new Match(world);
@@ -39,7 +40,7 @@ export class SoloSession implements Session {
     this.match.start();
   }
 
-  get snapshot(): Snapshot { return this.match.snapshot(); }
+  get snapshot(): Snapshot { return this.cachedSnapshot ??= this.match.snapshot(); }
 
   update(input: Input, dt: number): void {
     this.match.setInput(this.playerId, input);
@@ -47,6 +48,7 @@ export class SoloSession implements Session {
     while (this.accumulator >= TICK) {
       for (const bot of this.bots) this.match.setInput(bot.id, bot.decide(this.match, TICK));
       this.match.step();
+      this.cachedSnapshot = undefined;
       this.accumulator -= TICK;
     }
   }
@@ -54,6 +56,7 @@ export class SoloSession implements Session {
   restart(): void {
     this.accumulator = 0;
     this.match.start();
+    this.cachedSnapshot = undefined;
   }
 
   close(): void { this.match.setInput(this.playerId, neutralInput()); }

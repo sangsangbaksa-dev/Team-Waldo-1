@@ -38,6 +38,15 @@
 
   <section id="field" class="field" aria-label="Dead Ground battlefield" hidden>
     <canvas id="game" aria-label="3D battlefield"></canvas>
+    <div id="touch-controls" class="touch-controls" hidden aria-label="Touch controls">
+      <div class="touch-top"><button data-touch="map">Map</button><button data-touch="score">Score</button><button data-touch="menu">Menu</button></div>
+      <div class="touch-move-label">Drag to move</div>
+      <div class="touch-actions">
+        <button data-touch="zoom">Zoom</button><button data-touch="aim" aria-pressed="false">Aim</button>
+        <button data-touch="crouch" aria-pressed="false">Crouch</button><button data-touch="breath">Steady</button>
+        <button data-touch="reload">Reload</button><button data-touch="fire" class="touch-fire">Fire</button>
+      </div>
+    </div>
     <div id="hud" class="hud">
       <div id="hit-flash" class="hit-flash"></div>
       <canvas id="glass" class="glass" aria-hidden="true"></canvas>

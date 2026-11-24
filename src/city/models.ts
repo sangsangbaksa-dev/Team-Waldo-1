@@ -59,8 +59,6 @@ function nodeMap(root: THREE.Object3D): Record<string, THREE.Object3D> {
 
 /** 파일마다 대략의 크기(바이트). 서버가 content-length 를 주지 않을 때 진행률 계산에 씁니다. */
 const MODEL_FILES: Record<string, number> = { characters: 2_870_000, weapons: 1_400_000, vehicles: 1_720_000, structures: 1_190_000, props: 860_000, business: 830_000 };
-const TEXTURES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'].flatMap(n => [`facade_${n}`, `facade_${n}_e`]);
-const TEXTURE_EST = 200_000;
 const OPTIONAL = new Set(['business']);
 
 const buffers = new Map<string, Promise<ArrayBuffer>>();
@@ -101,7 +99,8 @@ export function loadModels(base: string, onProgress?: (fraction: number, note: s
       try {
         const loader = new GLTFLoader(), dir = `${base}assets/models/`;
         const get = async (n: string): Promise<THREE.Object3D> => (await loader.parseAsync(await getBuffer(`${dir}${n}.glb`, MODEL_FILES[n]!, OPTIONAL.has(n)), dir)).scene;
-        for (const n of TEXTURES) void getBuffer(`${base}assets/tex/${n}.png`, TEXTURE_EST, true).catch(() => undefined);
+        // Start the optional model alongside the required models. Textures are loaded by the building renderer.
+        void getBuffer(`${dir}business.glb`, MODEL_FILES.business!, true).catch(() => undefined);
         const [c, w, v, s, p] = await Promise.all(['characters', 'weapons', 'vehicles', 'structures', 'props'].map(get));
         report?.(0.97, '');
         return await build(c, w, v, s, p, get);
@@ -110,7 +109,7 @@ export function loadModels(base: string, onProgress?: (fraction: number, note: s
         for (const k of [...buffers.keys()]) if (k.endsWith('.glb')) buffers.delete(k); // 깨진 파일일 수 있어 새로 받습니다
       }
     }
-  })();
+  })().finally(() => { buffers.clear(); prog.clear(); report = null; });
   cache.catch(() => { cache = null; });
   return cache;
 }

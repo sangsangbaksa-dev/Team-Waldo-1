@@ -105,7 +105,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear(); weaponWheel.reset(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
+    keys.clear(); mouse.down = false; touchFire = false; firePointer = -1; acc = 0; looks.clear(); weaponWheel.reset(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
@@ -118,7 +118,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
+    audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('첫 사업체 확보 · J 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   let everLocked = false, lockErrors = 0, lookMuteUntil = 0;
@@ -530,7 +530,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const onResize = (): void => { R?.resize(); R3?.resize(); };
   const aimPoint = (): { x: number; y: number } => view === 'top' || !R3 ? R!.toWorld(mouse.x, mouse.y) : R3.groundPoint(900);
   const onBlur = (): void => {
-    keys.clear(); mouse.down = false; touchFire = false; looks.clear(); weaponWheel.reset();
+    keys.clear(); mouse.down = false; touchFire = false; firePointer = -1; looks.clear(); weaponWheel.reset();
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause();
   };
@@ -602,6 +602,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }, { passive: false });
   }
   const onWindowPointerEnd = (e: PointerEvent): void => {
+    endFire(e);
     looks.delete(e.pointerId);
     for (const stick of [sticks.move, sticks.aim]) if (stick.id === e.pointerId) { stick.id = -1; stick.x = 0; stick.y = 0; }
     if (e.pointerType !== 'touch' && (e.button === 0 || e.type !== 'pointerup')) mouse.down = false;
@@ -609,13 +610,25 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // Mobile pointers may end over the HUD rather than the canvas.
   window.addEventListener('pointerup', onWindowPointerEnd);
   window.addEventListener('pointercancel', onWindowPointerEnd);
-  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) fireBtn.addEventListener(n, () => { touchFire = false; });
+  const fireBtn = q('#c-fire');
+  let firePointer = -1;
+  fireBtn.addEventListener('pointerdown', e => {
+    if (firePointer >= 0 || !world || paused || world.over) return;
+    firePointer = e.pointerId; touchFire = true;
+    e.preventDefault(); e.stopPropagation(); audio.unlock();
+    try { fireBtn.setPointerCapture(e.pointerId); } catch { /* pointer release is handled at window level */ }
+  });
+  const endFire = (e: PointerEvent): void => {
+    if (firePointer !== e.pointerId) return;
+    firePointer = -1; touchFire = false;
+  };
+  for (const n of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) fireBtn.addEventListener(n, endFire);
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => {
     if (!world || paused || world.over || world.factions[0].pending > 0) return;
     const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height);
     if (!point) return;
     world.order(0, 'amove', point.x, point.y);
-    toast('전 병력 돌격!', false); e.stopPropagation();
+    toast('돌격 명령', false); e.stopPropagation();
   };
   q<HTMLCanvasElement>('#c-mini').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-mini'))); q<HTMLCanvasElement>('#c-big').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-big')));
 

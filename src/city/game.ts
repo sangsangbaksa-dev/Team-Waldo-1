@@ -137,10 +137,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').innerHTML = hudIcon('eye') + (v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰');
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lockFail = false; lockErrors = 0; lookMuteUntil = performance.now() + 220; return; } mouse.down = false; if (world) world.input.fire = false; const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lockFail = false; lockErrors = 0; lookMuteUntil = performance.now() + 220; return; } mouse.down = false; if (world) world.input.fire = false; const was = expectUnlock; expectUnlock = false; if (!was) clearInput(); if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
   const onMouseMove = (e: MouseEvent): void => {
-    if (!R3 || view === 'top' || paused) return;
+    if (!R3 || view === 'top' || paused || chatOpen || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return;
     if (!(locked || (lockFail && mouse.down))) return;
     // A placement click must not also rotate the camera, and pointer-lock
     // acquisition can inject a huge movementY that buries the view in the ground.
@@ -153,7 +153,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); leaveDuel(); endRoom(); audio.dispose(); unlock(); R3?.dispose(); root.remove();
     document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onLockErr); document.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerEnd); window.removeEventListener('pointercancel', onWindowPointerEnd); document.removeEventListener('visibilitychange', onBlur); window.removeEventListener('beforeunload', onUnload);
+    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('mouseup', onMouseUp); window.removeEventListener('pointerup', onWindowPointerEnd); window.removeEventListener('pointercancel', onWindowPointerEnd); document.removeEventListener('visibilitychange', onBlur); window.removeEventListener('beforeunload', onUnload);
     onExit();
   }
 
@@ -624,6 +624,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (primaryReleased(e)) mouse.down = false;
   };
   // Mobile pointers may end over the HUD rather than the canvas.
+  const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.down = false; };
+  window.addEventListener('mouseup', onMouseUp);
   window.addEventListener('pointerup', onWindowPointerEnd);
   window.addEventListener('pointercancel', onWindowPointerEnd);
   const fireBtn = q('#c-fire');

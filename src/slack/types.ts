@@ -91,6 +91,8 @@ export interface StageView {
   frame(dt: number): void;
   /** sim.drain() 로 가져온 이벤트를 game.ts 가 넘겨줌(소리·연출) */
   onEvent(ev: SlackEvent): void;
+  /** 일시정지나 포커스 상실 시 입력 소유권을 초기화합니다. */
+  releaseInput(): void;
   /** 리스너·타이머 정리 */
   dispose(): void;
 }

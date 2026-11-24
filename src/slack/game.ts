@@ -6,6 +6,7 @@ import { createSim, GOALS } from './sim';
 import { createSlackAudio } from './audio';
 import { readSlackRecord, recordSlackRun } from './records';
 import { createSessionStats, advanceSession } from './application/session-stats';
+import { renderSlackHud } from './ui/hud';
 import { tutorialSeen, markTutorialSeen } from './infrastructure/browser-record-store';
 import type { ActivityId, Level, Sim, SlackState, StageId, StageView } from './types';
 
@@ -158,11 +159,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     }
     view.frame(elapsed);
     if (tutorial) { tutTime += elapsed; tutWall += dt; const isLast = tutStep === tutorialSteps.length - 1; if (tutorialSteps[tutStep].done(sim.state, tutTime) || tutWall > (isLast ? 9 : 40)) { if (++tutStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); } }
-    const s = sim.state, left = Math.max(0, Math.ceil(s.limit - s.time)); $('[data-time]').textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
-    $('[data-fun]').textContent = `${Math.round(s.fun)} / ${Math.round(s.goal)}`; $('[data-fun-bar]').style.width = `${Math.min(100, s.fun)}%`; $('[data-goal]').style.left = `${Math.min(100, s.goal)}%`;
-    $('[data-strikes]').textContent = String(s.strikes); $('[data-pips]').querySelectorAll('i').forEach((p, i) => p.classList.toggle('on', i < s.strikes));
-    $('[data-battery]').textContent = String(Math.round(s.battery)); $('[data-battery-chip]').classList.toggle('low', s.battery < 25); $('[data-combo]').textContent = String(s.combo);
-    $('[data-risk]').style.width = `${Math.max(0, Math.min(100, s.sus))}%`; $('[data-risk-chip]').classList.toggle('hot', s.sus > 70);
+    const s = sim.state; renderSlackHud($, s);
     // 긴장도 → 비네팅·심장 박동 연동: 45 부터 박동이 시작해 100 에서 0.5초 간격·큰 소리. 박동 간격과 붉은 화면 맥박 속도를 같이 맞춘다.
     const tension = Math.max(0, Math.min(1, (s.sus - 45) / 55)), interval = 1.15 - tension * 0.65;
     root.style.setProperty('--danger', String(Math.max(0, (s.sus - 25) / 75))); root.style.setProperty('--pulse-speed', `${s.sus > 45 ? interval : 1.4}s`);

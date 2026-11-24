@@ -183,15 +183,15 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (a === 'missions') {
       const board = q('#c-missions');
       board.hidden = !board.hidden;
-      if (!board.hidden) { panel.hidden = true; bigmap.hidden = true; shopOpen = false; renderMissions(); unlock(); }
+      if (!board.hidden) { clearInput(); panel.hidden = true; bigmap.hidden = true; shopOpen = false; renderMissions(); unlock(); }
       else lock();
       audio.play('click'); return;
     }
     if (a === 'closemissions') { q('#c-missions').hidden = true; lock(); audio.play('click'); return; }
     if (a === 'tab') { tab = arg; renderPanel(); audio.play('click'); }
-    else if (a === 'panel') { if (w.inside) { toast('건물 안에서는 지휘 패널을 열 수 없어요 — 밖으로 나가서 이용하세요', false); return; } q('#c-missions').hidden = true; panel.hidden = !panel.hidden; shopOpen = false; if (!panel.hidden) { renderPanel(); unlock(); } else lock(); audio.play('click'); }
+    else if (a === 'panel') { if (w.inside) { toast('건물 안에서는 지휘 패널을 열 수 없어요 — 밖으로 나가서 이용하세요', false); return; } q('#c-missions').hidden = true; panel.hidden = !panel.hidden; shopOpen = false; if (!panel.hidden) { clearInput(); renderPanel(); unlock(); } else lock(); audio.play('click'); }
     else if (a === 'closepanel') { panel.hidden = true; shopOpen = false; lock(); }
-    else if (a === 'map') { q('#c-missions').hidden = true; bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else unlock(); }
+    else if (a === 'map') { q('#c-missions').hidden = true; bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else { clearInput(); unlock(); } }
     else if (a === 'train') res(w.train(0, arg as UnitId));
     else if (a === 'build') { if (w.inside) { toast('건물 밖에서 지을 수 있어요', false); return; } ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; panel.hidden = true; shopOpen = false; q('#c-missions').hidden = true; bigmap.hidden = true; lock(); }
     else if (a === 'placeok') place();
@@ -222,7 +222,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (w.inside) {
       const z = w.insideBiz(), out = z && w.nearInsideDoor() ? w.doorOut(z) : null;
       const r = w.interactInside(0);
-      if (r === 'exit') leaveBuilding(out ?? undefined); else if (r === 'shop') { shopOpen = true; panel.hidden = false; renderPanel(); unlock(); audio.play('click'); } else toast('카운터 앞이나 출입문 앞에서 E 를 누르세요', false);
+      if (r === 'exit') leaveBuilding(out ?? undefined); else if (r === 'shop') { shopOpen = true; panel.hidden = false; clearInput(); renderPanel(); unlock(); audio.play('click'); } else toast('카운터 앞이나 출입문 앞에서 E 를 누르세요', false);
       return;
     }
     const e = w.interact(0);
@@ -242,7 +242,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     audio.play('door'); lock();
   }
   function pause(): void {
-    if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
+    if (!world || world.over || duel || room) return; paused = true; clearInput(); unlock();
     modal.innerHTML = `<section class="c-pause wd-panel"><div class="c-kicker wd-eyebrow">LAST CITY</div><h2 class="wd-title">일시정지</h2>
       <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬 · M 지도 · J 작전 지령</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · B 바로 건설 · Delete 조준한 아군 건물 철거 · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
       <div class="c-actions wd-actions"><button data-act="resume" class="c-primary wd-btn primary">이어하기</button><button data-act="sound" class="wd-btn">소리 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry" class="wd-btn">다시 시작</button>${tut ? '<button data-act="tutskip" class="wd-btn">튜토리얼 건너뛰기</button>' : ''}<button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
@@ -521,6 +521,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       return;
     }
     if (e.repeat) return;
+    // Panels remain live while the world runs, but keystrokes there must not move or fire the boss.
+    if ((!panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) && !['b', 'j', 'm'].includes(k)) return;
     if (focusedControl) {
       // Keep Space/Enter on the button, but do not swallow WASD and other game keys.
       if (k === ' ' || k === 'Enter') return;
@@ -531,17 +533,20 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (k === ' ') e.preventDefault();
     if (k === 'e') interact(); else if (k === 'f') w.toggleVehicle(0); else if (k === 'r') reload(w, 0); else if (k === 'q') res(w.useSkill(0)); else if (k === 'h') w.useMedkit(0);
     else if (k === 'z') act('order:follow'); else if (k === 'x') act('order:hold'); else if (k === 'c') { const p = aimPoint(); w.order(0, 'amove', p.x, p.y); } else if (k === 'v') act('view');
-    else if (k === 'j') act('missions'); else if (k === 'm') act('map'); else if (k === 'b') { if (w.inside) toast('건물 밖에서 지을 수 있어요', false); else { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); } }
+    else if (k === 'j') act('missions'); else if (k === 'm') act('map'); else if (k === 'b') { if (w.inside) toast('건물 밖에서 지을 수 있어요', false); else { tab = 'build'; shopOpen = false; panel.hidden = false; clearInput(); renderPanel(); unlock(); } }
     else if (k === 'Delete' || k === 'Backspace') { const t = w.structAt(aimPoint().x, aimPoint().y); if (t) requestDemolish(t.id); else toast('철거할 아군 건물을 조준하세요'); }
     else if (k >= '1' && k <= '3') switchWeapon(w, 0, Number(k) - 1);
   }
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); };
   const onResize = (): void => { R?.resize(); R3?.resize(); };
   const aimPoint = (): { x: number; y: number } => view === 'top' || !R3 ? R!.toWorld(mouse.x, mouse.y) : R3.groundPoint(900);
-  const onBlur = (): void => {
+  function clearInput(): void {
     keys.clear(); mouse.down = false; touchFire = false; looks.clear();
     if (world) { world.input.fire = false; world.input.mx = world.input.my = 0; world.input.dash = false; world.input.brake = false; }
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
+  }
+  const onBlur = (): void => {
+    clearInput();
     if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause();
   };
   chatBox().addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); closeChat(true); } else if (e.key === 'Escape') { e.preventDefault(); closeChat(false); } });
@@ -585,7 +590,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const looks = new Map<number, { x: number; y: number }>();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
-      audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
+      audio.unlock(); if (!world || paused || world.over || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
         if (ghost && !three) return; // 탑뷰: 누른 곳으로 고스트가 따라옵니다. 설치는 아래 '설치' 버튼
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -618,7 +623,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // Mobile pointers may end over the HUD rather than the canvas.
   window.addEventListener('pointerup', onWindowPointerEnd);
   window.addEventListener('pointercancel', onWindowPointerEnd);
-  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave']) fireBtn.addEventListener(n, () => { touchFire = false; });
+  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { if (!world || paused || world.over || world.factions[0].pending > 0 || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave']) fireBtn.addEventListener(n, () => { touchFire = false; });
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => {
     if (!world || paused || world.over || world.factions[0].pending > 0) return;
     const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height);
@@ -707,7 +712,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (closed) return; raf = requestAnimationFrame(frame); const w = world!, r = R!; const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3; audio.setPaused(paused || f.pending > 0);
     const veh = b && b.inVeh ? w.vehicles.find(v => v.id === b.inVeh) : undefined, spd = veh ? Math.hypot(veh.vx, veh.vy) : 0;
-    if (f.pending > 0 && !modal.firstChild) { showPerks(); keys.clear(); mouse.down = false; }
+    if (f.pending > 0 && !modal.firstChild) { clearInput(); showPerks(); }
     if (!paused && f.pending === 0 && !w.over) {
       const inp = w.input; let mx = (keys.has('d') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('a') || keys.has('ArrowLeft') ? 1 : 0), my = (keys.has('s') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('w') || keys.has('ArrowUp') ? 1 : 0);
       if (sticks.move.id >= 0) { mx = sticks.move.x; my = sticks.move.y; }

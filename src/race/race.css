@@ -215,3 +215,7 @@
 .rc-settings .rc-set-seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:minmax(58px,auto)}
 .rc-settings .rc-note{margin:10px 0 0;font-size:12px;opacity:.75;line-height:1.5}
 @media(pointer:coarse) and (orientation:portrait){.touch .rc-msg.hint{top:max(252px,calc(env(safe-area-inset-top) + 238px))}}
+
+/* Touch racers need the same recovery action as the R key. */
+.rc-btns .rc-recover{display:none;font-size:12px;font-weight:800;width:auto;min-width:44px;padding:0 8px}
+.touch .rc-btns .rc-recover{display:inline-flex;align-items:center;justify-content:center}

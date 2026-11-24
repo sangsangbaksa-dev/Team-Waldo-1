@@ -150,10 +150,10 @@ function jobAction(ctx: ActionCtx, spotId: string, express = false): ActionSpec 
     const terms = deliveryTerms(express ? EXPRESS_JOB_ID : job.id);
     const busy = g.task ? '이미 배달 중입니다' : undefined;
     return spec({
-      id: express ? 'accept_express' : 'accept', label: express ? '긴급 배송' : '일반 배달', desc: express ? `제한 ${terms.minutes}분 · 보수 ${fmt(terms.reward)} · 지각 시 보수 없음. 순간이동 불가.` : `${job.desc} 제한 ${DELIVERY_MINUTES / 60}시간, 기본 ${fmt(job.pay)}`, reward: terms.reward, energy: terms.energy, durationSec: job.durationSec,
+      id: express ? 'accept_express' : 'accept', label: express ? '긴급 배송' : '일반 배달', desc: express ? `제한 ${terms.minutes}분 · 보수 ${fmt(terms.reward)} · 지각 시 보수 없음. 직접 이동 · 시간 배속 1배 권장.` : `${job.desc} 제한 ${DELIVERY_MINUTES / 60}시간, 기본 ${fmt(job.pay)}`, reward: terms.reward, energy: terms.energy, durationSec: job.durationSec,
       ...((closed ?? busy) ? off((closed ?? busy)!) : {}),
       run: () => {
-        const targets = SPOTS.filter(s => s.id !== spotId && spotUnlocked(g, s) && (s.kind !== 'lot' || g.lots[s.id].owner !== 'none') && s.kind !== 'job');
+        const targets = SPOTS.filter(s => s.id !== spotId && spotUnlocked(g, s) && (s.kind !== 'lot' || g.lots[s.id].owner !== 'none') && s.kind !== 'job' && (!express || s.district === 'market' || s.district === 'downtown'));
         const target = pick(g, targets);
         g.energy -= terms.energy;
         g.task = { id: nextId(g, 'task'), jobId: express ? EXPRESS_JOB_ID : job.id, from: spotId, target: target.id, reward: terms.reward, deadline: absMinute(g) + terms.minutes };

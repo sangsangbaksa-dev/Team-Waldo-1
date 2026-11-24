@@ -29,7 +29,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <button class="sk-pause" id="sk-pause" aria-label="일시정지">Ⅱ</button><div class="sk-hint" id="sk-hint"></div>
   </div>
   <div class="sk-modal wd-screen" id="sk-title"><div class="sk-card wd-panel">
-    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">끝없이 이어지는 하늘에서 나만의 기록을 세워보세요.</p>
+    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">적기를 격추하고 다음 웨이브까지 생존하세요.</p>
     <div class="wd-field"><div class="sk-section-label wd-label">난이도</div><div class="sk-diff wd-seg" id="sk-diff"></div></div>
     <div class="wd-field"><div class="sk-section-label wd-label">설정</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label></div></div>
     <ul class="sk-how"><li><b>커서/손가락 위치</b>로 조종 — 클릭 없이 움직이면 기체가 따라갑니다 (화면 가운데 = 직진)</li>
@@ -40,9 +40,14 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">게임 목록으로</button></div>
   </div></div>
   <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">MISSION REPORT</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">게임 목록으로</button></div></div></div>
-  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-snd">소리 켜짐</button><button class="wd-btn" id="sk-restart">다시 시작</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
+  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-snd">소리 켜짐</button><button class="wd-btn" id="sk-restart">다시 시작</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
   document.body.appendChild(root);
-  const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
+  const elements = new Map<string, HTMLElement>();
+  const $ = <T extends HTMLElement>(id: string): T => {
+    let el = elements.get(id);
+    if (!el) { el = root.querySelector<HTMLElement>('#' + id)!; elements.set(id, el); }
+    return el as T;
+  };
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
 
   let adaptive: AdaptiveQuality | null = null;
@@ -110,14 +115,14 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       roll += clamp(l.x * 2.2, -pull, pull); pitch += clamp(l.y * 2.2, -pull, pull);
     }
     // 자동 사격: 조준원에 들어오면 발사(클릭/스페이스는 수동)
-    const onTarget = !!sim!.bestTarget(p, AIM_CONE, GUN_RANGE * 0.95);
+    const onTarget = autoFire && !!sim!.bestTarget(p, AIM_CONE, GUN_RANGE * 0.95);
     return { yaw: yawIn, pitch: clamp(pitch, -1, 1), roll: clamp(roll, -1, 1), throttle, fire: fireTap.active || mFire || keys.has(' ') || (autoFire && onTarget), missile: mMissile || mTap, flare, boost: keys.has('shift') || keys.has('b') || mBoost };
   }
 
   // ── HUD ──────────────────────────────────────────
   function hint(t: string): void { const el = $('sk-hint'); el.textContent = t; hintT = 3; }
-  let bannerTick = 0;
-  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; bannerTick = performance.now(); }
+  let hudElapsed = 0;
+  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; }
   function alertMsg(t: string, sec = 1): void { $('sk-alert').textContent = t; alertT = sec; }
   const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
   function hud(p: Jet): void {
@@ -129,9 +134,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     setHtml($('sk-status'), [sim!.shield > 0 ? `${svgIcon('shield')}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${svgIcon('bolt')}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
     $('sk-fuel').style.width = `${p.fuel * 100}%`;
     $('sk-thr').style.width = `${throttle * 100}%`;
-    if (alertT > 0) { alertT -= 1 / 60; if (alertT <= 0) $('sk-alert').textContent = ''; }
-    if (bannerT > 0) { bannerT -= (performance.now() - bannerTick) / 1000; bannerTick = performance.now(); if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
-    if (hintT > 0) { hintT -= 1 / 60; if (hintT <= 0) $('sk-hint').textContent = ''; }
+  }
+  function tickHudTimers(dt: number): void {
+    if (alertT > 0) { alertT -= dt; if (alertT <= 0) $('sk-alert').textContent = ''; }
+    if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
+    if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('sk-hint').textContent = ''; }
   }
   function overlay(p: Jet): void {
     const w = ov.width, h = ov.height, dpr = w / innerWidth; octx.clearRect(0, 0, w, h); octx.save(); octx.scale(dpr, dpr);
@@ -185,11 +192,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   // ── 흐름 ─────────────────────────────────────────
   function resize(): void {
-    if (!renderer || !view) return; const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
-    renderer.setSize(w, h, false); view.resize(w, h); ov.width = Math.round(w * dpr); ov.height = Math.round(h * dpr); ov.style.width = w + 'px'; ov.style.height = h + 'px';
+    if (!renderer || !view) return; const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, adaptive?.pr ?? 1.5);
+    renderer.setSize(w, h, false); view.resize(w, h); const ow = Math.round(w * dpr), oh = Math.round(h * dpr); if (ov.width !== ow) ov.width = ow; if (ov.height !== oh) ov.height = oh; ov.style.width = w + 'px'; ov.style.height = h + 'px';
   }
   function start(d: Difficulty): void {
-    diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap.reset(); flare = false; mFire = mMissile = false; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
+    diff = d; clearInput(); hudElapsed = 1; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap.reset(); flare = false; mFire = mMissile = false; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : '마우스를 움직여 조종하세요 (Esc: 일시정지)'); banner('출격!', 1.5);
     if (view) { view.camera.position.copy(sim.player.pos).add(new THREE.Vector3(0, 10, 40)); }
   }
@@ -210,6 +217,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
+    if (document.hidden || state === 'paused') { last = now; return; }
+    if (state !== 'play' && now - last < 1000 / 30) return;
     const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!renderer || !view || !sim) return;
     if (state === 'play') {
       const p = sim.player, shots = sim.shots;
@@ -226,7 +235,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           case 'hit': { view.spark(ev.pos); if (mine(ev.id)) { audio.play('hurt'); view.kick(0.45); hitT = 1; hitBy = ev.by ?? 0; alertMsg('피격!', 0.7); } else audio.play('hit', dist(ev.pos)); break; }
           case 'kill': if (ev.by === p.id) banner(`격추! +${ev.points ?? 0}점${(ev.combo ?? 0) > 1 ? ` · 콤보 ×${ev.combo}` : ''}${ev.combo === 3 ? ' · 미사일 +1' : ''}`, 1); break;
           case 'nolock': audio.play('lock'); alertMsg('락온 대상 없음 — 적을 조준원에 두세요', 1.2); break; case 'lock': audio.play('lock'); break; case 'lockdone': audio.play('lockdone'); alertMsg('락온 — 미사일 발사!', 1.2); break;
-          case 'warn': audio.play('warn'); alertMsg('⚠ 미사일 접근 — 플레어(F)/기동!', 1); break;
+          case 'warn': audio.play('warn'); alertMsg('미사일 접근 — 플레어(F)/기동', 1); break;
           case 'wave': audio.play('wave'); banner(`WAVE ${ev.n}${ev.modifier ? ` · ${ev.modifier}` : ''}`, 2.4); break;
           case 'flare': alertMsg('플레어 투하', 0.8); break;
           case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? '수리 +30' : ev.kind === 'shield' ? '방어막 +30' : '미사일 +2', 1); break;
@@ -246,10 +255,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       audio.engine(true, throttle); audio.wind((p.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
       if (!p.alive) finish();
     }
-    if (state !== 'paused') view.sync(sim, dt, now / 1000);
+    view.sync(sim, dt, now / 1000);
     if (state === 'play' || state === 'over') { view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1)); }
-    renderer.render(view.scene, view.camera); if (state !== 'paused') adaptive?.tick();
-    if (state === 'play') { hud(sim.player); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
+    renderer.render(view.scene, view.camera); if (state === 'play') adaptive?.tick();
+    if (state === 'play') { tickHudTimers(dt); hudElapsed += dt; if (hudElapsed >= 0.1) { hud(sim.player); hudElapsed = 0; } overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
     if (state === 'title') { // 타이틀 배경: 느리게 선회하는 카메라
       const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);
     }
@@ -267,7 +276,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   function paintRec(): void { const rec = readSkyRecords(); $('sk-rec').textContent = rec.runs ? `최고 점수 ${rec.bestScore} · 최고 웨이브 ${rec.bestWave} · 누적 격추 ${rec.kills}` : '첫 출격을 기다립니다'; } paintRec();
   $('sk-start').onclick = () => start(DIFFS[sel]!); $('sk-again').onclick = () => start(DIFFS[sel]!); $('sk-resume').onclick = togglePause; $('sk-restart').onclick = () => start(DIFFS[sel]!); const paintSnd = (): void => { $('sk-snd').textContent = `소리 ${audio.enabled ? '켜짐' : '꺼짐'}`; }; $('sk-snd').onclick = () => { audio.setEnabled(!audio.enabled); writeSound(audio.enabled); paintSnd(); }; paintSnd(); $('sk-pause').onclick = togglePause;
   for (const id of ['sk-quit', 'sk-quit2', 'sk-quit3']) $(id).onclick = exit;
-  const hold = (id: string, set: (v: boolean) => void): void => { const b = $(id); b.addEventListener('pointerdown', e => { e.stopPropagation(); audio.unlock(); set(true); b.setPointerCapture(e.pointerId); }); b.addEventListener('pointerup', () => set(false)); b.addEventListener('pointercancel', () => set(false)); };
+  const hold = (id: string, set: (v: boolean) => void): void => { const b = $(id); let owner: number | null = null; b.addEventListener('pointerdown', e => { e.stopPropagation(); if (state !== 'play' || owner !== null) return; e.preventDefault(); owner = e.pointerId; audio.unlock(); set(true); try { b.setPointerCapture(e.pointerId); } catch { /* release on pointer leave */ } }); const release = (e: PointerEvent): void => { if (owner === e.pointerId) { owner = null; set(false); } }; b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('lostpointercapture', release); b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(e); }); };
   hold('sk-b-boost', v => { mBoost = v; }); hold('sk-b-fire', v => { mFire = v; if (v) fireTap.press(); }); hold('sk-b-mis', v => { mMissile = v; }); $('sk-b-flare').addEventListener('pointerdown', e => { e.stopPropagation(); flare = true; });
   addEventListener('resize', resize);
 

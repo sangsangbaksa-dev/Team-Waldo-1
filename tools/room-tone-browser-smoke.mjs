@@ -82,7 +82,11 @@ try {
       await page.getByRole("button",{name:"구역 진입"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);
       const firstTime=await page.locator("#timer").textContent();
-      await page.waitForTimeout(1500);
+      await page.waitForFunction(
+        initial => document.querySelector("#timer")?.textContent !== initial,
+        firstTime,
+        {timeout:20000,polling:100},
+      );
       const runningTime=await page.locator("#timer").textContent();
       assert.notEqual(runningTime,firstTime,"The playing clock must keep advancing");
       if(config.mobile) {

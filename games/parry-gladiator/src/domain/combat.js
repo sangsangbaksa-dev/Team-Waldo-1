@@ -1,7 +1,7 @@
 export const MAX_HP = 100;
 export const MAX_STAMINA = 100;
 export const ARENA_RADIUS = 9;
-export const PARRY_WINDOW = 0.17;
+export const PARRY_WINDOW = 0.221;
 export const DODGE_DURATION = 0.43;
 export const FEINT_DURATION = 0.26;
 

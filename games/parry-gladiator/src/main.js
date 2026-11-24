@@ -338,11 +338,12 @@ let latest = performance.now();
 let lastPaint = 0;
 document.addEventListener('visibilitychange', () => {
   latest = performance.now();
+  lastPaint = 0;
   if (document.hidden && mode && mode !== 'online' && !paused && !resultScreen) pause();
 });
 function frame(now) {
   requestAnimationFrame(frame);
-  const elapsed = (now - latest) / 1000;
+  const elapsed = Math.max(0, (now - latest) / 1000);
   const dt = Math.min(0.08, elapsed);
   latest = now;
   if (document.hidden) return;
@@ -358,7 +359,7 @@ function frame(now) {
         lastPing = Math.round(now);
         network?.send({ type: 'ping', id: lastPing });
       }
-    } else if (!paused) {
+    } else if (!paused && !resultScreen) {
       game.update(elapsed, [direction]);
       state = game.snapshot();
     }
@@ -375,7 +376,7 @@ function frame(now) {
       view.practicePrompt(title, text, count);
     }
   }
-  if (scene && !graphicsLost && (mode || now - lastPaint >= 30)) {
+  if (scene && !graphicsLost && (mode || now - lastPaint >= 1000 / 30)) {
     const renderDt = lastPaint ? Math.min(0.08, (now - lastPaint) / 1000) : dt;
     lastPaint = now;
     const footsteps = scene.render(state, renderDt, local, { menu: !mode, online: mode === 'online', reduced: settings.motion === 'reduced', paused });

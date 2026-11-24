@@ -28,7 +28,7 @@ export class Player {
   setOutfit(stage: number): void {
     if (!this.kit) return;
     const o = outfitFor(stage), key = `${o.kind}${o.team}`; if (key === this.outfit) return;
-    this.outfit = key; if (this.rig) this.scene.remove(this.rig.root);
+    this.outfit = key; this.clearCarry(); if (this.rig) this.scene.remove(this.rig.root);
     this.rig = this.kit.create(o.kind, o.seed, o.team); this.rig.root.rotation.y = this.facing; this.scene.add(this.rig.root); this.rig.root.visible = !this.firstPerson;
   }
   teleport(x: number, z: number, yaw: number): void {
@@ -85,5 +85,15 @@ export class Player {
     this.camYaw -= dx; this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * (this.firstPerson ? -1 : 1), this.firstPerson ? -1.3 : -0.1, this.firstPerson ? 1.3 : 1.2);
     if (this.firstPerson) this.camPitch = THREE.MathUtils.clamp(this.camPitch, -1.3, 1.3);
   }
-  dispose(): void { if (this.rig) this.scene.remove(this.rig.root); }
+  clearCarry(): void {
+    const old = this.rig?.torso.getObjectByName('carry');
+    if (!old) return;
+    old.removeFromParent();
+    old.traverse(node => {
+      if (!(node instanceof THREE.Mesh)) return;
+      node.geometry.dispose();
+      for (const material of Array.isArray(node.material) ? node.material : [node.material]) material.dispose();
+    });
+  }
+  dispose(): void { this.clearCarry(); if (this.rig) this.scene.remove(this.rig.root); this.rig = null; }
 }

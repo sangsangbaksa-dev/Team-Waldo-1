@@ -9,6 +9,7 @@ export class Controls {
     this.enabled = enabled;
     this.escape = escape;
     this.touchDirection = { x: 0, z: 0 };
+    this.resetTouch = null;
     window.addEventListener('keydown', event => {
       if (event.code === 'Escape') {
         if (!event.repeat) this.escape();
@@ -57,6 +58,7 @@ export class Controls {
 
   clear() {
     this.keys.clear();
+    this.resetTouch?.();
     this.touchDirection.x = this.touchDirection.z = 0;
     if (this.guard.size) {
       this.guard.clear();
@@ -73,30 +75,39 @@ export class Controls {
   }
 
   bindTouch(pad, stick, buttons) {
-    let pointer = null;
+    let pointer = null, box = null;
+    const reset = () => {
+      const active = pointer;
+      pointer = null; box = null;
+      this.touchDirection.x = this.touchDirection.z = 0;
+      stick.style.transform = '';
+      if (active !== null && pad.hasPointerCapture(active)) pad.releasePointerCapture(active);
+    };
+    this.resetTouch = reset;
     const update = event => {
-      const box = pad.getBoundingClientRect();
-      const radius = box.width * 0.39;
+      if (!box) return;
+      const radius = Math.max(1, box.width * 0.39);
       const x = (event.clientX - box.left - box.width / 2) / radius;
       const y = (event.clientY - box.top - box.height / 2) / radius;
       const scale = Math.max(1, Math.hypot(x, y));
-      this.touchDirection = { x: x / scale, z: -y / scale };
+      this.touchDirection.x = x / scale;
+      this.touchDirection.z = -y / scale;
       stick.style.transform = `translate(${x / scale * radius}px, ${y / scale * radius}px)`;
     };
     pad.addEventListener('pointerdown', event => {
       if (pointer !== null || !this.enabled()) return;
+      event.preventDefault();
       pointer = event.pointerId;
-      pad.setPointerCapture(pointer);
+      box = pad.getBoundingClientRect();
+      try { pad.setPointerCapture(pointer); } catch { reset(); return; }
       update(event);
     });
     pad.addEventListener('pointermove', event => {
-      if (event.pointerId === pointer) update(event);
+      if (event.pointerId === pointer && this.enabled()) update(event);
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(type, event => {
       if (event.pointerId !== pointer) return;
-      pointer = null;
-      this.touchDirection = { x: 0, z: 0 };
-      stick.style.transform = '';
+      reset();
     });
     for (const button of buttons) {
       button.addEventListener('pointerdown', event => {
@@ -104,13 +115,13 @@ export class Controls {
         event.preventDefault();
         const command = button.dataset.feint === 'true' ? 'feint' : button.dataset.action;
         if (command === 'block') {
-          button.setPointerCapture(event.pointerId);
-          this.holdGuard('touch');
+          try { button.setPointerCapture(event.pointerId); } catch { return; }
+          this.holdGuard(`touch:${event.pointerId}`);
         } else this.action(command);
       });
       if (button.dataset.action === 'block') {
         for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-          button.addEventListener(type, () => this.releaseGuard('touch'));
+          button.addEventListener(type, event => this.releaseGuard(`touch:${event.pointerId}`));
         }
       }
     }

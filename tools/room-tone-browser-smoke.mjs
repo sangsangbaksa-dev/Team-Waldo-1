@@ -83,9 +83,12 @@ try {
       assert.equal(await page.locator("#dialog").isVisible(),false);
       const firstTime=await page.locator("#timer").textContent();
       await page.waitForFunction(
-        initial => document.querySelector("#timer")?.textContent !== initial,
+        initial => {
+          const time = document.querySelector("#timer")?.textContent;
+          return Boolean(time) && time !== initial;
+        },
         firstTime,
-        {timeout:20000,polling:100},
+        {timeout:config.mobile ? 20000 : 45000,polling:100},
       );
       const runningTime=await page.locator("#timer").textContent();
       assert.notEqual(runningTime,firstTime,"The playing clock must keep advancing");

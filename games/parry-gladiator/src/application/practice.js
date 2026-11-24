@@ -12,23 +12,26 @@ const lessons = [
 ];
 
 export class Practice extends Game {
-  constructor(onEvent) {
+  constructor(onEvent = () => {}) {
     super();
     this.lesson = 0;
     this.progress = 0;
     this.wait = 1.2;
     this.dodgeAttempt = false;
     this.swingIndex = 0;
+    this.pendingParry = false;
     this.onEvent = (event, player, detail) => {
       if (player === 1 && (event === 'hit' || event === 'evade')) this.dodgeAttempt = false;
       const current = lessons[this.lesson];
-      if (current.streak && player === 1 && ['hit', 'block', 'break', 'evade'].includes(event)) this.progress = 0;
+      if (current.streak && player === 1 && event === 'parry') this.pendingParry = false;
+      if (current.streak && player === 1 && ['hit', 'block', 'break', 'evade'].includes(event)) { this.progress = 0; this.pendingParry = false; }
       if (current.event === event && current.player === player) {
         this.progress++;
         if (this.progress === current.total) {
           this.lesson++;
           this.progress = 0;
           this.swingIndex = 0;
+          this.pendingParry = false;
           onEvent('lesson', 0, { title: lessons[this.lesson].title });
         }
       }
@@ -74,10 +77,17 @@ export class Practice extends Game {
     if (this.lesson !== 4 && this.wait <= 0 && distance < 2.65 && teacher.state === 'idle') {
       const mixed = this.lesson >= 5;
       const attack = mixed && this.swingIndex % 2 === 0 ? 'light' : 'heavy';
-      if (this.handleAction(1, attack, undefined, false)) this.swingIndex++;
-      this.wait = this.lesson === 4 ? 4.2 : mixed ? 2.2 : 2.85;
+      if (this.handleAction(1, attack, undefined, false)) {
+        this.swingIndex++;
+        this.pendingParry = this.lesson === 5;
+      }
+      this.wait = mixed ? 2.2 : 2.85;
     }
     super.tick([inputs[0], direction], false);
+    if (this.pendingParry && teacher.state !== 'attack') {
+      this.pendingParry = false;
+      this.progress = 0;
+    }
     if (this.dodgeAttempt) {
       const swing = attacks[teacher.attack];
       if (!swing) this.dodgeAttempt = false;

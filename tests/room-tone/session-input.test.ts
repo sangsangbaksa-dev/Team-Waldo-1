@@ -47,6 +47,14 @@ describe("ROOM TONE multi-touch pointer ownership",()=>{
     expect(owner.owns(1)).toBe(false);
     expect(owner.claim(2)).toBe(true);
   });
+  it("reports the active pointer so a pause can release capture",()=>{
+    const owner=createPointerOwner();
+    expect(owner.current()).toBeNull();
+    expect(owner.claim(7)).toBe(true);
+    expect(owner.current()).toBe(7);
+    owner.clear();
+    expect(owner.current()).toBeNull();
+  });
   it("does not crash on unavailable pointer capture",()=>{
     expect(tryCapture({setPointerCapture(){}},4)).toBe(true);
     expect(tryCapture({setPointerCapture(){throw Error("unavailable")}},4)).toBe(false);

@@ -3,6 +3,30 @@ import { createSlackAudio } from '../../src/slack/audio';
 
 afterEach(() => vi.unstubAllGlobals());
 
+it('resumes if the pause is lifted before suspend settles', async () => {
+  const node = () => ({ connect: vi.fn(), gain: { value: 0 }, frequency: { value: 0 },
+    threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 },
+  });
+  let finish = (): void => {};
+  const ctx = {
+    state: 'running',
+    currentTime: 0,
+    createGain: node, createBiquadFilter: node, createDynamicsCompressor: node,
+    resume: vi.fn(() => { ctx.state = 'running'; return Promise.resolve(); }),
+    suspend: vi.fn(() => new Promise<void>(resolve => { finish = () => { ctx.state = 'suspended'; resolve(); }; })),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const audio = createSlackAudio();
+  audio.resume();
+  audio.hold(true);
+  audio.hold(false);
+  expect(ctx.resume).not.toHaveBeenCalled();
+  finish();
+  await Promise.resolve();
+  expect(ctx.resume).toHaveBeenCalledTimes(1);
+});
+
 it('requires a gesture, retries rejected resumes, and closes only once', async () => {
   const node = () => ({ connect: vi.fn(), gain: { value: 0 }, frequency: { value: 0 },
     threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 },

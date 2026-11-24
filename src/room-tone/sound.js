@@ -188,15 +188,26 @@ export class Sound {
   pause(paused) {
     this.paused = Boolean(paused);
     this.applyLevel();
-    if (this.ctx) void (this.paused ? this.ctx.suspend() : this.ctx.resume()).catch(() => {});
+    if (!this.ctx) {
+      if (this.paused) this.threat(0);
+      return;
+    }
     if (this.paused) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
       this.threat(0);
-    } else if (this.ctx && this.level) {
-      this.nextDistant = this.ctx.currentTime + 7 + Math.random() * 7;
-      this.startClock();
+      void this.ctx.suspend().catch(() => {});
+      return;
     }
+    const ctx = this.ctx;
+    const resume = ctx.state === "suspended" ? ctx.resume() : Promise.resolve();
+    void Promise.resolve(resume).then(() => {
+      if (this.paused || this.muted || !this.level || this.ctx !== ctx) return;
+      const at = ctx.currentTime;
+      if (!(this.nextBeat > at)) this.nextBeat = at + 0.35;
+      this.nextDistant = at + 7 + Math.random() * 7;
+      this.startClock();
+    }).catch(() => {});
   }
 
   startClock() {

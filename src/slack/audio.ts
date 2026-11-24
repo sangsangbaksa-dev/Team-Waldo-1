@@ -119,7 +119,17 @@ export const createSlackAudio: CreateAudio = () => {
       resuming = true;
       void c.resume().catch(() => {}).finally(() => { resuming = false; });
     },
-    hold(on) { held = on; if (on && ctx && ctx.state === 'running') void ctx.suspend().catch(() => {}); },
+    hold(on) {
+      held = on;
+      const c = ctx;
+      if (!c) return;
+      if (on) {
+        clearTimeout(ambTimer); ambTimer = 0; clearTimeout(bedTimer); bedTimer = 0;
+        if (c.state === 'running') void c.suspend().then(() => { if (!held && c.state === 'suspended') void c.resume().catch(() => {}); }).catch(() => {});
+        return;
+      }
+      if (c.state === 'suspended') void c.resume().catch(() => {});
+    },
     play, ambience, muffle: setMuffle,
     setMuted(m) { muted = m; if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02); },
     dispose() {

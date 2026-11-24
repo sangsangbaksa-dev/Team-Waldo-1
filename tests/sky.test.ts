@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { DIFFS, SEA_Y, SkySim, terrainY, type Input } from '../src/sky/sim';
+import { DIFFS, SEA_Y, SkySim, WORLD_R, terrainY, type Input } from '../src/sky/sim';
 
 const NEUTRAL: Input = { pitch: 0, roll: 0, throttle: 0.5, fire: false, missile: false, flare: false };
 const DT = 0.05;
@@ -73,6 +73,28 @@ describe('combat rewards', () => {
     expect(sim.comboT).toBeGreaterThan(5);
     sim.step(DT, NEUTRAL);
     expect(sim.shield).toBe(5);
+  });
+});
+
+describe('SKY WAR flight clock', () => {
+  it('ignores a non-finite or reversed delta', () => {
+    const sim = new SkySim(DIFFS[1]);
+    const y = sim.player.pos.y;
+    sim.step(Number.NaN, NEUTRAL);
+    sim.step(-0.2, NEUTRAL);
+    expect(sim.time).toBe(0);
+    expect(sim.player.pos.y).toBe(y);
+  });
+  it('yaws back into the map and keeps the attitude quaternion with it', () => {
+    const sim = new SkySim(DIFFS[1]);
+    const player = sim.player;
+    player.pos.set(WORLD_R * 1.2, 800, 0);
+    player.yaw = 0;
+    player.q.identity();
+    sim.step(DT, NEUTRAL);
+    expect(player.yaw).toBeGreaterThan(0);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.q);
+    expect(Math.atan2(-fwd.x, -fwd.z)).toBeCloseTo(player.yaw, 5);
   });
 });
 

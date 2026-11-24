@@ -4,17 +4,32 @@ export class SkyAudio {
   private eng = new AudioEngine();
   private last = new Map<string, number>();
   private motor: { osc: OscillatorNode; gain: GainNode; filt: BiquadFilterNode; noiseGain: GainNode; noiseFilt: BiquadFilterNode; noise: AudioBufferSourceNode } | null = null;
+  private motorOn = false;
+  private thrust = 0;
+  private windAmt = 0;
+  private applied = '';
 
   get enabled(): boolean { return this.eng.enabled; }
-  set enabled(on: boolean) { this.eng.setEnabled(on); }
-  setEnabled(on: boolean): void { this.eng.setEnabled(on); }
+  set enabled(on: boolean) { this.setEnabled(on); }
+  setEnabled(on: boolean): void { this.eng.setEnabled(on); this.applied = ''; this.renderMotor(); }
   unlock(): void { this.eng.unlock(); }
 
   engine(on: boolean, thrust01: number): void {
+    this.motorOn = on;
+    this.thrust = thrust01;
+    this.renderMotor();
+  }
+
+  wind(speed01: number): void {
+    this.windAmt = speed01;
+    this.renderMotor();
+  }
+
+  private renderMotor(): void {
     const c = this.eng.ctx, bus = this.eng.bus, noise = this.eng.noise;
     if (!c || !bus || !noise) return;
     if (!this.motor) {
-      if (!on) return;
+      if (!this.motorOn) return;
       const osc = c.createOscillator(), filt = c.createBiquadFilter(), gain = c.createGain();
       const src = c.createBufferSource(), noiseFilt = c.createBiquadFilter(), noiseGain = c.createGain();
       osc.type = 'sawtooth'; osc.frequency.value = 48; filt.type = 'lowpass'; filt.frequency.value = 300; gain.gain.value = 0;
@@ -24,26 +39,24 @@ export class SkyAudio {
       this.eng.track(osc); this.eng.track(src); osc.start(); src.start();
       this.motor = { osc, gain, filt, noiseGain, noiseFilt, noise: src };
     }
-    const m = this.motor, k = Math.max(0, Math.min(1, thrust01));
-    m.gain.gain.setTargetAtTime(on && this.enabled ? 0.035 + k * 0.075 : 0, c.currentTime, 0.12);
+    const k = Math.max(0, Math.min(1, this.thrust));
+    const w = Math.max(0, Math.min(1, this.windAmt));
+    const live = this.motorOn && this.enabled;
+    const key = `${live ? 1 : 0}:${Math.round(k * 32)}:${Math.round(w * 32)}`;
+    if (key === this.applied) return;
+    this.applied = key;
+    const m = this.motor;
+    m.gain.gain.setTargetAtTime(live ? 0.035 + k * 0.075 : 0, c.currentTime, 0.12);
     m.osc.frequency.setTargetAtTime(48 + k * 135, c.currentTime, 0.1);
     m.filt.frequency.setTargetAtTime(300 + k * 900, c.currentTime, 0.1);
-    m.noiseGain.gain.setTargetAtTime(on && this.enabled ? k * 0.045 : 0, c.currentTime, 0.14);
-    m.noiseFilt.frequency.setTargetAtTime(450 + k * 1500, c.currentTime, 0.14);
-  }
-
-  wind(speed01: number): void {
-    const c = this.eng.ctx, m = this.motor;
-    if (!c || !m) return;
-    const k = Math.max(0, Math.min(1, speed01));
-    m.noiseGain.gain.setTargetAtTime(this.enabled ? 0.012 + k * 0.04 : 0, c.currentTime, 0.16);
-    m.noiseFilt.frequency.setTargetAtTime(500 + k * 1800, c.currentTime, 0.16);
+    m.noiseGain.gain.setTargetAtTime(live ? 0.01 + w * 0.03 + k * 0.02 : 0, c.currentTime, 0.14);
+    m.noiseFilt.frequency.setTargetAtTime(450 + w * 1400 + k * 400, c.currentTime, 0.14);
   }
 
   dispose(): void {
     try { this.motor?.osc.stop(); } catch { /* 이미 종료됨 */ }
     try { this.motor?.noise.stop(); } catch { /* 이미 종료됨 */ }
-    this.motor = null; this.eng.dispose();
+    this.motor = null; this.applied = ''; this.eng.dispose();
   }
 
   play(name: string, dist = 0): void {

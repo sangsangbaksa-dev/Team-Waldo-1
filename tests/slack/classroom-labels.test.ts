@@ -7,6 +7,24 @@ import type { SlackAudio } from '../../src/slack/types';
 let dispose: (() => void) | undefined;
 afterEach(() => { dispose?.(); dispose = undefined; });
 
+it('opens the classroom door and steps the teacher in when the scan starts', () => {
+  const audio: SlackAudio = {
+    resume() {}, hold() {}, play() {}, ambience() {}, muffle() {}, setMuted() {}, dispose() {},
+  };
+  const sim = createSim('class', 4, 1);
+  sim.start();
+  const view = createClassroomView(sim, audio);
+  dispose = () => view.dispose();
+  const room = view.el.querySelector('.sl-room')!;
+  view.onEvent({ t: 'door', open: true });
+  sim.state.watcher.mode = 'scan';
+  view.frame(0);
+  expect(room.classList.contains('is-door')).toBe(true);
+  expect(room.getAttribute('data-scan')).toBe('true');
+  view.onEvent({ t: 'leave' });
+  expect(room.classList.contains('is-door')).toBe(false);
+});
+
 it('labels the embedded classroom RTS as a Slack Off activity', () => {
   const audio: SlackAudio = {
     resume() {}, hold() {}, play() {}, ambience() {}, muffle() {}, setMuted() {}, dispose() {},

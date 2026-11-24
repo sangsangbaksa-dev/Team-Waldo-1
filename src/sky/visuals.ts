@@ -9,7 +9,7 @@ export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'
   const panel = new THREE.MeshStandardMaterial({ color: team === 'player' ? 0xaebed0 : 0x343b45, metalness: 0.65, roughness: 0.38 });
   const seam = new THREE.MeshStandardMaterial({ color: 0x172b39, metalness: 0.5, roughness: 0.5 });
   const bright = new THREE.MeshStandardMaterial({ color: 0xc7d9e2, metalness: 0.8, roughness: 0.25 });
-  const glass = new THREE.MeshPhysicalMaterial({ color: 0x244b69, metalness: 0.55, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, transparent: true, opacity: 0.86 });
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0x244b69, metalness: 0.55, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.15 });
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.94 * s, 20, 12), glass);
   canopy.scale.set(0.78, 0.57, 1.8); canopy.position.set(0, 1.01 * s, -2.25 * s); jet.add(canopy);
   const canopyFrame = new THREE.Mesh(new THREE.TorusGeometry(0.72 * s, 0.045 * s, 5, 24, Math.PI), bright);
@@ -43,8 +43,8 @@ export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'
 
 export function addAtmosphere(scene: THREE.Scene, quality: 'high' | 'standard' | 'low'): THREE.Texture[] {
   const cloud = cloudSprite();
-  const cloudMat = new THREE.SpriteMaterial({ map: cloud, transparent: true, opacity: 0.8, depthWrite: false, fog: false });
-  const count = quality === 'high' ? 75 : quality === 'standard' ? 35 : 14;
+  const cloudMat = new THREE.SpriteMaterial({ map: cloud, transparent: true, opacity: 0.52, depthWrite: false, fog: true });
+  const count = quality === 'high' ? 30 : quality === 'standard' ? 18 : 8;
   for (let i = 0; i < count; i++) {
     const x = (Math.random() - 0.5) * 7600, z = (Math.random() - 0.5) * 7600, y = 500 + Math.random() * 1300;
     const size = 380 + Math.random() * 650;

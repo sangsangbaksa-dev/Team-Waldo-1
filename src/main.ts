@@ -1,7 +1,7 @@
 import './style.css';
 import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
-import { showLoading, retry, retryNote } from './loading';
+import { showLoading, retry, retryNote, importFresh } from './loading';
 import { deferTileImages } from './shared/lazy-images';
 import { readCityCareer, readRaceRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
@@ -296,8 +296,10 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
   stopTileImages?.(); stopTileImages = undefined;
   if (STANDALONE.has(id)) {
     const url = `${base}${id}/`;
-    if (fromHistory) location.replace(url);
-    else location.assign(url);
+    const loading = showLoading(entry.name);
+    loading.progress(null, '게임을 불러오는 중');
+    // 게이지를 한 프레임 그린 뒤 이동합니다. 도착한 페이지가 같은 로딩을 이어 받습니다.
+    window.requestAnimationFrame(() => { if (fromHistory) location.replace(url); else location.assign(url); });
     return;
   }
   const navigation = ++generation;
@@ -315,11 +317,17 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
   closeHubChat();
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
-  // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
+  // 모듈을 받는 동안 게이지를 유지합니다. 연결이 늦어도 실패 화면으로 바꾸지 않고, 진행률은 되돌리지 않습니다.
   const loading = showLoading(entry.name);
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
-  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
+  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => {
+    let last: unknown;
+    return retry(async attempt => {
+      try { return await importFresh(load, attempt, last); }
+      catch (error) { last = error; throw error; }
+    }, { cancelled, onRetry: n => loading.note(retryNote(n)) });
+  };
   try {
     setRails({ name: entry.name, genre: entry.genre, summary: entry.summary, facts: entry.facts, image: entry.image, imageAlt: entry.imageAlt, status: entry.status?.() ?? '' });
     if (id === 'city') {
@@ -351,15 +359,10 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
       const { openRace } = await fetchGame(() => import('./race/game'));
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
-      openRace(renderMenu);
-      loading.close();
+      openRace(renderMenu, { loading });
     }
   } catch {
     loading.close();
-    if (cancelled()) return;
-    renderMenu();
-    app.querySelector<HTMLElement>('#home-notice')!.textContent = '게임을 불러오지 못했습니다. 연결을 확인한 뒤 다시 선택해 주세요.';
-    app.querySelector<HTMLButtonElement>(`#start-${id}`)?.focus();
   }
 }
 

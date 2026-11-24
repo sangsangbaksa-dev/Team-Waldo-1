@@ -384,4 +384,5 @@ function frame(now) {
   }
 }
 home();
+window.__waldoBoot?.done?.();
 requestAnimationFrame(frame);

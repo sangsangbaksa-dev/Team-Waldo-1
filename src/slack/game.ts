@@ -1,7 +1,7 @@
 ﻿import '../shared/ui.css';
 import './slack.css';
 import { readPreferences, writeSound } from '../prefs';
-import type { LoadingScreen } from '../loading';
+import { importFresh, retry, retryNote, showLoading, type LoadingScreen } from '../loading';
 import { createSim, GOALS } from './sim';
 import { createSlackAudio } from './audio';
 import { readSlackRecord, recordSlackRun } from './records';
@@ -97,16 +97,44 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     audio.hold(false); audio.resume();
     $('.sl-hud').hidden = true; $('.sl-toast').textContent = ''; toastTime = 0;
     $('[data-title]').hidden = true; $('[data-result]').hidden = true; $('[data-paused]').hidden = true; $('[data-tip]').hidden = true; root.classList.remove('tipping');
+    const gate: { screen: LoadingScreen | null } = { screen: null };
+    const gauge = (): LoadingScreen => gate.screen ??= showLoading('SLACK OFF');
+    const dismiss = (): void => { gate.screen?.close(); gate.screen = null; };
+    const reveal = window.setTimeout(() => {
+      if (closed || state !== 'loading' || gate.screen) return;
+      gauge().progress(null, '화면을 불러오는 중');
+    }, 280);
     try {
-      const createView = stage === 'class' ? (await import('./classroom')).createClassroomView : (await import('./computer')).createComputerView;
-      if (closed) return; sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; $('.sl-hud').hidden = false; $('[data-battery-chip]').style.display = stage === 'class' ? 'none' : ''; audio.ambience(stage);
+      let lastImport: unknown;
+      const createView = await retry(async attempt => {
+        try {
+          if (stage === 'class') return (await importFresh(() => import('./classroom'), attempt, lastImport)).createClassroomView;
+          return (await importFresh(() => import('./computer'), attempt, lastImport)).createComputerView;
+        } catch (error) { lastImport = error; throw error; }
+      }, {
+        cancelled: () => closed,
+        onRetry: n => {
+          window.clearTimeout(reveal);
+          const screen = gauge();
+          screen.progress(null, '화면을 불러오는 중');
+          screen.note(retryNote(n));
+        },
+      });
+      window.clearTimeout(reveal);
+      if (closed) { dismiss(); return; }
+      sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; $('.sl-hud').hidden = false; $('[data-battery-chip]').style.display = stage === 'class' ? 'none' : ''; audio.ambience(stage);
       audio.muffle(false); tally = { act: {}, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] }; beat = 0;
       if (tutorial) { tutStep = 0; showTutorialStep(); } else { $('[data-tip]').hidden = true; root.classList.remove('tipping'); }
       enablePlay();
+      gate.screen?.progress(1, '준비되었습니다');
+      dismiss();
       if (document.hidden) pause();
     } catch (err) {
+      window.clearTimeout(reveal);
+      dismiss();
+      if (closed) return;
       console.error(err); clearView(); audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); $('.sl-hud').hidden = true;
-      state = 'title'; $('[data-title]').hidden = false; $('[data-start]').focus(); toast('화면을 불러오지 못했어요. 다시 시도해 주세요.');
+      state = 'title'; $('[data-title]').hidden = false; $('[data-start]').focus();
     }
   };
   const finish = (): void => {
@@ -186,5 +214,5 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     if ((event.target as Element).closest('.sl-cover,.sc-cover-button,.gm canvas')) event.preventDefault();
   });
   root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility);
-  refreshTitle(); opts.loading?.close(); $('[data-start]').focus({ preventScroll: true });
+  refreshTitle(); opts.loading?.progress(1, '준비되었습니다'); opts.loading?.close(); $('[data-start]').focus({ preventScroll: true });
 }

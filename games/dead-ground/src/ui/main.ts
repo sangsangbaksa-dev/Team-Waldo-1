@@ -122,6 +122,7 @@ class Game {
       if (this.panel === 'controls') this.show(this.panelBeforeGuide);
       else if (this.panel === 'online') this.leave();
     });
+    (window as Window & { __waldoBoot?: { done(): void } }).__waldoBoot?.done();
     requestAnimationFrame(this.frame);
   }
 

@@ -2,12 +2,32 @@
 // monster binary are requested together only when a play session begins.
 let THREE, GLTFLoader, createCaptureShot, fixMonster;
 let enginePromise;
+function failedModule(kind, error, attempt) {
+  const next = retryModuleUrl(String(error?.message || ""), attempt);
+  if (!next) return null;
+  const path = new URL(next).pathname;
+  const hit = kind === "three" ? /(?:^|\/)three(?:\.js)?$/.test(path) : path.endsWith(kind);
+  return hit ? next : null;
+}
 function loadEngine() {
-  if (!enginePromise) enginePromise = Promise.all([
-    import("three"),
-    import("three/addons/loaders/GLTFLoader.js"),
-    import("./monster.js"),
-  ]).then(([three, loader, monster]) => {
+  if (!enginePromise) enginePromise = (async () => {
+    let last = undefined;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const threeUrl = failedModule("three", last, attempt);
+        const loaderUrl = failedModule("GLTFLoader.js", last, attempt);
+        const monsterUrl = failedModule("monster.js", last, attempt);
+        return await Promise.all([
+          threeUrl ? import(/* @vite-ignore */ threeUrl) : import("three"),
+          loaderUrl ? import(/* @vite-ignore */ loaderUrl) : import("three/addons/loaders/GLTFLoader.js"),
+          monsterUrl ? import(/* @vite-ignore */ monsterUrl) : import("./monster.js"),
+        ]);
+      } catch (error) {
+        last = error;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs(attempt)));
+      }
+    }
+  })().then(([three, loader, monster]) => {
     THREE = three;
     GLTFLoader = loader.GLTFLoader;
     createCaptureShot = monster.createCaptureShot;
@@ -18,7 +38,10 @@ function loadEngine() {
   });
   return enginePromise;
 }
-import { modelBytes, releaseModelBytes } from "./assets.js";
+import { modelBytes, onModelProgress, releaseModelBytes } from "./assets.js";
+import { createLoadSession } from "../loading/application/session.ts";
+import { backoffMs } from "../loading/infrastructure/retry.ts";
+import { retryModuleUrl } from "../loading/infrastructure/module-url.ts";
 import { chapters, makeLevel, paths, route, routeFrom, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
 import { Sound } from "./sound.js";
@@ -290,19 +313,48 @@ function pauseGame() {
   showPauseMenu();
 }
 $("pauseGame").onclick = pauseGame;
-async function setup() {
+function blocksBoot(error) {
+  return /webgl|gpu|context/i.test(String(error?.message || error));
+}
+function showBoot(snap) {
+  state = "load";
+  $("dialog").hidden = false;
+  $("panelTitle").textContent = "녹음실 연결 중";
+  $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
+  $("panelActions").replaceChildren();
+  const body = $("panelBody");
+  let bar = body.querySelector(".loadbar");
+  if (!bar) {
+    body.replaceChildren();
+    bar = document.createElement("div");
+    bar.className = "loadbar";
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    bar.innerHTML = "<i></i><span></span><em></em>";
+    body.append(bar);
+    $("panelTitle").focus({ preventScroll: true });
+  }
+  bar.setAttribute("aria-valuenow", String(snap.percent));
+  bar.querySelector("i").style.width = (snap.fraction * 100).toFixed(1) + "%";
+  bar.querySelector("span").textContent = snap.percent + "%";
+  bar.querySelector("em").textContent = snap.note || "";
+}
+async function setup(onProgress = () => {}) {
   // Start the 4.5 MB binary request before dynamic imports and WebGL setup.
   // Both requests remain optional until a player chooses to start.
   const monsterBinary = !model ? modelBytes() : null;
   // Attach the rejection handler immediately: imports can outlast a failed
   // fetch, and a rejected download should not become an unhandled rejection.
   if (monsterBinary) void monsterBinary.catch(() => {});
+  onProgress(0.08);
   try {
     await loadEngine();
   } catch (error) {
     releaseModelBytes();
     throw error;
   }
+  onProgress(0.22);
   if (!player) player = new THREE.Vector3();
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
@@ -328,12 +380,14 @@ async function setup() {
   }
   if (!model) {
     let gltf;
+    onProgress(0.3);
     try {
       gltf = await new GLTFLoader().parseAsync(await monsterBinary, "");
     } finally {
       // Free the binary after decoding, including on parse failure.
       releaseModelBytes();
     }
+    onProgress(0.78);
     model = gltf.scene;
     fixMonster(THREE, model);
     model.traverse((o) => {
@@ -716,38 +770,60 @@ async function start(cont) {
   if (opening) return;
   opening = true;
   screens("game");
-  state = "load";
-  $("dialog").hidden = false;
-  $("panelTitle").textContent = "녹음실 연결 중";
-  $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
-  $("panelBody").replaceChildren();
-  $("panelActions").replaceChildren();
+  const boot = createLoadSession("공간과 캐릭터를 불러오는 중");
+  const paint = () => showBoot(boot.snapshot());
+  paint();
+  const clock = setInterval(() => { boot.tick(Date.now()); paint(); }, 400);
+  const stopWatch = onModelProgress((loaded, total) => {
+    if (total > 0) boot.report(0.3 + Math.min(1, loaded / total) * 0.45);
+    paint();
+  });
   try {
-    // Queue the model fetch and engine imports before the synchronous audio
-    // graph construction; otherwise Sound.build() delays the first network request.
-    const setupPromise = setup();
-    void sound.start();
-    await setupPromise;
-    const s = cont ? saved() : null;
-    ch = s?.ch ?? 0;
-    found = s?.found ?? [false, false, false];
-    solved = s?.solved ?? false;
-    elapsed = s?.elapsed ?? 0;
-    seen = new Set(s?.seen || []);
-    level = makeLevel(ch);
-    loadScene();
-    save();
-    brief();
-  } catch (e) {
-    console.error(e);
-    modal(
-      "게임을 열 수 없습니다",
-      "WebGL 2를 지원하는 브라우저에서 하드웨어 가속을 켜고 다시 열어 주세요.",
-      null,
-      [["타이틀로", homepage]],
-      "error",
-    );
+    for (let attempt = 0; ; attempt++) {
+      try {
+        // Queue the model fetch and engine imports before the synchronous audio
+        // graph construction; otherwise Sound.build() delays the first network request.
+        const setupPromise = setup((fraction) => { boot.report(fraction); paint(); });
+        void sound.start();
+        await setupPromise;
+        const s = cont ? saved() : null;
+        ch = s?.ch ?? 0;
+        found = s?.found ?? [false, false, false];
+        solved = s?.solved ?? false;
+        elapsed = s?.elapsed ?? 0;
+        seen = new Set(s?.seen || []);
+        level = makeLevel(ch);
+        boot.report(0.92, "공간을 배치하는 중");
+        paint();
+        loadScene();
+        save();
+        boot.complete("준비되었습니다");
+        paint();
+        await new Promise((resolve) => setTimeout(resolve, 280));
+        brief();
+        return;
+      } catch (e) {
+        console.error(e);
+        if (blocksBoot(e)) {
+          modal(
+            "게임을 열 수 없습니다",
+            "WebGL 2를 지원하는 브라우저에서 하드웨어 가속을 켜고 다시 열어 주세요.",
+            null,
+            [["타이틀로", homepage]],
+            "error",
+          );
+          return;
+        }
+        // 연결이 늦거나 끊겨도 게이지를 유지한 채 같은 불러오기를 이어 갑니다.
+        releaseModelBytes();
+        boot.note("응답을 기다리는 중");
+        paint();
+        await new Promise((resolve) => setTimeout(resolve, backoffMs(attempt)));
+      }
+    }
   } finally {
+    clearInterval(clock);
+    stopWatch();
     opening = false;
   }
 }

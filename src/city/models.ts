@@ -74,9 +74,14 @@ function getBuffer(url: string, est: number, optional: boolean): Promise<ArrayBu
   let p = buffers.get(url);
   if (!p) {
     prog.set(url, { loaded: 0, total: est });
-    p = retry(() => fetchBuffer(url, (loaded, total) => { prog.set(url, { loaded, total: Math.max(total, est * 0.5, loaded) }); emit(); }), {
+    p = retry(() => fetchBuffer(url, (loaded, total) => {
+      const prev = prog.get(url) ?? { loaded: 0, total: est };
+      const nextLoaded = Math.max(prev.loaded, loaded);
+      prog.set(url, { loaded: nextLoaded, total: Math.max(prev.total, total || 0, nextLoaded) });
+      emit();
+    }), {
       maxAttempts: optional ? 3 : undefined,
-      onRetry: n => { prog.set(url, { loaded: 0, total: est }); report?.(-1, retryNote(n)); },
+      onRetry: n => { report?.(-1, retryNote(n)); },
     });
     buffers.set(url, p);
     p.catch(() => buffers.delete(url));

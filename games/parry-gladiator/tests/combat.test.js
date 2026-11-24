@@ -20,6 +20,18 @@ function setup(game) {
   return { game, ticks, events, close };
 }
 
+test('a parry returns stamina so the riposte is affordable', () => {
+  const { game, ticks } = setup();
+  const defender = game.players[1];
+  defender.stamina = 40;
+  game.input(0, 'light');
+  ticks(14);
+  game.input(1, 'block');
+  ticks(10);
+  assert.ok(defender.stamina > 50);
+  assert.equal(defender.riposte > 0, true);
+});
+
 test('a late guard creates exactly one riposte opening', () => {
   const { game, ticks, events } = setup();
   game.input(0, 'light');

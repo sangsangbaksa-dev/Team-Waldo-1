@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceBullet, aimSway, eye, hitPlayer, movePlayer, neutralInput, RIFLE, type Bullet } from '../src/domain/combat.js';
+import { advanceBullet, aimSway, eye, hitPlayer, movePlayer, neutralInput, RIFLE, shotLead, type Bullet } from '../src/domain/combat.js';
 import { Match } from '../src/domain/match.js';
 import { segmentBox, segmentSphere, vec } from '../src/domain/math.js';
 import type { World } from '../src/domain/world.js';
@@ -26,6 +26,14 @@ describe('ballistics', () => {
     expect(hitPlayer(vec(0, y, 1), vec(0, y, -1), target).headshot).toBe(true);
     expect(hitPlayer(vec(0, 1, 1), vec(0, 1, -1), target).headshot).toBe(false);
     expect(hitPlayer(vec(2, y, 1), vec(2, y, -1), target).fraction).toBe(Infinity);
+  });
+
+  it('leads a moving target and ignores an impossible sample', () => {
+    const still = shotLead(vec(0, 2, -40), vec(), 40);
+    const moving = shotLead(vec(0, 2, -40), vec(8, 0, 0), 40);
+    expect(moving.x).toBeGreaterThan(still.x);
+    expect(moving.y).toBeLessThan(2);
+    expect(shotLead(vec(), vec(80, 0, 0), RIFLE.velocity).x).toBeCloseTo(12);
   });
 
   it('reduces sway while holding breath', () => {

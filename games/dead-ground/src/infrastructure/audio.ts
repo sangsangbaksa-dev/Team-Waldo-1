@@ -59,8 +59,10 @@ export class FieldAudio {
     } else if (event.type === 'reload' && own) {
       for (const offset of [0.02, 0.53, 0.95, 1.68, 2.38]) this.burst(0.16, 2700 + offset * 410, 0.055, offset);
     } else if (event.type === 'hit' && (event.target === self || own)) {
-      if (own) this.tone(event.headshot ? 880 : 510, event.lethal ? 0.17 : 0.085, 0.13);
-      else this.burst(0.35, 250, 0.15);
+      if (own) {
+        this.tone(event.headshot ? 880 : 510, event.lethal ? 0.17 : 0.085, 0.13);
+        this.burst(event.headshot ? 0.2 : 0.28, event.headshot ? 2200 : 780, 0.08);
+      } else this.burst(0.35, 250, 0.15);
     } else if (event.type === 'impact' && horizontalDistance(position, event.position) < 8) {
       this.burst(0.15, 3850, 0.082);
     }

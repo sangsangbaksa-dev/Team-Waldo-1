@@ -69,8 +69,13 @@ export class Hud {
   private lastDamage = -Infinity;
   private lastFeed = '';
   private lastScore = '';
+  private damageFrom?: { x: number; z: number };
+  private readonly incoming = document.createElement('i');
 
   constructor(private readonly world: World) {
+    this.incoming.className = 'incoming';
+    this.incoming.setAttribute('aria-hidden', 'true');
+    element('hud').append(this.incoming);
     new Optics(this.glass);
     for (let n = -24; n <= 48; n++) {
       const tick = document.createElement('span');
@@ -82,15 +87,20 @@ export class Hud {
 
   reset(): void {
     this.lastHit = this.lastDamage = -Infinity;
+    this.damageFrom = undefined;
     this.lastFeed = this.lastScore = '';
     this.killfeed.replaceChildren();
   }
 
   event(event: MatchEvent, self: string, now: number): void {
     if (event.type !== 'hit') return;
-    if (event.target === self) this.lastDamage = now;
+    if (event.target === self) {
+      this.lastDamage = now;
+      this.damageFrom = event.source;
+    }
     if (event.player === self) {
       this.lastHit = now;
+      this.hitMarker.classList.toggle('head', event.headshot);
       setText(this.hitNote, event.headshot ? 'HEADSHOT' : event.lethal ? 'ELIMINATION' : 'HIT');
     }
   }
@@ -131,6 +141,14 @@ export class Hud {
     this.scopeReadout.hidden = aim < 0.7 || !player.alive;
     setText(this.scopeZoom, `${zoom}×`);
     this.hitMarker.style.opacity = String(clamp(1 - (now - this.lastHit) / 300, 0, 1));
+    if (this.damageFrom && now - this.lastDamage < 720) {
+      const dx = this.damageFrom.x - player.position.x;
+      const dz = this.damageFrom.z - player.position.z;
+      const ahead = dx * -Math.sin(player.yaw) + dz * -Math.cos(player.yaw);
+      const right = dx * Math.cos(player.yaw) - dz * Math.sin(player.yaw);
+      this.incoming.style.transform = `rotate(${Math.atan2(right, ahead)}rad)`;
+      this.incoming.style.opacity = String(clamp(1 - (now - this.lastDamage) / 720, 0, 1));
+    } else this.incoming.style.opacity = '0';
     this.hitNote.hidden = now - this.lastHit > 650;
     this.hitFlash.style.opacity = String(clamp(1 - (now - this.lastDamage) / 500, 0, 1));
 
@@ -140,7 +158,7 @@ export class Hud {
     else if (player.boltUntil > snapshot.time && snapshot.time + RIFLE.cycle * 0.64 > player.boltUntil) status = 'CYCLING BOLT';
     else if (player.ammo === 0) status = player.reserve ? 'R · RELOAD' : 'OUT OF AMMO';
     else if (player.aiming && player.breath < 0.18 && (player.steady || player.breathExhausted)) {
-      status = player.breathExhausted ? 'BREATH EMPTY · RELEASE SPACE TO RECOVER' : 'BREATH LOW · RELEASE SPACE TO RECOVER';
+      status = player.breathExhausted ? 'BREATH EMPTY' : 'BREATH LOW';
     }
     else if (flags.fallback) status = 'ARROW KEYS ALSO LOOK · ESC MENU';
     notice(this.combatStatus, status);

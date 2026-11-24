@@ -178,9 +178,10 @@ export class ViewRifle {
     const reload = player.reloadUntil > time ? Math.sin(Math.PI * Math.min(1, (player.reloadUntil - time) / RIFLE.reload)) : 0;
     const cycle = player.boltUntil > time ? 1 - (player.boltUntil - time) / RIFLE.cycle : 0;
     const workingBolt = Math.sin(Math.PI * THREE.MathUtils.clamp((cycle - 0.13) / 0.65, 0, 1));
+    const kick = cycle > 0 && cycle < 0.2 ? (0.2 - cycle) / 0.2 : 0;
     this.root.position.set(0.28 * (1 - aim) + Math.sin(time * 1.5) * 0.006 * settle,
-      -0.24 - reload * 0.31 + stride * 0.026 * settle + aim * 0.145, -0.63 - aim * 0.12);
-    this.root.rotation.set(-0.012 - reload * 0.31 + stride * 0.018, (1 - aim) * -0.073 - reload * 0.21,
+      -0.24 - reload * 0.31 + stride * 0.026 * settle + aim * 0.145 - kick * 0.02, -0.63 - aim * 0.12);
+    this.root.rotation.set(-0.012 - reload * 0.31 + stride * 0.018 - kick * 0.07, (1 - aim) * -0.073 - reload * 0.21,
       (player.sprinting ? 0.17 : -0.073) * (1 - aim) - reload * 0.36);
     this.bolt.rotation.z = workingBolt * 1.14;
     this.bolt.position.z = 0.114 + workingBolt ** 2 * 0.083;

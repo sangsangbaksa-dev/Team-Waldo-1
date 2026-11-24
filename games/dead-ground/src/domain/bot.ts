@@ -1,4 +1,4 @@
-import { aimSway, eye, neutralInput, RIFLE, type Input, type Player } from './combat.js';
+import { aimSway, eye, neutralInput, shotLead, type Input, type Player } from './combat.js';
 import type { Match } from './match.js';
 import { angleDelta, clamp, horizontalDistance, randomSource, vec, type Vec3 } from './math.js';
 import { LANDMARKS } from './world.js';
@@ -26,6 +26,8 @@ export class Bot {
   private patrolStep = 0;
   private errorX = 0;
   private errorY = 0;
+  private sample?: { x: number; z: number; time: number };
+  private velocity = vec();
 
   constructor(readonly id: string, readonly index: number) {
     this.rng = randomSource(6173 + index * 127);
@@ -45,12 +47,15 @@ export class Bot {
       this.nextShot = time + 3 + this.rng() * 1.5;
       this.nextMove = time;
       this.hidingUntil = time;
+      this.sample = undefined;
+      this.velocity.x = this.velocity.z = 0;
     }
 
     if (time >= this.nextThink) {
       this.updateTactics(match, self);
       this.nextThink = time + TACTICS_INTERVAL + this.rng() * 0.13;
     }
+    this.trackTarget(time);
 
     const input = { ...neutralInput(self.yaw, self.pitch), fire: this.fire, reload: this.reload };
     if (self.ammo < 2 && self.reserve && !self.reloadUntil && !self.boltUntil && (!this.target || self.ammo === 0)) {
@@ -84,13 +89,8 @@ export class Bot {
       return input;
     }
 
-    const from = eye(self), to = eye(target);
-    const distance = horizontalDistance(from, to);
-    const flight = distance / RIFLE.velocity;
-    const velocity = target.moving ? (target.sprinting ? 9.5 : 4.5) : 0;
-    to.x -= Math.sin(target.yaw) * velocity * flight * 0.6;
-    to.z -= Math.cos(target.yaw) * velocity * flight * 0.6;
-    to.y += RIFLE.gravity * flight * flight / 2 - 0.32;
+    const from = eye(self), to = shotLead(eye(target), this.velocity, horizontalDistance(eye(self), eye(target)));
+    const distance = horizontalDistance(from, eye(target));
     input.aim = true;
     input.breath = self.breath > 0.18;
     input.crouch = Boolean(this.cover);
@@ -148,6 +148,26 @@ export class Bot {
     }
     const landmark = LANDMARKS[(this.index * 2 + this.patrolStep++ * 3) % LANDMARKS.length];
     this.destination = vec(landmark.x + (this.rng() - 0.5) * 42, 0, landmark.z + (this.rng() - 0.5) * 42);
+  }
+
+  private trackTarget(time: number): void {
+    const target = this.target;
+    if (!target?.alive) {
+      this.sample = undefined;
+      this.velocity.x = this.velocity.z = 0;
+      return;
+    }
+    if (!this.sample) {
+      this.sample = { x: target.position.x, z: target.position.z, time };
+      return;
+    }
+    const dt = time - this.sample.time;
+    if (dt < 0.05) return;
+    const vx = (target.position.x - this.sample.x) / dt;
+    const vz = (target.position.z - this.sample.z) / dt;
+    this.velocity.x = this.velocity.x * 0.45 + vx * 0.55;
+    this.velocity.z = this.velocity.z * 0.45 + vz * 0.55;
+    this.sample = { x: target.position.x, z: target.position.z, time };
   }
 
   private findCover(match: Match, self: Player, target: Player): PositionPair | undefined {

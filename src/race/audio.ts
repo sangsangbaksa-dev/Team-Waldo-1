@@ -118,7 +118,7 @@ export class RaceAudio {
       case 'go': tone(this.eng, 1040, 0.4, 0.32, 'square'); tone(this.eng, 1560, 0.4, 0.16, 'sawtooth'); this.done = false; break;
       case 'lap': tone(this.eng, 660, 0.11, 0.24, 'triangle'); tone(this.eng, 990, 0.18, 0.24, 'triangle', 0, 0.1); break;
       case 'best': tone(this.eng, 660, 0.11, 0.24, 'triangle'); tone(this.eng, 880, 0.11, 0.24, 'triangle', 0, 0.1); tone(this.eng, 1320, 0.26, 0.24, 'triangle', 0, 0.2); break;
-      case 'hit': burst(this.eng, 0.3, Math.min(0.7, 0.24 + power * 0.03), 600, 0.8, 'lowpass'); tone(this.eng, 90, 0.22, Math.min(0.45, 0.2 + power * 0.025), 'sine', -50); break;
+      case 'hit': burst(this.eng, 0.3, Math.min(0.7, 0.24 + power * 0.03), 600, 0.8, 'lowpass'); tone(this.eng, 90, 0.22, Math.min(0.45, 0.2 + power * 0.025), 'sine', -50); if (power > 8) tone(this.eng, 210, 0.07, Math.min(0.16, power * 0.008), 'triangle', -180); break;
       case 'bump': burst(this.eng, 0.13, 0.32, 900, 0.8, 'lowpass'); tone(this.eng, 130, 0.1, 0.22, 'square', -60); break;
       case 'pad': tone(this.eng, 300, 0.45, 0.24, 'sawtooth', 1400); burst(this.eng, 0.45, 0.28, 3000, 0.7, 'highpass'); break;
       case 'drift': tone(this.eng, 500, 0.26, 0.24, 'sawtooth', 1200); burst(this.eng, 0.35, 0.24, 2500, 0.7, 'highpass'); break;

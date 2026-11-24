@@ -69,7 +69,7 @@ export function act(f, action, direction = {}, buffer = true) {
   if (f.state !== 'idle' && f.state !== 'block') {
     if (buffer && f.state !== 'stunned') {
       f.buffered = { action, direction };
-      f.bufferTime = 0.16;
+      f.bufferTime = 0.22;
     }
     return false;
   }
@@ -188,6 +188,7 @@ export function resolve(attacker, defender) {
     if (defender.guardStart > 0) {
       defender.guardStart = 0;
       defender.riposte = 1.2;
+      defender.stamina = Math.min(MAX_STAMINA, defender.stamina + 14);
       stagger(attacker, 0.95);
       return { type: 'parry' };
     }

@@ -19,7 +19,7 @@ import { StreetFx } from './streetfx';
 import { WetStreet, PROBE_LAYER } from './wetstreet';
 import { BuildGhost } from './buildghost';
 import { lootArt, lootTexture, disposeLootTextures } from './loottex';
-import { BUILD_REACH_MAX, buildDistance, buildMinDistance, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
+import { BUILD_REACH_MAX, buildDistance, buildMinDistance, clampLabelScreenPos, clampLookPitch, hurtPitchKick, labelSpriteCenter } from './uiMath';
 
 export type ViewMode = 'fp' | 'tp';
 /** 이 탭에서 이미 느리다고 판정된 적응형 화질 단계: 다음 판도 같은 단계로 시작해 첫 몇 초 끊김을 반복하지 않는다. */
@@ -240,6 +240,7 @@ export class Renderer3D {
       else if (e.t === 'heal') for (let k = 0; k < 10; k++) this.sparks.add(e.x + (rnd() - 0.5) * 24, 8, e.y + (rnd() - 0.5) * 24, 0, 80, 0, 0.7, 0x7dffb0);
       else if (e.t === 'thud' && near) { this.ring(e.x, e.y, 10, 80, 0xffe27a, 0.4); this.shake = Math.max(this.shake, 3); }
       else if (e.t === 'playerdown') this.shake = 14;
+      else if (e.t === 'phurt') { this.shake = Math.max(this.shake, Math.min(7, (e.a ?? 8) * 0.28)); if (!this.reduced) this.pitch = clampLookPitch(this.pitch + hurtPitchKick(e.a ?? 0)); }
       else if (e.t === 'recoil') { this.shake = Math.max(this.shake, 4); this.recoil = 1; }
       else if (e.t === 'skid' && rnd() < 0.3) this.smoke.add(e.x, 6, e.y, 0, 14, 0, 0.5, 0xcfcfcf);
       else if (e.t === 'kill' && near) this.floater(e.x, e.y, 56, `처치 · ${e.s}`, '#ffe27a');

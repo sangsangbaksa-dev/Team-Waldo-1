@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Match, blankInput } from '../../src/shooter/sim';
-import { AIR, ARMOR_PTS, BAG_MAX, BR_MATCH_SECONDS, SUPPLY_AT, RED, HEAL, BOTS, BR_PLAYERS, DIFFICULTIES, MAP_HALF, PLAYER, WEAPONS, ZONES } from '../../src/shooter/config';
+import { AIR, ARMOR_PTS, BAG_MAX, BR_MATCH_SECONDS, SUPPLY_AT, RED, HEAL, BOTS, BR_PLAYERS, DIFFICULTIES, MAP_HALF, PLAYER, WEAPONS, ZONES, hitFlinch } from '../../src/shooter/config';
 import { generateMap, lineClear, pushOut, rayWorld } from '../../src/shooter/world';
 import { findPath, navFor, walkable } from '../../src/shooter/nav';
 
@@ -314,6 +314,14 @@ describe('섬광탄', () => {
     a.input = blankInput(); a.flashes = 3; m.loot.push({ id: 9997, kind: 'flash', weapon: null, x: a.x, z: a.z, taken: false }); m.step(1 / 60);
     expect(a.flashes).toBe(3);
     a.flashes = 1; m.step(1 / 60); expect(a.flashes).toBe(2);
+  });
+});
+
+describe('ZERO ZONE 피격', () => {
+  it('가벼운 긁힘은 조준을 밀지 않고, 강한 피격은 시선을 짧게 들어 올립니다', () => {
+    expect(hitFlinch(2)).toBe(0);
+    expect(hitFlinch(26)).toBeGreaterThan(0.04);
+    expect(hitFlinch(200)).toBe(0.07);
   });
 });
 

@@ -17,6 +17,7 @@ import { ghostDelta, readGhost, writeGhost } from './ghost';
 import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
+import { impactResponse } from './camera';
 import { RaceView, setDriverKit } from './view';
 import { loadCharacterKit } from '../shared/character';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
@@ -109,8 +110,8 @@ export function openRace(onExit: () => void): void {
       case 'launch': msg('완벽한 출발!', 'gold'); view?.punchFov(1); audio.sfx('pad'); break;
       case 'pad': msg('부스트 패드!', 'cyan'); view?.punchFov(0.8); audio.sfx('pad'); break;
       case 'driftBoost': msg(`드리프트 부스트  +${e.secs.toFixed(1)}초`, 'cyan'); view?.punchFov(0.7); audio.sfx('drift'); break;
-      case 'hit': wallHit = e.power; view?.kick(Math.min(1, e.power * 0.05)); audio.sfx('hit', e.power); break;
-      case 'bump': view?.kick(Math.min(0.5, e.power * 0.03)); audio.sfx('bump'); break;
+      case 'hit': { const feel = impactResponse(e.power); wallHit = e.power; view?.kick(feel.kick); view?.punchFov(feel.punch); audio.sfx('hit', e.power); break; }
+      case 'bump': { const feel = impactResponse(e.power * 0.55); view?.kick(Math.min(0.45, feel.kick)); view?.punchFov(feel.punch * 0.5); audio.sfx('bump'); break; }
       case 'lap': if (e.lap < race.laps) { msg(e.best ? `${e.lap}랩  ${fmtTime(e.time)}  ★ 최고 랩` : `${e.lap}랩  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
       case 'driftBank': msg(`드리프트 +${e.points.toLocaleString('ko-KR')}${e.mult > 1 ? `  ×${e.mult}` : ''}${race.phase === 'racing' ? `  ·  니트로 +${Math.round(Math.min(0.2, e.points / 6000) * 100)}%` : ''}`, 'gold'); audio.sfx('drift'); break;
       case 'driftLost': if (e.points >= 200) { msg('드리프트 끊김', 'hint'); msgT = 1.2; } break;

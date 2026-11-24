@@ -16,6 +16,12 @@ export const LOOK_PITCH_MAX = 0.95;
 /** Pointer-lock acquisition or a placement click can inject huge movement deltas. */
 export const LOOK_SPIKE_PX = 64;
 
+/** Upward look kick when the player is hit. Large hits stay inside the pitch clamp. */
+export function hurtPitchKick(damage: number): number {
+  if (!Number.isFinite(damage) || damage <= 0) return 0;
+  return Math.min(0.055, damage / 420);
+}
+
 export function clampLookPitch(pitch: number): number {
   if (!Number.isFinite(pitch)) return 0;
   return Math.max(LOOK_PITCH_MIN, Math.min(LOOK_PITCH_MAX, pitch));

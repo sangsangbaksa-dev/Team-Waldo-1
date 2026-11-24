@@ -22,7 +22,7 @@ function makeContactShadow() {
   return new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, toneMapped: false });
 }
 
-const SHOCKS = { hit: 0.16, riposte: 0.28, block: 0.085, parry: 0.26, break: 0.27, clash: 0.19 };
+const SHOCKS = { hit: 0.2, riposte: 0.3, block: 0.11, parry: 0.28, break: 0.3, clash: 0.22, evade: 0.08, dodge: 0.045 };
 
 export class Scene {
   constructor(container) {

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0a1114" />
+    <meta
+      name="description"
+      content="가상의 물류 격납고에서 데이터를 확보하는 브라우저 3D FPS."
+    />
+    <title>창고 17 · WALDO</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main id="game">
+      <div id="view" aria-hidden="true"></div>
+      <div class="vignette" aria-hidden="true"></div>
+      <div id="damage" aria-hidden="true"></div>
+      <section id="hud" hidden aria-label="게임 상태">
+        <div class="mission">
+          <span class="eyebrow"><i></i> 창고 17 / 임무 목표</span>
+          <strong id="objective">데이터 단말을 확보하세요</strong>
+          <span id="detail">경비 유닛 0 / 7</span>
+        </div>
+        <canvas id="radar" width="150" height="144" aria-label="지도"></canvas>
+        <div id="crosshair" aria-hidden="true">
+          <b></b><b></b><b></b><b></b>
+        </div>
+        <div id="prompt" hidden></div>
+        <div id="notice" role="status"></div>
+        <div class="bottom">
+          <div class="status">
+            <span class="eyebrow">체력</span>
+            <div class="score">
+              <strong id="hp">100</strong><span> / 100</span>
+            </div>
+            <div class="bar"><i id="health-bar"></i></div>
+          </div>
+          <button id="pause" class="quiet" type="button">
+            일시정지 <kbd>Esc</kbd>
+          </button>
+          <div class="status ammo">
+            <span class="eyebrow">카빈 <b>·</b> 탄약</span>
+            <div class="score">
+              <strong id="mag">24</strong
+              ><span> / <span id="reserve">144</span></span>
+            </div>
+            <span id="reload-state">재장전 <kbd>R</kbd></span>
+          </div>
+        </div>
+      </section>
+      <div id="overlay">
+        <header class="site-header">
+          <a href="../" class="brand"
+            ><span></span> WALDO <small> / 전투 게임</small></a
+          ><button id="sound" class="quiet" type="button" aria-pressed="true">
+            소리 켜짐
+          </button>
+        </header>
+        <section class="panel">
+          <p id="mode" class="eyebrow"><i></i> 싱글플레이 <b>·</b> 3D FPS</p>
+          <h1 id="title">창고 <em>17</em></h1>
+          <p id="description">
+            물류 격납고에서 경비 유닛을 제압하고<br />데이터 단말을 확보해
+            출구로 돌아오세요.
+          </p>
+          <div class="actions">
+            <button id="start" type="button" disabled>임무 시작</button
+            ><a href="../pvp/?map=military" class="quiet">온라인 PvP</a
+            ><a href="../" class="quiet">게임 목록</a>
+          </div>
+          <p id="availability" role="status">3D 격납고를 준비하는 중…</p>
+        </section>
+        <footer class="controls" aria-label="조작 방법">
+          <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동</span>
+          <span><kbd>마우스</kbd> 조준 <kbd>좌클릭</kbd> 사격</span>
+          <span><kbd>R</kbd> 재장전</span><span><kbd>E</kbd> 상호작용</span
+          ><span><kbd>Shift</kbd> 달리기</span>
+        </footer>
+      </div>
+      <noscript>플레이하려면 JavaScript를 켜 주세요.</noscript>
+    </main>
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>

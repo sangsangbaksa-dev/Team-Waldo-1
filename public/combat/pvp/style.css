@@ -1,0 +1,235 @@
+:root {
+  color-scheme: dark;
+  --accent: #ffca83;
+  --ink: #edf6f5;
+  font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif;
+  background: #091419;
+  color: var(--ink);
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+body {
+  margin: 0;
+}
+main,
+#view,
+#view canvas,
+#hud,
+#overlay,
+#damage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+main {
+  overflow: hidden;
+}
+#view {
+  background: radial-gradient(ellipse at 70% 32%, #305254, #071317 77%);
+}
+#hud,
+#damage {
+  pointer-events: none;
+}
+#damage {
+  opacity: 0;
+  box-shadow: inset 0 0 110px 43px #e13726;
+}
+#overlay {
+  padding: clamp(16px, 4vw, 58px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: auto;
+  background:
+    linear-gradient(90deg, #071216f5, #071216c4 45%, #07121619 100%),
+    linear-gradient(0deg, #071216bd, transparent 35%);
+}
+header,
+footer,
+.actions,
+#setup,
+#join > div,
+#share {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+header {
+  justify-content: space-between;
+}
+a {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 650;
+}
+a:hover {
+  text-decoration: underline;
+}
+.brand {
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  font-weight: 900;
+}
+.card {
+  margin-block: 25px;
+  max-width: 720px;
+}
+#eyebrow {
+  color: var(--accent);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+h1 {
+  font-size: clamp(2.75rem, 9vw, 6.9rem);
+  line-height: 1.02;
+  letter-spacing: -0.075em;
+  margin: 0.18em 0;
+  font-weight: 850;
+}
+#subtitle {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: #d1e1de;
+  line-height: 1.6;
+}
+#status {
+  font-size: 0.98rem;
+  color: #bbcdcb;
+  min-height: 1.25em;
+}
+#setup {
+  align-items: end;
+  margin-block: 24px;
+  gap: 24px;
+}
+button,
+input {
+  font: inherit;
+  min-height: 44px;
+  border: 1px solid #7eb0aa6b;
+  color: var(--ink);
+  background: #14272dea;
+  padding: 0.56rem 0.83rem;
+  border-radius: 2px;
+}
+button {
+  font-weight: 750;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+button:hover:not(:disabled) {
+  background: #264247;
+}
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #071317;
+}
+.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent), white 27%);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+#join label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.86rem;
+  color: #cddeeb;
+}
+#code {
+  width: 9.75rem;
+}
+#room-code {
+  background: #0b1e25;
+  padding: 0.52rem 0.78rem;
+  color: var(--accent);
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+footer {
+  gap: 10px 20px;
+  color: #d0ddde;
+  font-size: 0.88rem;
+}
+kbd,
+small {
+  border: 1px solid #789b9b6b;
+  padding: 0.12rem 0.26rem;
+  background: #13282d;
+  color: #edf6f5;
+  font: 700 0.8rem system-ui;
+}
+.scoreboard,
+.equipment {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.scoreboard {
+  top: clamp(8px, 3vw, 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: min(88%, 280px);
+  gap: 14px;
+  background: #08181ce8;
+  padding: 0.65rem 1.06rem;
+  border: 1px solid #8cb9b147;
+  font-variant-numeric: tabular-nums;
+}
+.scoreboard strong {
+  font-size: 1.42rem;
+  color: var(--accent);
+}
+#clock {
+  color: #b9cecc;
+  font-size: 0.91rem;
+}
+.reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -53%);
+  font-size: 29px;
+  color: #ecfff6;
+  text-shadow: 0 1px 4px #020707;
+  line-height: 1;
+}
+.reticle.hit {
+  color: #ff8a70;
+}
+.equipment {
+  bottom: clamp(10px, 3vw, 25px);
+  left: clamp(10px, 3vw, 25px);
+  right: clamp(10px, 3vw, 25px);
+  gap: 8px;
+}
+.equipment div {
+  background: #08181ce8;
+  border: 1px solid #8cb9b147;
+  padding: 0.55rem 0.78rem;
+}
+.equipment strong {
+  font-size: 1.3rem;
+  color: var(--accent);
+}
+#alert {
+  text-align: center;
+  text-shadow: 0 1px 4px #000;
+  color: #eef8ec;
+  font-weight: 700;
+}

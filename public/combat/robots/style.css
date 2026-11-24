@@ -1,0 +1,271 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;700;900&display=swap");
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #080e13;
+  color: #eafcff;
+  font-family: "IBM Plex Mono", "Noto Sans KR", sans-serif;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.noise {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #0001 4px);
+  opacity: 0.5;
+}
+.back {
+  position: fixed;
+  top: 24px;
+  left: 28px;
+  color: #b9cbd0;
+  text-decoration: none;
+  font-size: 11px;
+  z-index: 5;
+  letter-spacing: 0.08em;
+}
+.back:hover {
+  color: #66ffde;
+}
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.brand {
+  position: absolute;
+  left: 28px;
+  top: 65px;
+  border-left: 2px solid #5cffd4;
+  padding-left: 12px;
+  display: grid;
+  gap: 4px;
+}
+.brand span {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+}
+.brand small {
+  font-size: 10px;
+  color: #90a9a9;
+}
+.stats {
+  position: absolute;
+  top: 28px;
+  right: 30px;
+  display: flex;
+  gap: 32px;
+}
+.stats div {
+  color: #86a1a5;
+  font-size: 10px;
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+.stats b {
+  font-size: 21px;
+  color: #eafffa;
+}
+.objective {
+  position: absolute;
+  top: 105px;
+  right: 30px;
+  color: #65ffda;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -54%);
+  font-size: 26px;
+  font-weight: 400;
+  color: #b9ffed;
+  text-shadow: 0 0 8px #47ffcf;
+}
+.bottom {
+  position: absolute;
+  bottom: 30px;
+  left: 30px;
+  right: 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  font-size: 10px;
+  color: #a1b3b4;
+}
+.bottom strong {
+  font-size: 12px;
+  color: #d8fffa;
+  letter-spacing: 0.05em;
+}
+.bottom i {
+  font-size: 25px;
+  font-style: normal;
+  color: #67ffd5;
+  margin-left: 12px;
+}
+#damage {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 130px 35px #ff304c;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 8vw;
+  background: linear-gradient(
+    90deg,
+    rgba(4, 12, 16, 0.97) 0%,
+    rgba(4, 12, 16, 0.89) 38%,
+    rgba(4, 12, 16, 0.4)
+  );
+  z-index: 4;
+}
+#overlay.hidden {
+  display: none;
+}
+.panel {
+  max-width: 580px;
+}
+.eyebrow {
+  font-size: 11px;
+  color: #60fbd2;
+  letter-spacing: 0.2em;
+  margin-bottom: 20px;
+}
+h1 {
+  font-size: clamp(62px, 9vw, 126px);
+  line-height: 0.79;
+  letter-spacing: -0.09em;
+  margin: 0 0 32px;
+  font-weight: 700;
+}
+h1 em {
+  font-style: normal;
+  color: #62ffd7;
+}
+h1 span {
+  color: #62ffd7;
+}
+p {
+  color: #b6c9ca;
+  line-height: 1.8;
+  font-family: "Noto Sans KR", sans-serif;
+  font-size: 14px;
+}
+.instructions {
+  display: flex;
+  gap: 35px;
+  margin: 34px 0;
+}
+.instructions div {
+  display: grid;
+  gap: 7px;
+}
+.instructions b {
+  font-size: 12px;
+  color: #ecfffa;
+}
+.instructions span {
+  font-size: 11px;
+  color: #829a9c;
+}
+button {
+  border: 0;
+  background: #63ffd8;
+  color: #071715;
+  padding: 17px 20px;
+  min-width: 230px;
+  font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+button:hover {
+  background: #fff;
+}
+button span {
+  float: right;
+  font-size: 16px;
+}
+.panel > small {
+  display: block;
+  margin-top: 12px;
+  color: #789091;
+  font-size: 10px;
+}
+.overlay-foot {
+  position: absolute;
+  bottom: 30px;
+  right: 30px;
+  color: #748d8e;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+}
+@media (max-width: 600px) {
+  .stats {
+    gap: 12px;
+    top: 65px;
+    right: 15px;
+  }
+  .stats b {
+    font-size: 15px;
+  }
+  .brand {
+    top: 115px;
+    left: 15px;
+  }
+  .objective {
+    top: 120px;
+    right: 15px;
+  }
+  .bottom {
+    left: 15px;
+    right: 15px;
+  }
+  .bottom span {
+    max-width: 150px;
+    line-height: 1.6;
+  }
+  .back {
+    left: 15px;
+  }
+  #overlay {
+    padding: 28px;
+  }
+  .instructions {
+    gap: 20px;
+  }
+}
+
+.pvp-link {
+  display: inline-block;
+  margin-left: 18px;
+  color: #a9ffe9;
+  font-size: 12px;
+  text-decoration: none;
+  border-bottom: 1px solid #57ffce;
+  padding: 12px 0;
+}
+.pvp-link:hover {
+  color: white;
+}

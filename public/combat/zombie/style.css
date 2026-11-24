@@ -1,0 +1,382 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap");
+:root {
+  font-family: "DM Sans", "Noto Sans KR", sans-serif;
+  color: #f4f6ed;
+  background: #0c1110;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  overflow: hidden;
+}
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse,
+    transparent 48%,
+    rgba(0, 0, 0, 0.52) 100%
+  );
+  z-index: 1;
+}
+header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  padding: 0 4%;
+  gap: 38px;
+  border-bottom: 1px solid #ffffff29;
+  z-index: 3;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+}
+.back {
+  color: #e9eee5;
+  text-decoration: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+.brand {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+.brand b {
+  color: #b2f660;
+  padding: 0 8px;
+}
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #b2f660;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+.header-right {
+  margin-left: auto;
+  color: #a4b1a5;
+}
+.header-right span {
+  color: #b2f660;
+  margin-left: 10px;
+}
+#hud {
+  position: fixed;
+  top: 105px;
+  left: 4%;
+  right: 4%;
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  z-index: 2;
+  text-shadow: 0 2px 12px #000;
+}
+.eyebrow,
+.wave small,
+.ammo small {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: #afbfaa;
+  font-weight: 700;
+}
+.health-label {
+  margin-top: 12px;
+  font-size: 14px;
+}
+.health-label strong {
+  font-size: 24px;
+  margin-left: 15px;
+}
+.health-label small {
+  color: #9aa99a;
+}
+.health-track {
+  width: 175px;
+  height: 4px;
+  background: #ffffff40;
+  margin-top: 8px;
+}
+#healthbar {
+  height: 100%;
+  width: 100%;
+  background: #b6ff66;
+  transition: width 0.2s;
+}
+.wave {
+  text-align: center;
+}
+.wave small {
+  display: block;
+}
+.wave strong {
+  font-size: 28px;
+  letter-spacing: 0.07em;
+}
+.wave i {
+  font-style: normal;
+  color: #7d897d;
+  font-size: 17px;
+}
+.hud-right {
+  text-align: right;
+}
+.hud-right strong {
+  font-size: 28px;
+}
+.hud-right small {
+  font-size: 12px;
+  color: #c4cec1;
+}
+#crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  border: 1px solid #ffffffb0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+#crosshair span {
+  position: absolute;
+  left: 9px;
+  top: 9px;
+  width: 2px;
+  height: 2px;
+  background: #c6ff8c;
+  border-radius: 50%;
+}
+#hit {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 0 0 0 #ed5c49;
+  transition: box-shadow 0.25s;
+}
+#hit.active {
+  box-shadow: inset 0 0 110px 20px #ed5c49a0;
+}
+.bottom {
+  position: fixed;
+  bottom: 35px;
+  left: 4%;
+  right: 4%;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+}
+.controls {
+  font-size: 11px;
+  color: #b6c3b4;
+}
+.controls b {
+  color: #fff;
+  margin-right: 7px;
+}
+.controls span {
+  display: inline-block;
+  height: 12px;
+  border-left: 1px solid #ffffff55;
+  margin: 0 13px;
+  vertical-align: middle;
+}
+.ammo {
+  text-align: right;
+}
+.ammo small {
+  display: block;
+}
+.ammo strong {
+  font-size: 24px;
+  line-height: 1;
+  color: #b6ff66;
+}
+#message {
+  position: fixed;
+  top: 27%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  text-align: center;
+  font-weight: 900;
+  font-size: 32px;
+  text-shadow: 0 3px 20px #000;
+  white-space: nowrap;
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  background: rgba(6, 12, 10, 0.74);
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.overlay.hidden {
+  display: none;
+}
+.panel {
+  position: relative;
+  width: min(540px, 100%);
+  padding: 28px 45px 31px;
+  background: #111c17;
+  border: 1px solid #829a7355;
+  box-shadow: 0 25px 100px #0008;
+  text-align: center;
+}
+.panel:before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 100px;
+  height: 3px;
+  background: #b6ff66;
+}
+.panel-top {
+  display: flex;
+  justify-content: space-between;
+  color: #829484;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+.symbol {
+  color: #b6ff66;
+  font-size: 34px;
+  margin: 29px 0 2px;
+}
+.kicker {
+  font-size: 10px;
+  color: #b6ff66;
+  letter-spacing: 0.24em;
+  font-weight: 700;
+}
+h1 {
+  font-size: clamp(38px, 7vw, 58px);
+  letter-spacing: -0.07em;
+  margin: 10px 0 15px;
+  font-weight: 900;
+}
+h1 em {
+  font-style: normal;
+  color: #b6ff66;
+}
+.description {
+  font-size: 14px;
+  line-height: 1.9;
+  color: #aab8a9;
+  margin: 0;
+}
+.instructions {
+  display: flex;
+  justify-content: center;
+  margin: 30px 0;
+  gap: 0;
+}
+.instructions div {
+  width: 33%;
+  border-right: 1px solid #ffffff20;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.instructions div:last-child {
+  border: 0;
+}
+kbd {
+  font:
+    700 12px "DM Sans",
+    "Noto Sans KR",
+    sans-serif;
+  color: #f2f7ee;
+}
+.instructions span {
+  font-size: 11px;
+  color: #869587;
+}
+button {
+  border: 0;
+  background: #b6ff66;
+  color: #152010;
+  width: 100%;
+  padding: 18px 20px;
+  text-align: left;
+  font:
+    700 14px "Noto Sans KR",
+    sans-serif;
+  cursor: pointer;
+}
+button:hover {
+  background: #d1ff9f;
+}
+button span {
+  float: right;
+  font-size: 19px;
+  line-height: 1;
+}
+.footnote {
+  font-size: 10px;
+  color: #788a7a;
+  margin: 17px 0 0;
+}
+@media (max-width: 600px) {
+  header {
+    gap: 15px;
+  }
+  .header-right {
+    display: none;
+  }
+  .panel {
+    padding: 25px;
+  }
+  .controls {
+    font-size: 9px;
+  }
+  .controls span {
+    margin: 0 5px;
+  }
+  .health-track {
+    width: 100px;
+  }
+}
+.pvp-link {
+  display: block;
+  margin-top: 9px;
+  padding: 15px 20px;
+  border: 1px solid #8eae7f;
+  color: #ddf4ce;
+  text-decoration: none;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pvp-link:hover {
+  background: #ffffff10;
+}
+.pvp-link span {
+  float: right;
+}
+
+#crosshair.firing {
+  border-color: #b6ff66;
+  transform: translate(-50%, -50%) scale(1.7);
+}

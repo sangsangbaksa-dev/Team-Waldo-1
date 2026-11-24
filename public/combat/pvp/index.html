@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#081318" />
+    <title>온라인 PvP · WALDO</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <div id="view" aria-hidden="true"></div>
+      <div id="damage" aria-hidden="true"></div>
+      <section id="hud" hidden aria-label="대전 상태">
+        <div class="scoreboard">
+          <span>나 <strong id="mine">0</strong></span
+          ><span id="clock">03:00</span
+          ><span><strong id="theirs">0</strong> 상대</span>
+        </div>
+        <div class="reticle" id="crosshair" aria-hidden="true">+</div>
+        <div class="equipment">
+          <div>체력 <strong id="hp">100</strong></div>
+          <p id="alert" role="status"></p>
+          <div>탄약 <strong id="ammo">12</strong> <small>R</small></div>
+        </div>
+      </section>
+      <div id="overlay">
+        <header>
+          <a id="back" href="../">‹ 게임으로</a
+          ><a href="../" class="brand">WALDO</a>
+        </header>
+        <section class="card">
+          <p id="eyebrow">온라인 PvP <span>·</span> 1 대 1</p>
+          <h1 id="title">대전 준비실</h1>
+          <p id="subtitle">
+            친구와 같은 방에 들어와 더 높은 점수에 도전하세요.
+          </p>
+          <div id="setup">
+            <button id="create" class="primary" type="button">방 만들기</button>
+            <form id="join">
+              <label for="code">친구 방 코드</label>
+              <div>
+                <input
+                  id="code"
+                  name="code"
+                  inputmode="text"
+                  pattern="[A-Za-z2-9]{6}"
+                  maxlength="6"
+                  placeholder="영문·숫자 6자리"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  autocomplete="off"
+                  required
+                /><button type="submit">참가</button>
+              </div>
+            </form>
+          </div>
+          <div id="share" hidden>
+            <output id="room-code" aria-label="방 코드"></output
+            ><button type="button" id="copy">초대 링크 복사</button>
+          </div>
+          <p id="status" role="status">친구와 최대 3분간 대전 · 5점 선승</p>
+          <div class="actions">
+            <button id="ready" class="primary" type="button" hidden>
+              대전 준비</button
+            ><button id="resume" class="primary" type="button" hidden>
+              화면으로 돌아가기</button
+            ><button id="leave" type="button" hidden>방 나가기</button>
+          </div>
+        </section>
+        <footer>
+          <span><kbd>W A S D</kbd> 이동</span
+          ><span><kbd>마우스</kbd> 조준 · <kbd>좌클릭</kbd> 사격</span
+          ><span><kbd>R</kbd> 재장전</span
+          ><span><kbd>Esc</kbd> 마우스 해제</span>
+        </footer>
+      </div>
+    </main>
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>

@@ -8,6 +8,8 @@
     "deploymentEnabled": false
   },
   "redirects": [
+    { "source": "/combat", "destination": "/combat/", "permanent": false },
+    { "source": "/combat/:game(military|zombie|robots|pvp)", "destination": "/combat/:game/", "permanent": false },
     { "source": "/parry-gladiator", "destination": "/parry-gladiator/", "permanent": false },
     { "source": "/dead-ground", "destination": "/dead-ground/", "permanent": false }
   ],

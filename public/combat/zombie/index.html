@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>네온 생존자</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="game"></div>
+    <div class="grain"></div>
+    <header>
+      <a href="../" class="back">← 아케이드로</a>
+      <div class="brand">
+        <span class="dot"></span> NIGHT SHIFT <b>/</b> 네온 생존자
+      </div>
+      <div class="header-right">WAVE SURVIVAL <span>●</span></div>
+    </header>
+    <main>
+      <section id="hud">
+        <div class="hud-left">
+          <div class="eyebrow">SURVIVAL STATUS</div>
+          <div class="health-label">
+            체력 <strong id="health">100</strong><small> / 100</small>
+          </div>
+          <div class="health-track"><div id="healthbar"></div></div>
+        </div>
+        <div class="wave">
+          <small>현재 웨이브</small><strong id="wave">01 <i>/</i> 03</strong>
+        </div>
+        <div class="hud-right">
+          <div class="eyebrow">REMAINING</div>
+          <div><strong id="remaining">0</strong> <small>마리 남음</small></div>
+        </div>
+      </section>
+      <div id="crosshair"><span></span></div>
+      <div id="hit"></div>
+      <div id="message"></div>
+      <div class="bottom">
+        <div class="controls">
+          <b>이동</b> W A S D <span></span><b>시점</b> 마우스 <span></span
+          ><b>발사</b> 클릭 <span></span><b>재장전</b> R
+        </div>
+        <div class="ammo">
+          <small>ENERGY BLASTER</small><strong id="ammo">12 / 12</strong>
+        </div>
+      </div>
+    </main>
+    <div id="overlay" class="overlay">
+      <div class="panel">
+        <div class="panel-top">
+          <span>ARCADE ORIGINALS</span><span>01 / SURVIVAL</span>
+        </div>
+        <div class="symbol">✳</div>
+        <p class="kicker">THE NIGHT IS YOURS</p>
+        <h1>네온 <em>생존자</em></h1>
+        <p class="description">
+          불이 꺼진 거리, 끝나지 않는 밤.<br />몰려오는 좀비를 막고 세 번의
+          웨이브를 버텨내세요.
+        </p>
+        <div class="instructions">
+          <div><kbd>W A S D</kbd><span>이동하기</span></div>
+          <div><kbd>마우스</kbd><span>둘러보기</span></div>
+          <div><kbd>클릭</kbd><span>블래스터 발사</span></div>
+        </div>
+        <button id="start">게임 시작하기 <span>↗</span></button
+        ><a class="pvp-link" href="../pvp/?map=zombie"
+          >친구와 대결하기 <span>↗</span></a
+        >
+        <p class="footnote">
+          화면을 클릭하면 마우스가 게임에 고정됩니다 · ESC로 일시정지
+        </p>
+      </div>
+    </div>
+    <script type="module" src="game.js"></script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>코어 브레이크 | 로봇 시설 습격</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div class="noise"></div>
+    <a class="back" href="../">← 아케이드로</a>
+    <div id="hud">
+      <div class="brand">
+        <span>CORE BREAK</span><small>시설 침투 작전</small>
+      </div>
+      <div class="stats">
+        <div>구역 <b id="zone">01 / 03</b></div>
+        <div>내구도 <b id="health">100</b></div>
+        <div>남은 로봇 <b id="remaining">0</b></div>
+      </div>
+      <div class="objective" id="objective">구역의 로봇을 모두 제거하세요</div>
+      <div class="crosshair">+</div>
+      <div class="bottom">
+        <span
+          >W A S D 이동 &nbsp; · &nbsp; 마우스 조준 / 발사 &nbsp; · &nbsp; 1 / 2
+          무기 교체</span
+        ><strong id="weapon">1 에너지 블래스터 <i>∞</i></strong>
+      </div>
+    </div>
+    <div id="damage"></div>
+    <div id="overlay">
+      <div class="panel">
+        <div class="eyebrow">SINGLE PLAYER / FPS</div>
+        <h1>CORE<br /><em>BREAK</em><span>_</span></h1>
+        <p>
+          통제 불능이 된 로봇 시설에 침투하세요.<br />세 구역을 돌파하고 코어를
+          확보해야 합니다.
+        </p>
+        <div class="instructions">
+          <div><b>W A S D</b><span>이동</span></div>
+          <div><b>마우스</b><span>조준 · 발사</span></div>
+          <div><b>1 / 2</b><span>무기 교체</span></div>
+          <div><b>ESC</b><span>일시정지</span></div>
+        </div>
+        <button id="start">작전 시작 <span>↗</span></button
+        ><a class="pvp-link" href="../pvp/?map=robots">친구와 대전하기 ↗</a
+        ><small>클릭하면 마우스가 게임 화면에 고정됩니다</small>
+      </div>
+      <div class="overlay-foot">SECTOR 03 &nbsp; / &nbsp; SECURITY BREACH</div>
+    </div>
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>

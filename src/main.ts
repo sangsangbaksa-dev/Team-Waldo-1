@@ -241,6 +241,11 @@ function renderMenu(): void {
         <h1>${ENTRIES.length}편의 게임, 한곳에서.</h1>
         <p>설치 없이 이 페이지에서 바로 시작합니다.</p>
       </section>
+      <a class="combat-entry" href="${base}combat/" aria-label="Team Waldo 작전 컬렉션 열기. 세 가지 액션 게임, 솔로 또는 온라인 1대1.">
+        <span class="combat-entry-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="combat-entry-copy"><span class="combat-entry-kicker">새 게임 3편</span><strong>3D 전투 컬렉션</strong><span>현대전 · 좀비 서바이벌 · 로봇 시설 침투 <i>솔로 플레이 · 온라인 1:1</i></span></span>
+        <span class="combat-entry-cta">게임 보기</span>
+      </a>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>
       <footer class="home-foot">

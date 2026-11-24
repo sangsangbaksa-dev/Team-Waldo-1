@@ -10,7 +10,7 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
 const num = (v: unknown, d: number, lo = -Infinity, hi = Infinity) => typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
 const bool = (v: unknown, d: boolean) => typeof v === 'boolean' ? v : d;
-const isKind = (v: unknown): v is ShopKind => typeof v === 'string' && v in SHOP_KINDS;
+const isKind = (v: unknown): v is ShopKind => typeof v === 'string' && Object.prototype.hasOwnProperty.call(SHOP_KINDS, v);
 const isStage = (v: unknown): v is Stage => typeof v === 'string' && (STAGES as readonly string[]).includes(v);
 
 function staff(v: unknown): StaffData | null {
@@ -102,7 +102,7 @@ export function loadTycoon(storage?: Storage): unknown {
 }
 
 export function saveTycoon(core: Pick<TycoonCore, 'serialize'>, storage?: Storage): boolean {
-  try { store(storage)?.setItem(TYCOON_SAVE_KEY, JSON.stringify(core.serialize())); return true; } catch { return false; }
+  try { const target = store(storage); if (!target) return false; target.setItem(TYCOON_SAVE_KEY, JSON.stringify(core.serialize())); return true; } catch { return false; }
 }
 
 export function clearTycoon(storage?: Storage): void {

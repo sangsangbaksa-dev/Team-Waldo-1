@@ -28,8 +28,8 @@ export class Scene {
   constructor(container) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#7c5556');
-    this.scene.fog = new THREE.FogExp2('#8a6561', 0.035);
+    this.scene.background = new THREE.Color('#5c403c');
+    this.scene.fog = new THREE.FogExp2('#6d5048', 0.028);
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.09, 110);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.canvas = this.renderer.domElement;
@@ -40,7 +40,7 @@ export class Scene {
     this.software = /swiftshader|llvmpipe|software raster/i.test(adapter);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.16;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.append(this.canvas);
     this.look = vec();
@@ -57,8 +57,8 @@ export class Scene {
     this.slowFrames = 0;
     this.pixelBudget = 1;
 
-    this.scene.add(new THREE.HemisphereLight('#d3bac0', '#795240', 2.2));
-    const sun = this.sun = new THREE.DirectionalLight('#ffcf9d', 3.15);
+    this.scene.add(new THREE.HemisphereLight('#f0d8c4', '#4e342c', 1.45));
+    const sun = this.sun = new THREE.DirectionalLight('#ffe2bc', 3.55);
     sun.position.set(11, 16, -12);
     sun.castShadow = true;
     sun.shadow.camera.left = sun.shadow.camera.bottom = -13;
@@ -68,7 +68,7 @@ export class Scene {
     sun.shadow.bias = -0.00042;
     sun.shadow.normalBias = 0.027;
     this.scene.add(sun);
-    const bounce = new THREE.DirectionalLight('#a8bdc6', 1.5);
+    const bounce = new THREE.DirectionalLight('#9ec0cc', 0.85);
     bounce.position.set(-6, 8, 9);
     this.scene.add(bounce);
     this.portraitLight = new THREE.DirectionalLight('#f5d3ad', 0.64);
@@ -144,7 +144,7 @@ export class Scene {
     const x = mix(a.root.position.x, b.root.position.x, location);
     const z = mix(a.root.position.z, b.root.position.z, location);
     this.sparks.emit(event, x, z, this.low, reduced);
-    if (!reduced && !this.low && ['parry', 'break', 'riposte'].includes(event)) this.impactRing.emit(x, z, event);
+    if (!reduced && !this.low && ['parry', 'break', 'riposte', 'hit', 'clash'].includes(event)) this.impactRing.emit(x, z, event);
     if (!reduced) this.shake = Math.max(this.shake, SHOCKS[event] || 0);
     if (SHOCKS[event]) this.latched = Math.max(this.latched, event === 'parry' ? 0.081 : 0.04);
   }

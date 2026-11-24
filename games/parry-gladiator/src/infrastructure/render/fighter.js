@@ -229,7 +229,7 @@ export function createFighter(scene, team) {
         }
         const telegraph = player.attack === 'heavy' ? 0.48 : 0.75;
         const ratio = progress / attack.windup;
-        pop = ratio > telegraph && ratio < 1.1 ? clamp((ratio - telegraph) * 1.8, 0, 0.32) : 0;
+        pop = ratio > telegraph && ratio < 1.15 ? clamp((ratio - telegraph) * 2.1, 0, 0.55) : 0;
       } else if (player.state === 'feint') {
         lerpPose(target, heavyWind, idle, easeOut(clamp(player.timer / FEINT_DURATION, 0, 1)));
       } else if (player.state === 'block') {
@@ -273,7 +273,7 @@ export function createFighter(scene, team) {
       head.rotation.x = -pose[0] * 0.57;
       banner.rotation.x = Math.sin(time * 4.1) * 0.055 + walk * 0.035;
       rearCloth.rotation.x = -walk * 0.25 + Math.sin(time * 3.8 + 1) * 0.065;
-      aura.opacity = pop;
+      aura.opacity = Math.min(0.9, pop * 1.35);
       glow.visible = pop > 0 && !low;
       const along = (player.moveX || 0) * Math.sin(player.angle) + (player.moveZ || 0) * Math.cos(player.angle);
       const sign = along < -0.008 ? -1 : 1;

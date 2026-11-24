@@ -50,21 +50,19 @@ export function addRaceScenery(scene: THREE.Scene, track: Track, quality: 'high'
     });
     mesh.computeBoundingSphere(); scene.add(mesh);
   };
-  const dark = (): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: 0x202c39, roughness: 0.7, metalness: 0.35 });
-  const trim = (): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: 0x8b9da5, roughness: 0.45, metalness: 0.65 });
-  const glow = (): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: 0x69e7ff, toneMapped: false });
+  const dark = (): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: 0x2a3138, roughness: 0.62, metalness: 0.42 });
+  const trim = (): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: 0xc4b39a, roughness: 0.38, metalness: 0.55 });
+  const glow = (): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: 0xffb15a, toneMapped: false });
   const signCanvas = document.createElement('canvas'); signCanvas.width = 512; signCanvas.height = 192;
   const ctx = signCanvas.getContext('2d');
   if (ctx) {
-    const bg = ctx.createLinearGradient(0, 0, 512, 192);
-    bg.addColorStop(0, '#101d30'); bg.addColorStop(0.58, '#183b51'); bg.addColorStop(1, '#121927');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, 512, 192);
-    ctx.strokeStyle = '#58d8ee'; ctx.lineWidth = 5; ctx.strokeRect(8, 8, 496, 176);
-    ctx.fillStyle = '#ef694e'; ctx.fillRect(22, 25, 9, 142);
-    ctx.fillStyle = '#f2f7f7'; ctx.font = 'italic 900 62px sans-serif'; ctx.fillText('SPEED', 48, 88);
-    ctx.fillStyle = '#78e7f5'; ctx.font = 'italic 900 62px sans-serif'; ctx.fillText('RUSH', 48, 151);
-    ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 3;
-    for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(350 + i * 26, 30); ctx.lineTo(310 + i * 26, 160); ctx.stroke(); }
+    ctx.fillStyle = '#16191e'; ctx.fillRect(0, 0, 512, 192);
+    ctx.fillStyle = '#e7d3b0'; ctx.fillRect(0, 0, 512, 8);
+    ctx.fillStyle = '#c4553a'; ctx.fillRect(18, 28, 8, 136);
+    ctx.fillStyle = '#f4efe6'; ctx.font = 'italic 800 64px sans-serif'; ctx.fillText('SPEED', 44, 90);
+    ctx.fillStyle = '#e7b56a'; ctx.font = 'italic 800 58px sans-serif'; ctx.fillText('RUSH', 44, 152);
+    ctx.strokeStyle = 'rgba(244,239,230,.22)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(360 + i * 28, 36); ctx.lineTo(328 + i * 28, 156); ctx.stroke(); }
   }
   const signTexture = new THREE.CanvasTexture(signCanvas); signTexture.colorSpace = THREE.SRGBColorSpace;
   const signMaterial = new THREE.MeshBasicMaterial({ map: signTexture, side: THREE.DoubleSide });
@@ -81,7 +79,8 @@ export function addRaceScenery(scene: THREE.Scene, track: Track, quality: 'high'
   const crowdCanvas = document.createElement('canvas'); crowdCanvas.width = 256; crowdCanvas.height = 16;
   const cg = crowdCanvas.getContext('2d');
   if (cg) { // 객석: 줄지어 앉은 관중(머리·상의 색 점)과 좌석 등받이
-    cg.fillStyle = '#7e2f28'; cg.fillRect(0, 0, 256, 16);
+    cg.fillStyle = '#5c4036'; cg.fillRect(0, 0, 256, 16);
+    cg.fillStyle = '#3a2a24'; cg.fillRect(0, 0, 256, 3);
     const tops = ['#e8e6df', '#d9a23a', '#2f6fd0', '#c23b3b', '#58d8ee', '#2a2f3a'], skins = ['#e2b48c', '#c68c64', '#8d5a3b', '#f0c8a0'];
     for (let x = 3; x < 256; x += 8) {
       cg.fillStyle = tops[(x * 7 + (x >> 3)) % tops.length]; cg.fillRect(x, 6, 6, 10);

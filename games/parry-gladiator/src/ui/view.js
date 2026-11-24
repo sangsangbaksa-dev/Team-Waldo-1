@@ -111,7 +111,7 @@ export class View {
 
   home() {
     this.screen('home', 'Parry <em>Gladiator</em>', `
-      <p class="lede">Read the blade. Break their guard. Win two rounds.</p>
+      <p class="lede">First to win two rounds takes the duel.</p>
       <div class="menu-actions">
       ${btn('Solo duel', 'solo', { glyph: 'swords', primary: true, meta: 'VS AI' })}
       ${btn('Online duel', 'online', { glyph: 'link', meta: '1 VS 1' })}
@@ -130,7 +130,7 @@ export class View {
     this.screen('online', 'Online duel', `<p class="lede">Host a private room or enter a friend’s five-character code.</p>
       <form class="online-form" autocomplete="off">
         <label for="server-url">Room server (optional)</label>
-        <input id="server-url" type="url" placeholder="Leave empty to play online with no server" spellcheck="false">
+        <input id="server-url" type="url" placeholder="Optional room server URL" spellcheck="false">
         <label for="room-code">Room code</label>
         <input id="room-code" maxlength="5" placeholder="5 characters" autocapitalize="characters" spellcheck="false">
         <div class="menu-secondary">${btn('Create room', 'create', { primary: true })}<button type="submit" class="button">Join room</button></div>
@@ -154,7 +154,7 @@ export class View {
   }
 
   how() {
-    this.screen('how', 'Field manual', `<div class="manual">
+    this.screen('how', 'Controls', `<div class="manual">
       <p><strong>Read the windup.</strong> Light strikes are quick. Heavy strikes hit harder and drain more stamina from a shield.</p>
       <p><strong>Guard late.</strong> Raise guard shortly before impact to parry. Press Light while the rival is staggered to riposte.</p>
       <p><strong>Leave enough stamina.</strong> Attacking, dodging, and absorbing hits use it. An empty guard breaks. Back off to recover.</p>

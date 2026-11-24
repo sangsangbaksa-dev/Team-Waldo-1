@@ -1,6 +1,6 @@
 // 스폿별 행동 목록과 실행. 플레이어가 직접 걸어가서 하는 모든 일이 여기 있다.
 import {
-  BOTTLE_CAP, BOTTLE_PRICE, BUSINESS_SHOPS, BUYOUT_PREMIUM, CARGO_CAP, CLERKS_PER_LEVEL, CONQUER_SHARE, DELIVERY_MINUTES,
+  BOTTLE_CAP, BOTTLE_PRICE, BUSINESS_SHOPS, BUYOUT_PREMIUM, CARGO_CAP, CASINO_BET_SIZES, CASINO_WIN_CHANCE, CLERKS_PER_LEVEL, CONQUER_SHARE, DELIVERY_MINUTES,
   DISTRICTS, ENERGY_MAX, INCORPORATE_COST, IPO_RAISE, JOBS, LOAN_LIMIT_RATE, LOAN_MIN_LIMIT, LOAN_STEPS, LOT_KINDS, NIGHT_FROM,
   NIGHT_TO, REGIONS, REGION_STEP, REGION_STEP_COST, RIVALS, SHOP_KINDS, SPOTS, STAGE_NAMES, TAKEOVER_PREMIUM, WAGES,
   stageAtLeast,
@@ -24,7 +24,10 @@ export interface ActionSpec extends ActionDef {
   run: () => string;
 }
 
-const JOB_AT: Record<string, string> = { job_mart: 'mart_shift', job_cafe: 'cafe_shift', job_delivery: 'delivery', job_dock: 'dock' };
+const JOB_AT: Record<string, string> = {
+  job_mart: 'mart_shift', job_cafe: 'cafe_shift', job_delivery: 'delivery', job_dock: 'dock',
+  job_post: 'parcel_sort', job_park: 'park_clean', casino: 'casino_shift',
+};
 const FOOD = [
   { id: 'ramen', label: '컵라면', cost: 3, energy: 20, sec: 1.5 },
   { id: 'gimbap', label: '김밥 정식', cost: 9, energy: 50, sec: 2.5 },
@@ -59,7 +62,11 @@ export function buildActions(ctx: ActionCtx, spotId: string): ActionSpec[] {
     case 'scrap': out.push(scrapAction(ctx, spotId)); break;
     case 'recycle': out.push(recycleAction(ctx)); break;
     case 'food': for (const f of FOOD) out.push(foodAction(ctx, f)); break;
-    case 'job': out.push(jobAction(ctx, spotId)); if (!JOBS[JOB_AT[spotId]].delivery) out.push(rushAction(ctx, spotId)); break;
+    case 'job':
+      out.push(jobAction(ctx, spotId));
+      if (spotId === 'casino') out.push(...casinoActions(ctx));
+      else if (!JOBS[JOB_AT[spotId]].delivery) out.push(rushAction(ctx, spotId));
+      break;
     case 'market': out.push(...marketActions(ctx)); break;
     case 'bank': out.push(...bankActions(ctx)); break;
     case 'office': out.push(...officeActions(ctx)); break;
@@ -196,6 +203,34 @@ function deliverAction(ctx: ActionCtx): ActionSpec {
       return `배달 완료! ${fmt(pay)}`;
     },
   }, ctx);
+}
+
+// ── 카지노(게임 머니만) ───────────────────────────────
+function casinoActions(ctx: ActionCtx): ActionSpec[] {
+  const { g } = ctx;
+  const open = g.minute / 60 >= 7 && g.minute / 60 < 23;
+  return CASINO_BET_SIZES.map(stake => spec({
+    id: `casino_flip_${stake}`,
+    label: `코인 뒤집기 · ${fmt(stake)} 걸기`,
+    desc: `HUSTLE 게임 현금만 사용 (실제 결제·보상 없음). 승리 ${CASINO_WIN_CHANCE * 100}% · 당첨 시 총 ${fmt(stake * 2)} 지급, 순이익 +${fmt(stake)} · 패배 시 ${fmt(stake)} 전액 손실.`,
+    cost: stake,
+    reward: stake,
+    durationSec: 1.8,
+    lockMovement: true,
+    ...(!open ? off('영업 시간은 07:00~23:00입니다') : {}),
+    run: () => {
+      g.cash -= stake;
+      if (rand(g) < CASINO_WIN_CHANCE) {
+        g.cash += stake * 2;
+        ctx.emit({ type: 'cash', text: `+${fmt(stake)}`, amount: stake, spotId: 'casino' });
+        ctx.emit({ type: 'toast', text: `승리! 순이익 +${fmt(stake)} · 총 지급 ${fmt(stake * 2)} · 잔액 ${fmt(g.cash)}`, tone: 'good' });
+        return '';
+      }
+      ctx.emit({ type: 'cash', text: `−${fmt(stake)}`, amount: -stake, spotId: 'casino' });
+      ctx.emit({ type: 'toast', text: `패배 · ${fmt(stake)} 손실 · 잔액 ${fmt(g.cash)}`, tone: 'bad' });
+      return '';
+    },
+  }, ctx));
 }
 
 // ── 도매시장 ─────────────────────────────────────────

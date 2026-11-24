@@ -123,7 +123,14 @@ export const JOBS: Record<string, JobDef> = {
   cafe_shift: { id: 'cafe_shift', name: '카페 알바', desc: '아침·점심 러시가 바쁘다.', pay: 34, energy: 16, durationSec: 8, fromHour: 7, toHour: 20 },
   delivery: { id: 'delivery', name: '배달 대행', desc: '물건을 받아 다른 곳까지 걸어서 배달한다. 빨리 갈수록 이득.', pay: 40, energy: 10, durationSec: 2, delivery: true, fromHour: 8, toHour: 23 },
   dock: { id: 'dock', name: '항만 하역', desc: '힘들지만 일당이 세다.', pay: 70, energy: 30, durationSec: 11, fromHour: 6, toHour: 18 },
+  parcel_sort: { id: 'parcel_sort', name: '택배 분류', desc: '도착한 상자를 주소별로 빠르게 분류한다.', pay: 54, energy: 18, durationSec: 8, fromHour: 7, toHour: 20 },
+  park_clean: { id: 'park_clean', name: '공원 정돈', desc: '아침 공원을 정리하고 쓰레기를 치운다.', pay: 36, energy: 10, durationSec: 6, fromHour: 6, toHour: 14 },
+  casino_shift: { id: 'casino_shift', name: '카지노 딜러', desc: '테이블을 정리하고 손님을 안내한다. 게임 머니 알바다.', pay: 46, energy: 12, durationSec: 7, fromHour: 7, toHour: 23 },
 };
+
+/** Casino bets use HUSTLE's in-game cash only. The fixed odds and preset stakes are shown before play. */
+export const CASINO_BET_SIZES = [10, 25, 50] as const;
+export const CASINO_WIN_CHANCE = 0.48;
 
 /** 배달 제한 시간(게임 분) */
 export const DELIVERY_MINUTES = 120;
@@ -170,6 +177,10 @@ export const SPOTS: readonly SpotDef[] = [
   lot('lot_u1', '가로수길 상가', 'uptown', 'M'),
   lot('lot_u2', '명품거리 빌딩', 'uptown', 'L'),
   lot('lot_u3', '언덕 위 쇼핑몰', 'uptown', 'L', 'business'),
+  // 신규 장소는 끝에 붙여 기존 스폿의 결정적 씬 배치를 보존한다.
+  spot('casino', 'job', '카지노 · 게임 현금만', '🎲', 'market', 'parttime'),
+  spot('job_post', 'job', '택배 분류장', '📦', 'market', 'parttime'),
+  spot('job_park', 'job', '공원 관리소', '🌳', 'slum', 'parttime'),
 ];
 
 /** 라이벌 회사(가상). 게임 시작 시 일부 부지를 갖고 있고 매일 확장한다 */

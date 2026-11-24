@@ -61,7 +61,7 @@ export class Controls {
     document.addEventListener('keydown', event => {
       if (!this.active) return;
       if (event.code === 'Escape') { if (!event.repeat) this.pause(); return; }
-      if (!GAME_KEYS.has(event.code) || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!GAME_KEYS.has(event.code) || event.metaKey || event.altKey || (event.ctrlKey && event.code !== 'ControlLeft' && !this.keys.has('ControlLeft'))) return;
       event.preventDefault();
       if (event.repeat || this.keys.has(event.code)) return;
       this.keys.add(event.code);

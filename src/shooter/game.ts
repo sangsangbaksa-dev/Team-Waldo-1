@@ -19,6 +19,7 @@ import { openGunsmith } from './gunsmith';
 import { ICON_DEFS, gearIcon } from './icons';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
 import { PVP_ENABLED } from '../net/config';
+import { damageLabel, markerHold, nextCombo, rollupHits, type HitSample } from './domain/feedback';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -562,7 +563,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + Math.sin(now / 160) * 0.12 : 0), 0, 0.9));
     q('#sz-scope').classList.toggle('on', p.ads && g?.id === 'sniper' && p.alive);
     // 명중 표시와 배너
-    hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 6) : 0); hm.classList.toggle('head', hitHead); hm.classList.toggle('kill', hitKill && hitT > 0);
+    hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 5) : 0); hm.classList.toggle('head', hitHead); hm.classList.toggle('kill', hitKill && hitT > 0);
     room?.chat?.tick(performance.now());
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#sz-banner').classList.remove('show'); }
     // 처치 알림
@@ -577,7 +578,23 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 이벤트 처리 ----------
   function onEvents(events: MatchEvent[]): void {
     const m = match!, p = me();
+    const pending: HitSample[] = [];
+    const markHit = (head: boolean, kill: boolean): void => {
+      hitHead = head; hitKill = kill; hitT = markerHold(head, kill);
+      const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop');
+    };
+    const flushHits = (): void => {
+      const rolls = rollupHits(pending); pending.length = 0; if (!rolls.length) return;
+      combo = nextCombo(combo, rolls.length); comboT = 1.8;
+      let anyHead = false;
+      for (const roll of rolls) {
+        anyHead = anyHead || roll.head; audio.play(roll.head ? 'headshot' : 'hitmark', 0, combo);
+        const n = document.createElement('b'); n.textContent = damageLabel(roll.dmg, combo); n.className = roll.head ? 'head' : ''; n.style.left = `${(Math.random() - 0.5) * 70}px`; q('#sz-nums').append(n); window.setTimeout(() => n.remove(), 800);
+      }
+      markHit(anyHead, false);
+    };
     for (const e of events) {
+      if (e.t !== 'hit') flushHits();
       if (e.t === 'shot') {
         const s = m.players[e.id]; if (!s) continue; const dist = Math.hypot(s.x - p.x, s.z - p.z); audio.play(e.weapon, (e.id === p.id ? 0 : dist) + (e.sup ? 85 : 0));
         if (e.id === p.id && !e.remote) { shotsFired++; if (e.hit) shotsHit++; }
@@ -589,11 +606,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (e.id === p.id && !e.remote) { const sh = { w: e.weapon, ox: e.ox, oy: e.oy, oz: e.oz, ends: e.ends }; if (pvp?.net.started) pvp.net.sendShot(sh); else if (room?.net.started) room.net.sendShot(sh); }
       } else if (e.t === 'hit') {
         if (e.wall) continue;
-        if (e.attacker === p.id && e.victim >= 0) {
-          hitT = 0.3; hitHead = e.head; hitKill = false; combo = Math.min(6, combo + 1); comboT = 1.8; audio.play(e.head ? 'headshot' : 'hitmark', 0, combo);
-          const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop');
-          const n = document.createElement('b'); n.textContent = `${e.dmg}${combo > 1 ? ` / ${combo} HIT` : ''}`; n.className = e.head ? 'head' : ''; n.style.left = `${(Math.random() - 0.5) * 70}px`; q('#sz-nums').append(n); window.setTimeout(() => n.remove(), 700);
-        }
+        if (e.attacker === p.id && e.victim >= 0 && e.dmg > 0) pending.push({ victim: e.victim, dmg: e.dmg, head: e.head });
         if (e.victim === p.id) {
           audio.play('hurt'); const rel = (m.players[e.attacker] ? Math.atan2(m.players[e.attacker].z - p.z, m.players[e.attacker].x - p.x) : p.hurtYaw) - yaw, d = document.createElement('i');
           d.style.transform = `rotate(${(rel * 180) / Math.PI + 90}deg)`; q('#sz-dmgs').append(d); window.setTimeout(() => d.remove(), 900);
@@ -603,7 +616,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (!pvp && !m.over) { const left = m.aliveCount(); for (const n of [50, 25, 10, 5, 3]) if (left <= n && !told.has(n)) { told.add(n); if (left === n || n >= 25) say(`${left}명 생존`, 1.6); } }
         const mine = e.attacker === p.id, text = e.attacker < 0 || e.victim === e.attacker ? `${nameOf(e.victim)} 쓰러짐` : `${nameOf(e.attacker)} → ${nameOf(e.victim)}`;
         addFeed(text, causeName(e.weapon), mine || e.victim === p.id);
-        if (mine) { audio.play('kill'); hitKill = true; hitT = 0.55; const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
+        if (mine) { audio.play('kill'); markHit(hitHead, true); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
         if (e.victim === p.id) onMyDeath(e.attacker);
       } else if (e.t === 'pickup') {
         if (e.id === p.id) { audio.play(e.kind === 'medkit' || e.kind === 'bandage' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 획득 · ${touch ? '조립 버튼' : 'L'} 으로 조립` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'grenade' ? '수류탄 +2' : e.kind === 'smoke' ? '연막탄 +1 · B 로 던지기' : e.kind === 'flash' ? '섬광탄 +1 · V 로 던지기' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'bandage' ? `붕대 +${HEAL.bandage.pick}` : e.kind === 'medkit' ? '구급상자 +1' : e.kind === 'armor' ? `${ARMOR_NAMES[Math.max(1, Math.min(3, e.level || 2))]} 장착` : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); else if (room) room.net.sendPickup(e.loot); }
@@ -626,6 +639,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       else if (e.t === 'empty') { if (e.id === p.id) audio.play('empty'); }
       else if (e.t === 'over') { onOver(e.winner); }
     }
+    flushHits();
   }
   function onMyDeath(by: number): void {
     phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; mouse.fire = mouse.ads = false; tc.fire = false; audio.play('lose');

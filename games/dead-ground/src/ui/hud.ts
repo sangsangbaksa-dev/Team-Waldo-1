@@ -1,4 +1,5 @@
 import { RIFLE, type Player } from '../domain/combat.js';
+import { healthLoss, hitPresentation, hitRead } from '../domain/feedback.js';
 import type { MatchEvent, Snapshot } from '../domain/match.js';
 import { clamp, horizontalDistance } from '../domain/math.js';
 import { LANDMARKS, type World } from '../domain/world.js';
@@ -42,6 +43,7 @@ export class Hud {
   private readonly bearing = element('bearing-ticks');
   private readonly sector = element('sector-label');
   private readonly health = element('health');
+  private readonly healthDelta = element('health-delta');
   private readonly healthMeter = element('health-meter');
   private readonly healthBar = element('health-bar');
   private readonly protection = element('protection');
@@ -67,6 +69,9 @@ export class Hud {
   private map?: TacticalMap;
   private lastHit = -Infinity;
   private lastDamage = -Infinity;
+  private hitHold = 560;
+  private shownHealth = 100;
+  private healthFlash = -Infinity;
   private bearingWidth = 34;
   private bearingWidthAt = -Infinity;
   private lastFeed = '';
@@ -83,7 +88,11 @@ export class Hud {
   }
 
   reset(): void {
-    this.lastHit = this.lastDamage = -Infinity;
+    this.lastHit = this.lastDamage = this.healthFlash = -Infinity;
+    this.shownHealth = 100;
+    this.hitHold = 560;
+    this.hitMarker.classList.remove('head', 'down');
+    this.healthDelta.hidden = true;
     this.lastFeed = this.lastScore = '';
     this.killfeed.replaceChildren();
   }
@@ -92,8 +101,13 @@ export class Hud {
     if (event.type !== 'hit') return;
     if (event.target === self) this.lastDamage = now;
     if (event.player === self) {
+      const read = hitRead(event.headshot, event.lethal);
+      const view = hitPresentation(read);
       this.lastHit = now;
-      setText(this.hitNote, event.headshot ? 'HEADSHOT' : event.lethal ? 'ELIMINATION' : 'HIT');
+      this.hitHold = view.holdMs;
+      setText(this.hitNote, view.label);
+      this.hitMarker.classList.toggle('head', read === 'head');
+      this.hitMarker.classList.toggle('down', read === 'down');
     }
   }
 
@@ -108,6 +122,10 @@ export class Hud {
     setText(this.network, flags.room ? `${snapshot.players.length} ONLINE${flags.latency === undefined ? '' : ` · ${flags.latency} MS`}` : '5 AI OPPONENTS');
     setText(this.round, snapshot.round);
     setText(this.kills, player.kills);
+    const loss = healthLoss(this.shownHealth, player.health);
+    if (loss > 0) { this.healthFlash = now; setText(this.healthDelta, `−${loss}`); }
+    this.shownHealth = player.health;
+    this.healthDelta.hidden = now - this.healthFlash > 720;
     setText(this.health, player.health);
     this.healthBar.style.transform = `scaleX(${player.health / 100})`;
     this.healthMeter.setAttribute('aria-valuenow', String(player.health));
@@ -136,8 +154,8 @@ export class Hud {
     this.reticle.style.opacity = player.alive ? String(1 - clamp(aim * 2, 0, 1)) : '0';
     this.scopeReadout.hidden = aim < 0.7 || !player.alive;
     setText(this.scopeZoom, `${zoom}×`);
-    this.hitMarker.style.opacity = String(clamp(1 - (now - this.lastHit) / 300, 0, 1));
-    this.hitNote.hidden = now - this.lastHit > 650;
+    this.hitMarker.style.opacity = String(clamp(1 - (now - this.lastHit) / this.hitHold, 0, 1));
+    this.hitNote.hidden = now - this.lastHit > this.hitHold;
     this.hitFlash.style.opacity = String(clamp(1 - (now - this.lastDamage) / 500, 0, 1));
 
     let status = '';

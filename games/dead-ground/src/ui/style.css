@@ -159,7 +159,7 @@ h1 span{color:#dcb782}
 .field,.field > canvas,.hud,.overlay{position:fixed;inset:0;width:100%;height:100%}
 .field{background:#797363}
 .field > canvas{display:block;cursor:none;touch-action:none}
-.hud{pointer-events:none;color:var(--paper);font:500 .76rem/1.25 var(--mono);text-shadow:0 1px 8px #080907,0 1px 2px #080907}
+.hud{pointer-events:none;color:var(--paper);font:500 .8rem/1.3 var(--mono);text-shadow:0 1px 2px #080907}
 .hud::before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#16180e76,transparent 23%,transparent 80%,#16180e57)}
 .glass,.hit-flash{position:absolute;inset:0;width:100%;height:100%;opacity:0}
 .hit-flash{background:radial-gradient(ellipse,transparent 40%,#7d2123bb 100%);transition:opacity .16s}
@@ -177,7 +177,7 @@ h1 span{color:#dcb782}
 .clock b{color:var(--sand)}
 .compass{height:1.5rem;margin-top:.34rem;position:relative;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
 #bearing-ticks{position:absolute;white-space:nowrap;top:0;left:50%;display:flex;width:max-content;height:100%}
-#bearing-ticks span{width:2.15rem;position:relative;line-height:1.05rem;flex:none;text-align:center;font-size:.62rem}
+#bearing-ticks span{width:2.15rem;position:relative;line-height:1.05rem;flex:none;text-align:center;font-size:.72rem;color:#f4ecdc}
 #bearing-ticks span::after{content:"";width:1px;height:.31rem;background:#e5dbc2a6;display:block;margin:2px auto 0}
 .compass i{position:absolute;left:calc(50% - 3px);top:0;width:0;height:0;border:3px solid transparent;border-top-color:var(--sand)}
 .sector-label{color:var(--sand);font-size:.62rem;letter-spacing:.14em;margin-top:.31rem}
@@ -190,9 +190,10 @@ h1 span{color:#dcb782}
 .hud-title small{color:var(--sand);font-size:.57rem}
 .health-line,.ammunition{display:flex;align-items:center;gap:.6rem}
 .health-line strong,.ammunition strong{font:700 2.7rem/1.04 var(--heading);letter-spacing:.035em;color:#fff}
-.meter{height:4px;background:#c8c0a94a;flex:1}
+.meter{height:6px;background:#c8c0a966;flex:1}
 .meter i{height:100%;display:block;background:var(--sand);transform-origin:left;transition:transform .12s linear}
-.health-line .meter{height:6px}
+.health-line .meter{height:8px}
+.health-delta{color:#f0c8bc;font:700 1.15rem/1 var(--heading);letter-spacing:.04em}
 .health-line .meter i{background:#e1ddc7}
 .breath{display:flex;align-items:center;gap:.49rem;margin-top:.26rem;color:#cabfa4;font-size:.58rem}
 .weapon{text-align:right}
@@ -210,11 +211,13 @@ kbd{color:var(--paper);display:inline-block;border:1px solid #d6c4a550;padding:.
 .reticle i:nth-child(2){top:auto;bottom:0}
 .reticle i:nth-child(3),.reticle i:nth-child(4){height:1px;width:6px;top:12px;left:0}
 .reticle i:nth-child(4){left:auto;right:0}
-.hit-marker{position:absolute;left:50%;top:50%;width:21px;height:21px;transform:translate(-50%,-50%) rotate(45deg);opacity:0}
+.hit-marker{position:absolute;left:50%;top:50%;width:24px;height:24px;transform:translate(-50%,-50%) rotate(45deg);opacity:0}
+.hit-marker.head{width:32px;height:32px}
+.hit-marker.down{width:30px;height:30px}
 .hit-marker::before,.hit-marker::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--sand) 33%,transparent 33% 67%,var(--sand) 67%) center / 100% 2px no-repeat}
 .hit-marker::after{transform:rotate(90deg)}
 .hit-note,.combat-status,.scope-readout{position:absolute;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap}
-.hit-note{top:calc(50% + 1.55rem);color:var(--sand);font:700 1.23rem/1 var(--heading);letter-spacing:.13em}
+.hit-note{top:calc(50% + 1.7rem);color:#f6ecd8;font:700 1.35rem/1 var(--heading);letter-spacing:.16em;background:#14160fcc;padding:.28rem .55rem}
 .combat-status{top:67%;padding:.45rem .73rem;background:#161811bf;border:1px solid var(--line);color:var(--paper);font-size:.75rem;letter-spacing:.075em}
 .scope-readout{top:calc(50% + min(32vh,30vw));color:#f2d7a4;display:flex;align-items:center;gap:.54rem;background:#171910a0;padding:.25rem .43rem}
 .scope-readout strong{color:var(--sand);font:700 1.15rem/1 var(--heading);letter-spacing:.03em}

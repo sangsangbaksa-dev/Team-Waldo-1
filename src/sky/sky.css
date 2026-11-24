@@ -128,3 +128,6 @@
 @media (max-width:600px){.sk-brow{grid-template-columns:14px 26px 1fr;gap:4px}.sk-bl{font-size:9px;letter-spacing:.02em}}
 @media (pointer:coarse){.sk-hint{bottom:auto;top:max(96px,calc(env(safe-area-inset-top) + 88px));padding:0 64px}}
 .sk-pause-modal .sk-row{flex-wrap:wrap}
+
+.sk-objective{font-size:11px;color:#d6dce0;text-align:center;letter-spacing:0;line-height:1.5}
+@media(max-width:600px){.sk-objective{font-size:10px}}

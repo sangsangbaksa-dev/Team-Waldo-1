@@ -107,13 +107,13 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 저장 ----------
-  const save = (): void => {
-    if (!core || phase !== 'play') return;
+  const save = (): boolean => {
+    if (!core || phase !== 'play') return false;
     const world: SessionPosition = {
       x: player.pos.x, z: player.pos.z, yaw: player.camYaw - Math.PI,
       waypoint, ride: rides?.snapshot() ?? null,
     };
-    saveTycoon({ serialize: () => ({ ...core.serialize(), world }) });
+    return saveTycoon({ serialize: () => ({ ...core.serialize(), world }) });
   };
 
   // ---------- 모달 ----------
@@ -288,7 +288,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (m !== 'restart') confirmRestart = false;
     if (m === 'resume') closeModal();
     else if (m === 'restart') { if (confirmRestart) restartGame(); else { confirmRestart = true; renderModal(); } }
-    else if (m === 'save') { save(); toast('저장했습니다', 'good'); }
+    else if (m === 'save') { if (save()) toast('저장했습니다', 'good'); else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 'bad'); }
     else if (m === 'view') { toggleView(); renderModal(); }
     else if (m === 'sound') { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); renderModal(); }
     else if (m === 'exit') exit();

@@ -1,7 +1,7 @@
 // 저장/불러오기. 저장 데이터는 신뢰하지 않고 기본값 위에 검증해서 얹는다.
 import { ENERGY_MAX, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
 import { LOT_IDS, SPOT_BY_ID, newGame, type GameData, type LotData, type ShopData, type StaffData } from './model';
-import type { ShopKind, Stage, TycoonCore, TycoonSave } from './types';
+import type { DayReport, ShopKind, Stage, TycoonCore, TycoonSave } from './types';
 
 import { TYCOON_SAVE_KEY } from './summary';
 export { TYCOON_SAVE_KEY, readTycoonSummary } from './summary';
@@ -48,6 +48,13 @@ function lot(id: string, v: unknown, fallback: LotData): LotData {
   return { owner: 'none' };
 }
 
+function restoreReport(raw: unknown): DayReport | null {
+  if (!isObj(raw)) return null;
+  const fields = ['day', 'revenue', 'costOfGoods', 'wages', 'upkeep', 'interest', 'tax', 'worldIncome', 'jobIncome', 'profit', 'customers', 'lost'] as const;
+  if (fields.some(key => typeof raw[key] !== 'number' || !Number.isFinite(raw[key]))) return null;
+  return Object.fromEntries(fields.map(key => [key, raw[key]])) as unknown as DayReport;
+}
+
 /** 어떤 값이든 받아 올바른 GameData 로 만든다. 알 수 없는 필드는 버린다 */
 export function restoreGame(raw: unknown): GameData | null {
   if (!isObj(raw) || raw.v !== 1) return null;
@@ -78,7 +85,7 @@ export function restoreGame(raw: unknown): GameData | null {
   g.task = isObj(t) && SPOT_BY_ID.has(String(t.target)) && SPOT_BY_ID.has(String(t.from))
     ? { id: String(t.id), jobId: String(t.jobId), from: String(t.from), target: String(t.target), reward: num(t.reward, 0, 0, 1000), deadline: num(t.deadline, 0) }
     : null;
-  g.lastReport = isObj(raw.lastReport) ? raw.lastReport as unknown as GameData['lastReport'] : null;
+  g.lastReport = restoreReport(raw.lastReport);
   if (isObj(raw.ledger)) for (const k of Object.keys(g.ledger) as Array<keyof GameData['ledger']>) g.ledger[k] = num(raw.ledger[k], 0);
   g.nextId = Math.floor(num(raw.nextId, 1, 1));
   g.shopsOpened = Math.floor(num(raw.shopsOpened, 0, 0));

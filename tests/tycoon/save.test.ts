@@ -34,6 +34,11 @@ describe('타이쿤 저장', () => {
     expect(restored.serialize().cargo).toBeNull();
   });
 
+  it('깨진 일일 결산은 복구하지 않는다', () => {
+    const saved = { ...playedCore().serialize(), lastReport: { day: 1, profit: 'invalid' } };
+    expect(createCore({ save: saved }).state.lastReport).toBeNull();
+  });
+
   it('저장소 쓰기 실패를 성공으로 보고하지 않는다', () => {
     const storage = new MemStorage();
     storage.setItem = () => { throw new Error('quota exceeded'); };

@@ -1,0 +1,30 @@
+.ty-warp-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.ty-warp-controls small {
+  color: var(--mute, #aab5c6);
+  font-size: .875rem;
+  line-height: 1.45;
+}
+
+.ty-warp-controls button {
+  min-height: 44px;
+}
+
+.ty-warp-controls button:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+.ty-warp-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, #63e7e7 100%);
+}

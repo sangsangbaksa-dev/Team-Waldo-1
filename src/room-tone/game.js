@@ -46,7 +46,9 @@ let state = "home",
   solved = false,
   found = [false, false, false],
   seen = new Set(),
-  elapsed = 0;
+  elapsed = 0,
+  elapsedBase = 0,
+  playStamp = 0;
 let renderer,
   scene,
   camera,
@@ -172,6 +174,7 @@ function screens(id) {
 function homepage() {
   state = "home";
   leaveLook();
+  setLive(false);
   sound.pause(true);
   screens("home");
   $("dialog").hidden = true;
@@ -215,6 +218,7 @@ function modal(title, description, body, actions, type = "panel") {
   if (state === "capture") $("viewWrap").classList.remove("caught-shot");
   state = type;
   leaveLook();
+  setLive(false);
   sound.pause(true);
   $("dialog").hidden = false;
   $("panelTitle").textContent = title;
@@ -232,11 +236,16 @@ function modal(title, description, body, actions, type = "panel") {
   $("panelTitle").focus({ preventScroll: true });
   showSceneOnce();
 }
+function setLive(on) {
+  document.querySelector(".statusfoot")?.classList.toggle("is-live", on);
+}
 function resume() {
   state = "play";
   $("dialog").hidden = true;
   sound.pause(false);
-  last = performance.now();
+  elapsedBase = elapsed;
+  playStamp = last = performance.now();
+  setLive(true);
   scheduleFrame();
   $("viewWrap").focus({ preventScroll: true });
 }
@@ -1310,7 +1319,6 @@ function pathsDistXZ(a, b) {
   );
 }
 function update(dt) {
-  elapsed += dt;
   let f =
     (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
     (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
@@ -1402,8 +1410,6 @@ function update(dt) {
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
   $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
-  const timeLabel = clock(elapsed);
-  if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
   if (now > saveAt) {
     save();
@@ -1440,6 +1446,11 @@ function frame(ts) {
     renderer.render(scene, camera);
   } else if (sceneDirty && !["error", "load"].includes(state)) {
     renderer.render(scene, camera);
+  }
+  if (state === "play") {
+    elapsed = elapsedBase + Math.max(0, (performance.now() - playStamp) / 1000);
+    const timeLabel = clock(elapsed);
+    if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
   }
   sceneDirty = false;
   scheduleFrame();

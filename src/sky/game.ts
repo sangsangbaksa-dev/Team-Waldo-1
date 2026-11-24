@@ -152,7 +152,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
         const x = s.x * W, y = s.y * H, r = clamp(900 / d * 14, 12, 34); octx.strokeStyle = col; octx.lineWidth = locked ? 2.6 : 1.6;
         octx.beginPath(); octx.moveTo(x - r, y - r + 7); octx.lineTo(x - r, y - r); octx.lineTo(x - r + 7, y - r); octx.moveTo(x + r - 7, y - r); octx.lineTo(x + r, y - r); octx.lineTo(x + r, y - r + 7); octx.moveTo(x - r, y + r - 7); octx.lineTo(x - r, y + r); octx.lineTo(x - r + 7, y + r); octx.moveTo(x + r - 7, y + r); octx.lineTo(x + r, y + r); octx.lineTo(x + r, y + r - 7); octx.stroke();
         octx.fillStyle = col; octx.font = '600 11px system-ui'; octx.fillText(`${Math.round(d)}m`, x + r + 4, y + 4);
-        if (locked) { octx.fillRect(x - r, y + r + 5, 2 * r * Math.min(1, p.lockT / LOCK_TIME), 3); }
+        if (locked) { octx.fillRect(x - r, y + r + 5, 2 * r * Math.min(1, p.lockT / LOCK_TIME), 3); if (p.lockT < LOCK_TIME) { octx.font = '600 12px system-ui'; octx.fillText(`${Math.round(p.lockT / LOCK_TIME * 100)}%`, x - r, y + r + 20); } }
         octx.fillStyle = 'rgba(255,60,60,.8)'; octx.fillRect(x - r, y - r - 8, 2 * r * e.hp / e.maxHp, 3);
       } else { // 화면 밖 → 가장자리 화살표
         const a = Math.atan2(s.y - 0.5, s.x - 0.5) + (s.behind ? Math.PI : 0), rr = Math.min(W, H) * 0.42, x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
@@ -168,7 +168,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     const yaw = p.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw), range = 2400;
     for (const j of sim!.jets) { if (!j.alive || j === p) continue; const dx = j.pos.x - p.pos.x, dz = j.pos.z - p.pos.z; const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs; // 로컬 x(오른쪽), z(뒤쪽)
       const k = R / range; let px = lx * k, py = lz * k; const m = Math.hypot(px, py); if (m > R - 3) { px *= (R - 3) / m; py *= (R - 3) / m; }
-      octx.fillStyle = j.kind === 'ace' ? '#ffd23f' : '#ff5a4a'; octx.shadowColor = octx.fillStyle; octx.shadowBlur = 6; octx.beginPath(); octx.moveTo(rx + px, ry + py - 4); octx.lineTo(rx + px + 3.5, ry + py); octx.lineTo(rx + px, ry + py + 4); octx.lineTo(rx + px - 3.5, ry + py); octx.fill(); octx.shadowBlur = 0; }
+      octx.fillStyle = j.kind === 'ace' ? '#ffd23f' : '#ff5a4a'; octx.beginPath(); octx.moveTo(rx + px, ry + py - 4); octx.lineTo(rx + px + 3.5, ry + py); octx.lineTo(rx + px, ry + py + 4); octx.lineTo(rx + px - 3.5, ry + py); octx.fill(); }
     octx.fillStyle = '#9dffc4'; octx.beginPath(); octx.moveTo(rx, ry - 6); octx.lineTo(rx - 4, ry + 4); octx.lineTo(rx + 4, ry + 4); octx.fill();
     if (hitT > 0) { // 피격 표시: 화면 가장자리 붉은 번쩍임 + 공격자 방향 쐐기
       const a = hitT, g = octx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.7); g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, `rgba(255,40,30,${0.55 * a})`); octx.fillStyle = g; octx.fillRect(0, 0, W, H);
@@ -199,7 +199,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     unlock(); audio.engine(false, 0); audio.play('lose'); paintRec(); const s = sim!, acc = s.shots ? Math.round(s.hits / s.shots * 100) : 0, newBest = s.score > prev.bestScore;
     const cell = (v: string | number, l: string, hi = false): string => `<div class="sk-stat${hi ? ' hi' : ''}"><b>${v}</b><span>${l}</span></div>`;
     $('sk-end-t').textContent = '격추당했습니다';
-    $('sk-end-s').innerHTML = (newBest ? '<div class="sk-newrec">NEW RECORD</div>' : '') + `<div class="sk-stats">${cell(s.score, '점수', newBest)}${cell(s.wave, '웨이브')}${cell(s.kills, '격추')}${cell(acc + '%', '명중률')}${cell(Math.floor(s.time) + '초', '생존')}${cell(s.bestCombo > 0 ? '×' + s.bestCombo : '-', '최고 콤보')}</div><div class="sk-best">최고 기록 · 점수 ${Math.max(prev.bestScore, s.score)} · 콤보 ${Math.max(prev.bestCombo, s.bestCombo) > 0 ? '×' + Math.max(prev.bestCombo, s.bestCombo) : '-'} · 생존 ${Math.floor(Math.max(prev.longestTime, s.time))}초</div>`;
+    $('sk-end-s').innerHTML = (newBest ? '<div class="sk-newrec">새 기록</div>' : '') + `<div class="sk-stats">${cell(s.score, '점수', newBest)}${cell(s.wave, '웨이브')}${cell(s.kills, '격추')}${cell(acc + '%', '명중률')}${cell(Math.floor(s.time) + '초', '생존')}${cell(s.bestCombo > 0 ? '×' + s.bestCombo : '-', '최고 콤보')}</div><div class="sk-best">최고 기록 · 점수 ${Math.max(prev.bestScore, s.score)} · 콤보 ${Math.max(prev.bestCombo, s.bestCombo) > 0 ? '×' + Math.max(prev.bestCombo, s.bestCombo) : '-'} · 생존 ${Math.floor(Math.max(prev.longestTime, s.time))}초</div>`;
     $('sk-end').hidden = false;
   }
   function exit(): void {
@@ -220,19 +220,19 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       for (const ev of sim.events) {
         const mine = (id: number): boolean => id === p.id, dist = (pos: THREE.Vector3): number => pos.distanceTo(p.pos);
         switch (ev.t) {
-          case 'gun': audio.play('gun', mine(ev.id) ? 0 : (sim.get(ev.id) ? dist(sim.get(ev.id)!.pos) : 900)); break;
+          case 'gun': audio.play('gun', mine(ev.id) ? 0 : (sim.get(ev.id) ? dist(sim.get(ev.id)!.pos) : 900)); if (mine(ev.id)) view.kick(0.07); break;
           case 'missile': audio.play('missile', mine(ev.id) ? 0 : 300); break;
           case 'boom': view.boom(ev.pos, ev.big); audio.play('boom', dist(ev.pos)); break;
           case 'hit': { view.spark(ev.pos); if (mine(ev.id)) { audio.play('hurt'); view.kick(0.45); hitT = 1; hitBy = ev.by ?? 0; alertMsg('피격!', 0.7); } else audio.play('hit', dist(ev.pos)); break; }
           case 'kill': if (ev.by === p.id) banner(`격추! +${ev.points ?? 0}점${(ev.combo ?? 0) > 1 ? ` · 콤보 ×${ev.combo}` : ''}${ev.combo === 3 ? ' · 미사일 +1' : ''}`, 1); break;
           case 'nolock': audio.play('lock'); alertMsg('락온 대상 없음 — 적을 조준원에 두세요', 1.2); break; case 'lock': audio.play('lock'); break; case 'lockdone': audio.play('lockdone'); alertMsg('락온 — 미사일 발사!', 1.2); break;
-          case 'warn': audio.play('warn'); alertMsg('⚠ 미사일 접근 — 플레어(F)/기동!', 1); break;
+          case 'warn': audio.play('warn'); alertMsg('미사일 접근 — 플레어(F) 또는 급기동', 1); break;
           case 'wave': audio.play('wave'); banner(`WAVE ${ev.n}${ev.modifier ? ` · ${ev.modifier}` : ''}`, 2.4); break;
           case 'flare': alertMsg('플레어 투하', 0.8); break;
           case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? '수리 +30' : ev.kind === 'shield' ? '방어막 +30' : '미사일 +2', 1); break;
-          case 'boss': banner('BOSS — 중폭격기 접근', 3); audio.play('warn'); break;
+          case 'boss': banner('중폭격기 접근', 3); audio.play('warn'); break;
           case 'dodge': alertMsg(`아슬아슬 회피! +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5); audio.play('lockdone'); break;
-          case 'stall': audio.play('warn'); alertMsg('STALL — 기수를 내려 속도 회복!', 1); break;
+          case 'stall': audio.play('warn'); alertMsg('실속 — 기수를 내려 속도를 회복하세요', 1); break;
           case 'overdrive': alertMsg('오버드라이브! 연사 강화 5초', 2); audio.play('win'); break;
           case 'crash': break;
         }
@@ -240,7 +240,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       sim.events.length = 0;
       // 경고
       const gy = terrainY(p.pos.x, p.pos.z), agl = p.pos.y - Math.max(0, gy);
-      if (sim.edge(p) > 0.05) alertMsg('작전 구역 이탈 — 선회하세요!', 0.3); else if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('PULL UP!', 0.3);
+      if (sim.edge(p) > 0.05) alertMsg('작전 구역 이탈 — 선회하세요!', 0.3); else if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('기수를 올리세요', 0.3);
       // 구역 밖으로 나가면 서서히 기체를 안쪽으로 끌어줌
       if (sim.edge(p) > 0.9) { const toC = scratch.set(-p.pos.x, 0, -p.pos.z).normalize(); const wantYaw = Math.atan2(-toC.x, -toC.z); let dy = wantYaw - p.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); p.yaw += clamp(dy, -1, 1) * dt * 0.9; }
       audio.engine(true, throttle); audio.wind((p.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));

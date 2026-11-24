@@ -44,7 +44,7 @@ export class Player {
     // 카메라 기준 이동 방향
     let dx = 0, dz = 0;
     if (mag > 0.01) { const ix = input.mx / len, iz = input.mz / len, sn = Math.sin(this.camYaw), cs = Math.cos(this.camYaw); dx = ix * cs - iz * sn; dz = -ix * sn - iz * cs; }
-    const ax = dx * target, az = dz * target, k = Math.min(1, dt * 10);
+    const ax = dx * target, az = dz * target, k = Math.min(1, dt * 14);
     this.vel.x += (ax - this.vel.x) * k; this.vel.z += (az - this.vel.z) * k;
     const steps = Math.max(1, Math.ceil(dt / 0.04)), sd = dt / steps;
     for (let i = 0; i < steps; i++) {

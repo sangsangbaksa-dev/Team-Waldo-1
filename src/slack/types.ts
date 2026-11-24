@@ -1,71 +1,5 @@
-// SLACK OFF(딴짓) 공용 계약. sim/view/audio/game 이 모두 이 파일만 보고 맞춥니다. 수정 금지.
-export type StageId = 'class' | 'dorm';
-export type Level = 1 | 2 | 3;
-export type Phase = 'ready' | 'play' | 'caught' | 'done';
-
-/** 교실(학교 노트북 딴짓): video 게임 플레이 영상 시청, game 게임 창으로 직접 플레이. 공부하는 척(cover)=수업 자료 창 전환(보스키).
- *  기숙사 컴퓨터실: game 게임, video 영상, chat 메신저, webtoon 웹툰, shop 쇼핑몰, music 음악. */
-export type ClassActivity = 'video' | 'game';
-export type DormActivity = 'game' | 'video' | 'chat' | 'webtoon' | 'shop' | 'music';
-export type ActivityId = ClassActivity | DormActivity;
-
-/** 감독(교실=자습 감독 선생님, 기숙사=사감). away 멀리 → approach 다가옴(발소리) → peek 문 창/뒤에서 살핌 → scan 안으로 들어와 순회 → leave 떠남. */
-export type WatchMode = 'away' | 'approach' | 'peek' | 'scan' | 'leave';
-/** 감독 성향(이번 순회 사이클): regular 일정한 리듬 / erratic 들쭉날쭉 / sneaky 발소리 없이 기습이 잦음 */
-export type WatcherKind = 'regular' | 'erratic' | 'sneaky';
-export interface Watcher { kind?: WatcherKind; mode: WatchMode; t: number; prog: number; /** 0 없음 1 희미한 단서(발소리/그림자) 2 확실히 보임 */ hint: 0 | 1 | 2; /** 지금 어디 서 있나: 0 복도 끝 … 1 내 자리 뒤 */ near: number }
-
-export interface SlackState {
-  stage: StageId; level: Level; phase: Phase;
-  time: number;            // 경과 초
-  limit: number;           // 제한 초(교실 150, 기숙사 150)
-  cover: boolean;          // 공부하는 척 중(교실: 수업 자료 창 전환 / 기숙사: 인강 창 전면)
-  activity: ActivityId | null;   // 지금 하는 딴짓(null=딴짓 안 함)
-  fun: number;             // 0..100 재미(딴짓 만끽도). 목표치 goal 도달 시 클리어 가능
-  goal: number;            // 클리어 재미 목표
-  sus: number;             // 0..100 의심도. 100 = 적발
-  sleepy: number;          // (미사용, 항상 0. 호환용)
-  study: number;           // 0..100 공부 진도(cover 일 때 오름). 너무 낮으면 등급 깎임
-  strikes: number;         // 적발 횟수(3 이면 게임 끝). 적발 1회마다 sus 40 으로 리셋되고 잠시 cover 강제
-  combo: number;           // 연속 무탈 딴짓 배수 1..5
-  score: number;
-  friend: number;          // 0..100 룸메(기숙사 전용) 우호도. 교실에선 쓰지 않음
-  watcher: Watcher;
-  battery: number;         // 기숙사 PC 배터리 100..0 (교실 학교 노트북은 배터리 없음, 항상 100)
-  grade: 'S' | 'A' | 'B' | 'C' | 'D' | null;  // done 일 때만
-  caughtBy: string | null; // caught 일 때 사유 문구(예: "엎드려 자다 걸림")
-}
-
-export type SlackEvent =
-  | { t: 'footstep'; vol: number }          // 0..1, 가까울수록 큼
-  | { t: 'door'; open: boolean }
-  | { t: 'peek' }                           // 문 창/뒤에서 살피기 시작
-  | { t: 'scan' }                           // 안으로 들어와 순회 시작
-  | { t: 'leave' }
-  | { t: 'friend-warn' }                    // 짝꿍/룸메가 팔꿈치로 찌름·귓속말
-  | { t: 'quiet' }                          // 주변이 갑자기 조용해짐
-  | { t: 'fun'; amount: number; activity: ActivityId }
-  | { t: 'activity'; id: ActivityId | null }
-  | { t: 'cover'; on: boolean }
-  | { t: 'strike'; n: number; reason: string }
-  | { t: 'caught'; reason: string }
-  | { t: 'done'; grade: string }
-  | { t: 'toast'; text: string };
-
-export interface Sim {
-  readonly state: SlackState;
-  start(): void;
-  /** dt 초만큼 진행. phase 가 play 가 아니면 아무 일도 안 함. */
-  update(dt: number): void;
-  setCover(on: boolean): void;
-  /** null 이면 딴짓 멈춤. 이 스테이지에서 쓸 수 없는 id 는 무시(교실은 video/game 만). */
-  doActivity(id: ActivityId | null): void;
-  /** 룸메 호감 올리기(기숙사 전용, 교실은 항상 false). 성공하면 true */
-  bribe(): boolean;
-  /** 쌓인 이벤트를 가져가고 비웁니다 */
-  drain(): SlackEvent[];
-}
-export type CreateSim = (stage: StageId, seed: number, level: Level) => Sim;
+import type { StageId, Sim, SlackEvent } from './domain/contracts';
+export type { StageId, Level, Phase, ClassActivity, DormActivity, ActivityId, WatchMode, WatcherKind, Watcher, SlackState, SlackEvent, Sim, CreateSim, SlackRecord } from './domain/contracts';
 
 export type SfxName =
   | 'footstep' | 'doorOpen' | 'doorClose' | 'peek' | 'chair' | 'pencil' | 'page' | 'phoneBuzz' | 'wrapper' | 'chew' | 'whisper' | 'nudge'
@@ -95,5 +29,3 @@ export interface StageView {
   dispose(): void;
 }
 export type CreateView = (sim: Sim, audio: SlackAudio) => StageView;
-
-export interface SlackRecord { best: Record<StageId, { score: number; grade: string } | undefined> }

@@ -11,6 +11,7 @@ import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { drawIcon, svgIcon } from './art';
 import { AdaptiveQuality } from '../shared/adaptive';
+import { objectiveFailed, RAPID_LIMIT } from './domain/wave-objective';
 
 const clamp = THREE.MathUtils.clamp;
 const AIM_CONE = Math.cos(THREE.MathUtils.degToRad(5)), ASSIST_CONE = Math.cos(THREE.MathUtils.degToRad(9));
@@ -21,7 +22,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const root = document.createElement('div'); root.className = 'sk-root';
   root.innerHTML = `<canvas class="sk-canvas"></canvas><canvas class="sk-ov"></canvas>
   <div class="sk-hud" hidden>
-    <div class="sk-top"><div class="sk-score"><b id="sk-score">0</b><span id="sk-combo"></span></div><div class="sk-wave" id="sk-wave"></div><div class="sk-status" id="sk-status"></div></div>
+    <div class="sk-top"><div class="sk-score"><b id="sk-score">0</b><span id="sk-combo"></span></div><div><div class="sk-wave" id="sk-wave"></div><div class="sk-objective" id="sk-objective"></div></div><div class="sk-status" id="sk-status"></div></div>
     <div class="sk-bars"><div class="sk-brow">${svgIcon('hp')}<span class="sk-bl">기체</span><div class="sk-bar hp"><i id="sk-hp"></i></div></div><div class="sk-brow">${svgIcon('heat')}<span class="sk-bl">열</span><div class="sk-bar heat"><i id="sk-heat"></i></div></div><div class="sk-brow">${svgIcon('fuel')}<span class="sk-bl">연료</span><div class="sk-bar fuel"><i id="sk-fuel"></i></div></div></div>
     <div class="sk-gauges"><div>${svgIcon('speed')}속도 <b id="sk-spd">0</b></div><div>${svgIcon('alt')}고도 <b id="sk-alt">0</b></div><div>${svgIcon('missile')}미사일 <b id="sk-mis">0</b></div><div class="thr"><i id="sk-thr"></i></div></div>
     <div class="sk-alert" id="sk-alert"></div><div class="sk-banner" id="sk-banner"></div>
@@ -29,7 +30,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <button class="sk-pause" id="sk-pause" aria-label="일시정지">Ⅱ</button><div class="sk-hint" id="sk-hint"></div>
   </div>
   <div class="sk-modal wd-screen" id="sk-title"><div class="sk-card wd-panel">
-    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">끝없이 이어지는 하늘에서 나만의 기록을 세워보세요.</p>
+    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">적기 편대를 격추하고 웨이브별 보너스 임무를 달성하세요.</p>
     <div class="wd-field"><div class="sk-section-label wd-label">난이도</div><div class="sk-diff wd-seg" id="sk-diff"></div></div>
     <div class="wd-field"><div class="sk-section-label wd-label">설정</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label></div></div>
     <ul class="sk-how"><li><b>커서/손가락 위치</b>로 조종 — 클릭 없이 움직이면 기체가 따라갑니다 (화면 가운데 = 직진)</li>
@@ -123,6 +124,9 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   function hud(p: Jet): void {
     $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
     $('sk-wave').textContent = `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`;
+    const objective = sim!.objective;
+    const objectiveText = !objective ? '보너스 임무 대기' : objective.settled ? '임무 종료' : objectiveFailed(objective, sim!.time) ? '보너스 임무 실패' : objective.kind === 'clean' ? '무피격 격파 · 방어막 +15' : `신속 격파 ${Math.max(0, Math.ceil(RAPID_LIMIT - (sim!.time - objective.startedAt)))}초 · 미사일 +1`;
+    const objectiveEl = $('sk-objective'); if (objectiveEl.textContent !== objectiveText) objectiveEl.textContent = objectiveText;
     $('sk-hp').style.width = `${Math.max(0, p.hp / p.maxHp * 100)}%`; $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
     $('sk-heat').style.width = `${clamp(p.heat / 1.2 * 100, 0, 100)}%`; $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
     $('sk-spd').textContent = String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'; $('sk-alt').textContent = String(Math.round(p.pos.y)); setHtml($('sk-mis'), p.missiles > 0 ? svgIcon('missile', 'sk-ic mini').repeat(Math.min(p.missiles, 12)) : '—');
@@ -234,6 +238,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           case 'dodge': alertMsg(`아슬아슬 회피! +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5); audio.play('lockdone'); break;
           case 'stall': audio.play('warn'); alertMsg('STALL — 기수를 내려 속도 회복!', 1); break;
           case 'overdrive': alertMsg('오버드라이브! 연사 강화 5초', 2); audio.play('win'); break;
+          case 'objective-complete': alertMsg(`임무 달성 · +${ev.points}점`, 2.5); audio.play('win'); break;
           case 'crash': break;
         }
       }

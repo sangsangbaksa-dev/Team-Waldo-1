@@ -531,6 +531,8 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
   const paint = standard({ color: p.trim, roughness: 0.79, metalness: 0.22 });
   const metal = standard({ color: 0x6a7167, metalness: 0.47, roughness: 0.61 });
   const seam = standard({ color: 0x27332d, roughness: 0.88 });
+  const contact = standard({ color: 0x383e39, roughness: 0.98 });
+  const rail = standard({ color: 0x52574f, metalness: 0.25, roughness: 0.79 });
   const practical = standard({
     color: p.lamp,
     emissive: p.lamp,
@@ -637,6 +639,15 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
         0,
         Math.PI / 2,
       );
+      const junction = Number(north) + Number(south) + Number(east) + Number(west) >= 3;
+      if (junction) {
+        // Ceiling-mounted cable frames mark corridor intersections without changing clearance.
+        for (const offset of [-0.82, 0.82]) {
+          add("box", rail, x + offset, H - 0.085, z, 0.075, 0.17, 1.82);
+          add("box", rail, x, H - 0.085, z + offset, 1.82, 0.17, 0.075);
+        }
+        for (const offset of [-0.42, 0.42]) add("box", metal, x + offset, H - 0.18, z, 0.045, 0.06, 1.76);
+      }
       // Only shallow or overhead objects enter navigable cells.
       if ((row * 3 + col) % 4 === 0) {
         add("box", seam, x, H - 0.033, z, 1.5, 0.066, 0.31, orient);
@@ -717,6 +728,10 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
           H + 0.002,
         );
         local("box", paint, 0, 0.108, 0.025, tile + 0.004, 0.216, 0.05);
+        // Thin floor-edge strips and acoustic-panel reveals add contact depth.
+        add("box", contact, bx + nx * 0.085, 0.006, bz + nz * 0.085, tile - 0.02, 0.012, 0.12, ry);
+        local("box", seam, -tile * 0.48, 1.5, 0.018, 0.018, 2.55, 0.036);
+        if (pick > 0.72) local("box", rail, tile * 0.46, 1.5, 0.026, 0.035, 2.55, 0.052);
         local("box", metal, 0, 1.157, 0.025, tile + 0.003, 0.035, 0.048);
         local("box", seam, 0, 1.134, 0.015, tile + 0.003, 0.014, 0.029);
         // Exposed cable tray and pipe straps create continuity between neighboring rooms.

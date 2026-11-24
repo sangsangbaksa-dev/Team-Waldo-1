@@ -19,6 +19,7 @@ import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
 import { RaceView, setDriverKit } from './view';
 import { loadCharacterKit } from '../shared/character';
+import { invalidateCleanSector } from './clean-sectors';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 
@@ -111,7 +112,8 @@ export function openRace(onExit: () => void): void {
       case 'driftBoost': msg(`드리프트 부스트  +${e.secs.toFixed(1)}초`, 'cyan'); view?.punchFov(0.7); audio.sfx('drift'); break;
       case 'hit': wallHit = e.power; view?.kick(Math.min(1, e.power * 0.05)); audio.sfx('hit', e.power); break;
       case 'bump': view?.kick(Math.min(0.5, e.power * 0.03)); audio.sfx('bump'); break;
-      case 'lap': if (e.lap < race.laps) { msg(e.best ? `${e.lap}랩  ${fmtTime(e.time)}  ★ 최고 랩` : `${e.lap}랩  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
+      case 'lap': if (e.lap < race.laps) { msg(e.best ? `${e.lap}랩  ${fmtTime(e.time)}  · 최고 랩` : `${e.lap}랩  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
+      case 'cleanSector': msg(`클린 섹터 ${e.count}${e.nitro > 0 ? ` · 니트로 +${e.nitro}%` : ''}`, 'gold'); break;
       case 'driftBank': msg(`드리프트 +${e.points.toLocaleString('ko-KR')}${e.mult > 1 ? `  ×${e.mult}` : ''}${race.phase === 'racing' ? `  ·  니트로 +${Math.round(Math.min(0.2, e.points / 6000) * 100)}%` : ''}`, 'gold'); audio.sfx('drift'); break;
       case 'driftLost': if (e.points >= 200) { msg('드리프트 끊김', 'hint'); msgT = 1.2; } break;
       case 'knockout':
@@ -140,6 +142,7 @@ export function openRace(onExit: () => void): void {
       modal.innerHTML = `<div class="rc-card result p${place}"><span class="rc-eyebrow">${map.name} · ${setup.laps}랩 · ${trial ? '타임어택' : ko ? `녹아웃 · ${level.name}` : level.name} · ${car.name}</span><h2>${trial ? (ghostNew ? '고스트 갱신' : '완주') : eliminated ? `탈락 <small>${ORD[place] ?? place + '위'} / ${race.racers.length}</small>` : `${ORD[place] ?? place + '위'} <small>/ ${race.racers.length}</small>`}</h2><p class="rc-total">${eliminated ? `생존 시간 ${fmtTime(time)} · ${race.player.lapTimes.length > 0 ? `${race.player.lapTimes.length}랩 완주 후 ` : ''}꼴찌로 탈락` : fmtTime(time)}</p>
         <div class="rc-result-stats"><div><span>최고 랩</span><b>${fmtOrNone(bestLap)}</b></div><div><span>개인 최고 기록과 비교</span><b>${eliminated ? NONE : Number.isFinite(prevRace) ? `${fmtDelta(time - prevRace, 3)}초` : '첫 완주'}</b></div></div><ol class="rc-laps">${race.player.lapTimes.map((l, i) => `<li${l === bestLap ? ' class="best"' : ''}><span>${i + 1}랩</span><b>${fmtTime(l)}</b></li>`).join('')}</ol>
         <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${fmtDelta(time - race.ghost.time)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} · ${car.name} 최고 랩 ${fmtOrNone(records.bestLap[lapKey(map.id, setup.car, setup.mode)] ?? Infinity)}`}</p>
+        ${race.cleanSectors ? `<p class="rc-record">클린 섹터 ${race.cleanSectors.clean} / ${race.cleanSectors.completed}</p>` : ''}
         <p class="rc-record">드리프트 ${drift.toLocaleString('ko-KR')}점${driftNew && drift > 0 ? ' ★ 코스 최고 기록' : prevDrift > 0 ? ` · 코스 최고 ${prevDrift.toLocaleString('ko-KR')}점` : ''}</p>
         ${coins > 0 ? `<p class="rc-reward">+${coins} 코인 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>` : `<p class="rc-record">코인 보상 없음 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>`}
         <div class="rc-actions"><button class="primary" data-act="restart">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button></div></div>`;
@@ -276,6 +279,7 @@ export function openRace(onExit: () => void): void {
   }
 
   function recover(): void {
+    if (race.cleanSectors) invalidateCleanSector(race.cleanSectors);
     const c = race.player.car, i = c.idx; c.x = track.x[i]; c.z = track.z[i]; c.y = track.y[i]; c.h = Math.atan2(track.tz[i], track.tx[i]); c.vx = c.vz = 0; c.vf = c.vl = 0; c.yawRate = 0; c.drifting = false; c.driftT = 0; msg('복귀');
   }
 

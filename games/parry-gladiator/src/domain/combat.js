@@ -3,6 +3,7 @@ export const MAX_STAMINA = 100;
 export const ARENA_RADIUS = 9;
 export const PARRY_WINDOW = 0.221;
 export const DODGE_DURATION = 0.43;
+export const DODGE_COST = 23;
 export const FEINT_DURATION = 0.26;
 
 export const attacks = {
@@ -10,6 +11,16 @@ export const attacks = {
   heavy: { cost: 30, windup: 0.65, active: 0.15, recovery: 0.46, damage: 30, range: 2.68, guard: 43, lunge: 0.68 },
   riposte: { cost: 12, windup: 0.19, active: 0.12, recovery: 0.44, damage: 36, range: 2.75, guard: 45, lunge: 0.63 },
 };
+
+export function attackKind(fighter, action) {
+  return action === 'light' && fighter.riposte > 0 ? 'riposte' : action;
+}
+
+export function actionStaminaCost(fighter, action) {
+  if (action === 'dodge') return DODGE_COST;
+  if (action !== 'light' && action !== 'heavy') return 0;
+  return attacks[attackKind(fighter, action)].cost;
+}
 
 export function fighter(id, x, z) {
   return {
@@ -74,18 +85,18 @@ export function act(f, action, direction = {}, buffer = true) {
     return false;
   }
   if (action === 'dodge') {
-    if (f.stamina < 23) return false;
+    if (f.stamina < DODGE_COST) return false;
     const length = Math.hypot(direction.x || 0, direction.z || 0);
     f.dodgeX = length > 0 ? direction.x / length : -Math.sin(f.angle);
     f.dodgeZ = length > 0 ? direction.z / length : -Math.cos(f.angle);
-    spend(f, 23, 0.45);
+    spend(f, DODGE_COST, 0.45);
     f.state = 'dodge';
     f.timer = 0;
     f.guardStart = 0;
     return 'dodge';
   }
 
-  const kind = action === 'light' && f.riposte > 0 ? 'riposte' : action;
+  const kind = attackKind(f, action);
   if (f.stamina < attacks[kind].cost) return false;
   spend(f, attacks[kind].cost, 0.50);
   f.state = 'attack';

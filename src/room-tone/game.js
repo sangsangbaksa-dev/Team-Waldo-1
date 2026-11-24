@@ -1,36 +1,22 @@
 // Keep the title screen independent of the heavy 3D engine. The code and
 // monster binary are requested together only when a play session begins.
 let THREE, GLTFLoader, createCaptureShot, fixMonster;
-let enginePromise;
-function loadEngine() {
-  if (!enginePromise) enginePromise = Promise.all([
-    import("three"),
-    import("three/addons/loaders/GLTFLoader.js"),
-    import("./monster.js"),
-  ]).then(([three, loader, monster]) => {
-    THREE = three;
-    GLTFLoader = loader.GLTFLoader;
-    createCaptureShot = monster.createCaptureShot;
-    fixMonster = monster.fixMonster;
-  }).catch((error) => {
-    enginePromise = null;
-    throw error;
-  });
-  return enginePromise;
-}
+import { loadEngine } from "./infrastructure/engine.mjs";
 import { modelBytes, releaseModelBytes } from "./assets.js";
 import { chapters, makeLevel, paths, route, routeFrom, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
 import { Sound } from "./sound.js";
-import { normalizeCampaign } from "./campaign.mjs";
+import { createCampaignStore, LAST, PREFS } from "./application/campaign-store.mjs";
+import { browserStorage } from "./infrastructure/browser-storage.mjs";
+import { initialChoices, dialOptions, validSolution } from "./domain/puzzle.mjs";
+import { perceive } from "./domain/perception.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 
-const $ = createIdLookup(document),
-  C = 2.7,
-  SAVE = "waldo.rt03.campaign.v1",
-  LAST = "waldo.rt03.complete.v1";
+const $ = createIdLookup(document), C = 2.7;
+const campaignStore = createCampaignStore(browserStorage);
+const { read, saved } = campaignStore;
 const sound = new Sound(),
   keys = new Set(),
   pointer = { x: 0, y: 0 };
@@ -116,27 +102,9 @@ const px = (t) => String(t).padStart(2, "0");
 const clock = (t) => px(Math.floor(t / 60)) + ":" + px(Math.floor(t % 60));
 const pad = (i) => String(i + 1).padStart(2, "0");
 const total = () => found.filter(Boolean).length;
-function read(k) {
-  try {
-    return JSON.parse(localStorage.getItem(k) || "null");
-  } catch {
-    return null;
-  }
-}
-function saved() {
-  const s = read(SAVE);
-  return normalizeCampaign(s);
-}
 function save() {
-  if (!level) return;
-  try {
-    localStorage.setItem(
-      SAVE,
-      JSON.stringify({ v: 1, ch, found, solved, seen: [...seen], elapsed }),
-    );
-  } catch { /* Browser storage or pointer lock is optional. */ }
+  if (level) campaignStore.save({ ch, found, solved, seen, elapsed });
 }
-const PREFS = "waldo.preferences.v1";
 function syncAudioButtons() {
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
@@ -151,13 +119,7 @@ function applyMute(next) {
 }
 function toggleAudio() {
   applyMute(!muted);
-  try {
-    // Share audio with the hub and retain the legacy game key for migration.
-    const stored = read(PREFS);
-    const preferences = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
-    localStorage.setItem(PREFS, JSON.stringify({ ...preferences, sound: !muted }));
-    localStorage.setItem("rt-silent", JSON.stringify(muted));
-  } catch { /* Browser storage is optional. */ }
+  campaignStore.writeMute(muted);
 }
 applyMute(initialMute(read("rt-silent"), read(PREFS)));
 $("sound").onclick = $("gsound").onclick = toggleAudio;
@@ -298,7 +260,7 @@ async function setup() {
   // fetch, and a rejected download should not become an unhandled rejection.
   if (monsterBinary) void monsterBinary.catch(() => {});
   try {
-    await loadEngine();
+    ({ THREE, GLTFLoader, createCaptureShot, fixMonster } = await loadEngine());
   } catch (error) {
     releaseModelBytes();
     throw error;
@@ -828,7 +790,7 @@ function drawGuide() {
 function toggleGuide() {
   guidance = !guidance;
   try {
-    localStorage.setItem("rt-guidance", JSON.stringify(guidance));
+    campaignStore.write("rt-guidance", guidance);
   } catch { /* The preference applies for this session when storage is unavailable. */ }
   refreshGuide();
 }
@@ -938,23 +900,9 @@ function notes(el) {
   }
   el.append(dl);
 }
-const circuitOptions = ["5 A", "10 A", "15 A"],
-  tuneOptions = [
-    ["71.2", "72.4", "73.6", "74.8"],
-    ["80.0", "81.2", "82.4", "83.6"],
-    ["90.6", "91.8", "93.0", "94.2"],
-  ];
-function expected() {
-  return [
-    [0, 1, 2],
-    [1, 3, 1],
-    [1, 2, 0],
-    [2, 1, 0],
-  ][ch];
-}
 function puzzle(reset = true) {
   if (reset) {
-    choices = ch === 2 ? [] : [0, 0, 0];
+    choices = initialChoices(ch);
     response = "";
   }
   const c = chapters[ch],
@@ -998,12 +946,7 @@ function puzzle(reset = true) {
         box.className = "dials";
         for (let i = 0; i < 3; i++) {
           const b = document.createElement("button");
-          const opts =
-            ch === 0
-              ? circuitOptions
-              : ch === 1
-                ? tuneOptions[i]
-                : ["0°", "90°", "180°", "270°"];
+          const opts = dialOptions(ch, i);
           b.innerHTML =
             "<small>" +
             c.names[i] +
@@ -1036,7 +979,7 @@ function puzzle(reset = true) {
       [
         "신호 확인",
         () => {
-          if (expected().every((v, i) => choices[i] === v)) {
+          if (validSolution(ch, choices)) {
             solved = true;
             sound.success();
             save();
@@ -1103,10 +1046,7 @@ function interact() {
   } else {
     save();
     sound.success();
-    try {
-      localStorage.setItem(LAST, JSON.stringify({ elapsed }));
-      localStorage.removeItem(SAVE);
-    } catch { /* Browser storage or pointer lock is optional. */ }
+    campaignStore.complete(elapsed);
     modal(
       "녹음 종료",
       "문이 닫힌 뒤에도 테이프에는 한 사람의 숨소리가 더 남아 있었다.",
@@ -1180,10 +1120,7 @@ function enemyUpdate(dt, running) {
   grace = Math.max(0, grace - dt);
   exitGrace = Math.max(0, exitGrace - dt);
   const visible = dist <= 14 && clearLine(player, e);
-  const inSight = !hiddenSpot && visible && dist <= (lightOn ? 10.7 : 6.1);
-  const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
-  const hear = !hiddenSpot && moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
-  const tracking = !grace && (inSight || hear);
+  const { inSight, tracking } = perceive({ distance: dist, visible, hidden: Boolean(hiddenSpot), lightOn, running, crouched, moved, dt, grace });
   const playerCell = cellOf(player);
   if (tracking) {
     if (!wasTracking) {

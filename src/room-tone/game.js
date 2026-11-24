@@ -10,6 +10,7 @@ import { createCampaignStore, LAST, PREFS } from "./application/campaign-store.m
 import { browserStorage } from "./infrastructure/browser-storage.mjs";
 import { initialChoices, dialOptions, validSolution } from "./domain/puzzle.mjs";
 import { perceive } from "./domain/perception.mjs";
+import { renderRoomHud } from "./ui/hud.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
@@ -732,14 +733,11 @@ function brief() {
 }
 function renderHUD() {
   const c = chapters[ch];
-  $("zone").textContent = pad(ch) + " / " + c.location;
-  $("objective").textContent = solved
-    ? "출구 단말기를 작동하세요."
-    : total() === 3
-      ? c.station + "으로 돌아가세요."
-      : c.item + " 회수  " + total() + " / 3";
-  $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
-  $("crouch").setAttribute("aria-pressed", String(crouched));
+  renderRoomHud($, {
+    zone: pad(ch) + " / " + c.location,
+    objective: solved ? "출구 단말기를 작동하세요." : total() === 3 ? c.station + "으로 돌아가세요." : c.item + " 회수  " + total() + " / 3",
+    lightOn, crouched,
+  });
   refreshGuide();
 }
 function toggleLamp() {

@@ -409,10 +409,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function attachCarry(force = false): void {
     const s = core.state, key = `${s.cargo?.units ? s.cargo.kind : ''}${s.cargo?.units ?? 0}|${s.bottles}`; if (!force && key === lastCarry) return; lastCarry = key;
-    const rig = player?.rig; if (!rig) return; const old = rig.torso.getObjectByName('carry'); if (old) {
-      rig.torso.remove(old);
-      old.traverse(node => { if (node instanceof THREE.Mesh) { node.geometry.dispose(); for (const material of Array.isArray(node.material) ? node.material : [node.material]) material.dispose(); } });
-    }
+    const rig = player?.rig; if (!rig) return; player.clearCarry();
     if (!s.cargo?.units && !s.bottles) return;
     const g = new THREE.Group(); g.name = 'carry';
     if (s.cargo?.units) { const sz = 0.3 + Math.min(0.35, s.cargo.units / 120); const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, sz, sz * 1.3), new THREE.MeshLambertMaterial({ color: 0xb98a4a })); m.position.set(-0.32, 1.12, 0); g.add(m); }

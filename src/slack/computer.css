@@ -296,3 +296,30 @@
 @media (any-pointer:coarse) and (max-width:420px){
   .sc-start,.sc-clock{display:none}
 }
+
+/* A physical hinged door, restrained monitor spill and a phase-driven patrol. */
+.slack-computer { --door-open:0; --watcher-visible:0; --watcher-near:0; --watcher-gait:0; }
+.sc-door { perspective:500px; background:#3c4142; }
+.sc-door-leaf { position:absolute; inset:0; background:linear-gradient(100deg,#333c48,#222b35); transform-origin:100% 50%; transform:rotateY(calc(var(--door-open) * -66deg)); box-shadow:inset 0 0 0 1px #111820; }
+.sc-door::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,#81857b,#343e43); opacity:var(--door-open); }
+.sc-hint-one .sc-door-gap { animation:none; }
+.sc-door-floor { background:linear-gradient(90deg,transparent,#ddd2a83d 40%,transparent); }
+.sc-scan-person,.sc-scanning .sc-scan-person {
+  right:8%; bottom:14%; height:43%; opacity:var(--watcher-visible);
+  transform:translate(calc(var(--watcher-near) * -165%),calc(var(--watcher-gait) * -1.5%)) scale(calc(.62 + var(--watcher-near) * .58));
+  transition:opacity .12s linear,transform .12s linear;
+  background:linear-gradient(90deg,#10161c,#26313a 48%,#111820); border-radius:24% 24% 8% 8%;
+}
+.sc-scan-person i { top:-29%; left:30%; width:40%; height:37%; background:linear-gradient(100deg,#151a20,#3c403c); }
+.sc-scanning.sc-slacking .sc-scan-person i { box-shadow:-4px 2px 10px -4px var(--sc-glow); }
+.sc-scan-legs { position:absolute; top:92%; bottom:-25%; left:18%; right:18%; display:flex; gap:10%; }
+.sc-scan-legs b { width:45%; background:#10171c; transform-origin:top; transform:rotate(calc(var(--watcher-gait) * 6deg)); }
+.sc-scan-legs b+b { transform:rotate(calc(var(--watcher-gait) * -6deg)); }
+.sc-monitor { box-shadow:0 0 28px #749cc42e,0 12px 24px #0008; }
+.sc-slacking .sc-monitor { box-shadow:0 0 38px color-mix(in srgb,var(--sc-glow) 20%,transparent),0 12px 24px #0008; }
+.sc-slacking .sc-face-glow { box-shadow:0 -5px 18px color-mix(in srgb,var(--sc-glow) 25%,transparent); }
+.sc-struck .sc-room { animation:none; }
+@media (prefers-reduced-motion:reduce) {
+  .sc-scan-person,.sc-scanning .sc-scan-person { transform:translateX(calc(var(--watcher-near) * -165%)) scale(calc(.62 + var(--watcher-near) * .58)); transition:none; }
+  .sc-scan-legs b,.sc-scan-legs b+b { transform:none; }
+}

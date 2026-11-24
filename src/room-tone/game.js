@@ -109,7 +109,7 @@ let returnFromHelp = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
-let decoy = createDecoy();
+let decoy = createDecoy(), nextDecoyPulse = 0;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -404,6 +404,7 @@ function pointPlayer() {
   camera.rotation.set(0, yaw, 0, "YXZ");
   hiddenSpot = null;
   decoy = createDecoy();
+  nextDecoyPulse = 0;
   hideBreath = 1;
   hideReadyAt = 0;
   $("viewWrap").classList.remove("hiding");
@@ -788,13 +789,14 @@ function renderDecoy() {
   const button = $("decoy");
   const label = decoy.remaining > 0 ? "재생 " + Math.ceil(decoy.remaining) + "초" : "녹음기 " + decoy.uses + "회";
   if ($("decoyLabel").textContent !== label) $("decoyLabel").textContent = label;
-  button.disabled = Boolean(hiddenSpot) || decoy.uses === 0 || decoy.remaining > 0;
+  const disabled = Boolean(hiddenSpot) || decoy.uses === 0 || decoy.remaining > 0;
+  if (button.disabled !== disabled) button.disabled = disabled;
 }
 function useDecoy() {
   if (state !== "play" || hiddenSpot) return;
   if (!deployDecoy(decoy, cellOf(player), true)) return;
   nextPath = 0;
-  sound.tone(2);
+  nextDecoyPulse = 0;
   renderDecoy();
   message("녹음기 재생 · 소리가 나는 곳에서 벗어나세요.", 3);
 }
@@ -1339,6 +1341,16 @@ function pathsDistXZ(a, b) {
 function update(dt) {
   elapsed += dt;
   tickDecoy(decoy, dt);
+  if (decoy.remaining > 0) {
+    nextDecoyPulse -= dt;
+    if (nextDecoyPulse <= 0) {
+      const source = xy(decoy.cell), dx = source.x - player.x, dz = source.z - player.z;
+      const distance = Math.hypot(dx, dz);
+      const pan = distance > 0 ? (Math.cos(yaw) * dx - Math.sin(yaw) * dz) / distance : 0;
+      sound.decoy(distance, pan);
+      nextDecoyPulse = 1.25;
+    }
+  }
   renderDecoy();
   let f =
     (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -

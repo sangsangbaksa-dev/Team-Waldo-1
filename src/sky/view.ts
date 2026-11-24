@@ -23,19 +23,29 @@ export function buildJet(kind: Kind, team: 'player' | 'enemy'): THREE.Group {
   const s = kind === 'boss' ? 2.8 : kind === 'bomber' ? 1.7 : 1;
   const fus = new THREE.Mesh(new THREE.CylinderGeometry(1.0 * s, 1.3 * s, 11 * s, 10), mBody); fus.rotation.x = Math.PI / 2; g.add(fus);
   const nose = new THREE.Mesh(new THREE.ConeGeometry(1.0 * s, 4.5 * s, 10), mBody); nose.rotation.x = -Math.PI / 2; nose.position.z = -7.8 * s; g.add(nose);
-  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.9 * s, 10, 8), new THREE.MeshStandardMaterial({ color: 0x142a44, metalness: 0.9, roughness: 0.1 })); cockpit.scale.set(0.8, 0.7, 2); cockpit.position.set(0, 0.9 * s, -2.2 * s); g.add(cockpit);
   const dark = new THREE.MeshStandardMaterial({ color: 0x273340, metalness: 0.7, roughness: 0.38 });
   const nozzleGeo = new THREE.CylinderGeometry(0.72 * s, 0.9 * s, 1.5 * s, 12, 1, true);
   const nozzle = new THREE.Mesh(nozzleGeo, dark); nozzle.rotation.x = Math.PI / 2; nozzle.position.z = 5.6 * s; g.add(nozzle);
   const intakeGeo = new THREE.BoxGeometry(0.55 * s, 0.7 * s, 3.2 * s);
   for (const side of [-1, 1]) { const intake = new THREE.Mesh(intakeGeo, dark); intake.position.set(side * 1.1 * s, -0.25 * s, -0.2 * s); g.add(intake); }
-  // 델타 날개
-  const w = kind === 'boss' ? 11 : kind === 'bomber' ? 9.5 : kind === 'ace' ? 8.2 : 7.2, wl = kind === 'bomber' ? 5.5 : 6;
-  const wing = new THREE.BufferGeometry(); const sg = new Float32Array([0, 0, -2.5 * s, w * s, 0, 2.2 * s, 0, 0, 3 * s, 0, 0, -2.5 * s, 0, 0, 3 * s, -w * s, 0, 2.2 * s]);
-  wing.setAttribute('position', new THREE.BufferAttribute(sg, 3)); wing.computeVertexNormals(); void wl;
-  const wuv = new Float32Array(18); for (let i = 0; i < 6; i++) { wuv[i * 2] = sg[i * 3]! / (w * s) * 0.5 + 0.5; wuv[i * 2 + 1] = (sg[i * 3 + 2]! / s + 2.5) / 5.5; }
-  wing.setAttribute('uv', new THREE.BufferAttribute(wuv, 2));
-  const wm = new THREE.Mesh(wing, new THREE.MeshStandardMaterial({ map: skin, metalness: 0.4, roughness: 0.5, side: THREE.DoubleSide })); g.add(wm);
+  const w = kind === 'boss' ? 11 : kind === 'bomber' ? 9.5 : kind === 'ace' ? 8.2 : 7.2;
+  // A solid swept planform keeps the wing readable edge-on.
+  const outline = new THREE.Shape();
+  outline.moveTo(0, -2.5 * s);
+  outline.lineTo(w * 0.92 * s, 1.55 * s);
+  outline.lineTo(w * s, 2.2 * s);
+  outline.lineTo(w * 0.54 * s, 2.72 * s);
+  outline.lineTo(0, 3.25 * s);
+  outline.lineTo(-w * 0.54 * s, 2.72 * s);
+  outline.lineTo(-w * s, 2.2 * s);
+  outline.lineTo(-w * 0.92 * s, 1.55 * s);
+  outline.closePath();
+  const wing = new THREE.ExtrudeGeometry(outline, { depth: 0.14 * s, bevelEnabled: false, steps: 1 });
+  const wp = wing.getAttribute('position'), uv = wing.getAttribute('uv');
+  for (let i = 0; i < wp.count; i++) uv.setXY(i, wp.getX(i) / (2 * w * s) + 0.5, (wp.getY(i) / s + 2.5) / 5.75);
+  uv.needsUpdate = true;
+  const wm = new THREE.Mesh(wing, new THREE.MeshStandardMaterial({ map: skin, metalness: 0.4, roughness: 0.52 }));
+  wm.rotation.x = Math.PI / 2; wm.position.y = 0.07 * s; g.add(wm);
   for (const sx of [-1, 1]) { const tip = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 2.2 * s), mAcc); tip.position.set(sx * w * s * 0.92, 0, 2 * s); g.add(tip); }
   // 꼬리날개
   for (const sx of [-1, 1]) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.6 * s, 2.4 * s), mAcc); fin.position.set(sx * 0.9 * s, 1.4 * s, 4.3 * s); fin.rotation.z = sx * 0.2; g.add(fin); const hs = new THREE.Mesh(new THREE.BoxGeometry(3.4 * s, 0.15, 1.8 * s), mBody); hs.position.set(sx * 1.8 * s, 0, 4.7 * s); g.add(hs); }

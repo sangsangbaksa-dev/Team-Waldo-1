@@ -431,7 +431,7 @@ html .sz-setup.wd-has-rails.wd-has-rails{align-content:safe center}
   .touch .sz-tbuttons button { width:44px; height:44px; }
   .touch .sz-tbuttons button.fire { grid-column:span 1; height:44px; width:44px; font-size:12px; }
   .touch .sz-tr canvas { width:64px; height:64px; }
-  .touch .sz-feed { max-width:24vw; }
+  .touch .sz-feed { display:none; }
   .touch .sz-feed li { gap:4px; }
   .touch .sz-bl { width:min(200px,30vw); }
   .touch .sz-ammo b,.touch .sz-veh .spd { font-size:28px; }

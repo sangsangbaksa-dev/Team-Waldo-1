@@ -6,7 +6,10 @@
 .sc-wall-light{position:absolute;inset:0;background:radial-gradient(ellipse at 48% 70%,#698bc126,transparent 50%);transition:background .4s}
 .sc-slacking .sc-wall-light{background:radial-gradient(ellipse at 48% 60%,color-mix(in srgb,var(--sc-glow) 28%,transparent),transparent 58%)}
 /* 문 / 손전등 / 발소리 */
-.sc-door{position:absolute;right:4%;top:8%;width:15%;height:69%;background:linear-gradient(100deg,#222936,#131b28);border:5px solid #0b1019;box-shadow:0 0 0 2px #394052}
+.sc-doorframe{position:absolute;right:4%;top:8%;width:15%;height:69%;perspective:560px}
+.sc-doorway{position:absolute;inset:0;background:#070b12}
+.sc-door{position:absolute;inset:0;background:linear-gradient(100deg,#222936,#131b28);border:5px solid #0b1019;box-shadow:0 0 0 2px #394052;transform-origin:left center;transition:transform .85s cubic-bezier(.2,.62,.2,1)}
+.slack-computer[data-mode=scan] .sc-door,.slack-computer[data-mode=leave] .sc-door{transform:rotateY(-68deg)}
 .sc-door-window{position:absolute;top:10%;left:22%;width:56%;height:28%;overflow:hidden;background:#384353;border:4px solid #111824;transition:background .4s}
 .sc-door-flash{position:absolute;inset:-30%;background:radial-gradient(circle at 70% 70%,#fff3b0,transparent 55%);opacity:0;transition:opacity .3s}
 .sc-door-person{position:absolute;opacity:0;bottom:-20%;left:22%;width:55%;height:65%;border-radius:50% 50% 10% 10%;background:#11141c;transition:opacity .8s}
@@ -23,10 +26,11 @@
 .sc-steps i{width:5px;background:#3a4558;border-radius:1px;transition:background .15s}
 .sc-steps i:nth-child(1){height:6px}.sc-steps i:nth-child(2){height:10px}.sc-steps i:nth-child(3){height:14px}
 .sc-steps i.on{background:#ffe08a;box-shadow:0 0 6px #ffe08a}
-.sc-scan-person{position:absolute;z-index:3;right:16%;bottom:16%;width:14%;height:45%;background:#080b12;border-radius:45% 45% 10% 10%;opacity:0;transform:scale(calc(.55 + var(--sc-near) * .7));transform-origin:bottom;transition:opacity 1s}
+.sc-scan-person{position:absolute;z-index:3;right:10%;bottom:16%;width:12%;height:42%;background:#080b12;border-radius:45% 45% 10% 10%;opacity:0;transform:translateX(28%) scale(.52);transform-origin:bottom center}
 .sc-scan-person i{position:absolute;top:-25%;left:22%;width:56%;height:40%;border-radius:50%;background:#080b12;transition:box-shadow .3s}
 .sc-scan-person u{position:absolute;top:8%;right:80%;width:420%;height:60%;background:linear-gradient(270deg,#fff3b055,transparent);clip-path:polygon(100% 40%,0 0,0 100%,100% 60%);opacity:0;text-decoration:none;transition:opacity .3s}
-.sc-scanning .sc-scan-person{opacity:.88}
+.sc-scanning .sc-scan-person{animation:sc-enter 4.8s cubic-bezier(.22,.55,.28,1) forwards}
+.slack-computer[data-mode=leave] .sc-scan-person{animation:sc-exit 2s ease-in forwards}
 .sc-scanning .sc-scan-person u{opacity:calc(.3 + var(--sc-near) * .7)}
 .sc-scanning.sc-slacking .sc-scan-person i{box-shadow:-9px 4px 14px -4px var(--sc-glow)}
 .sc-vignette{position:absolute;z-index:7;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,transparent 35%,#0a0e1a 100%);opacity:calc(var(--sc-near) * .75)}
@@ -252,6 +256,8 @@
 @keyframes sc-bump{50%{transform:scale(1.15)}}
 @keyframes sc-spin{to{transform:rotate(360deg)}}
 @keyframes sc-lec{to{transform:scaleX(1)}}
+@keyframes sc-enter{0%{opacity:0;transform:translateX(30%) scale(.5)}16%{opacity:.92;transform:translateX(6%) scale(.64)}58%{opacity:.92;transform:translateX(-78%) scale(.92)}100%{opacity:.92;transform:translateX(-34%) scale(.98)}}
+@keyframes sc-exit{0%{opacity:.92;transform:translateX(-34%) scale(.98)}70%{opacity:.92;transform:translateX(8%) scale(.62)}100%{opacity:0;transform:translateX(28%) scale(.48)}}
 /* 좁은 창(모니터 안): 영상/메신저를 세로로 */
 @container (max-width:430px){
   .sc-video{flex-direction:column}
@@ -268,7 +274,7 @@
   .sc-monitor{left:2%;width:96%;top:12%;height:70%;padding:6px 6px 16px}
   .sc-friend{left:0;bottom:11%;width:15%;height:26%}
   .sc-friend-monitor{display:none}
-  .sc-door{right:0;width:17%}
+  .sc-doorframe{right:0;width:17%}
   .sc-controls>span{max-width:42%;line-height:1.5;font-size:10px}
   .sc-window-host,.sc-cover{inset:3% 3% 36px}
   .sc-notes{width:36%;padding:5px}

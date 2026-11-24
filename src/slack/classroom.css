@@ -13,8 +13,10 @@
 .sl-clock{position:absolute;left:5%;top:14%;border:4px solid #e1dbc5;border-radius:50%;width:clamp(25px,4vw,45px);aspect-ratio:1;display:grid;place-items:center;background:#eee9d8;color:#45433e;font-size:8px}
 
 /* 문: 유리창 실루엣, 문틈 발 그림자 */
-.sl-door{position:absolute;right:4%;bottom:0;width:15%;height:96%;background:#80735f;border:6px solid #615b4e;transition:filter .4s,box-shadow .4s}
-.is-door .sl-door{filter:brightness(1.5);box-shadow:0 0 30px 12px #fff4b8aa}
+.sl-doorframe{position:absolute;right:4%;bottom:0;width:15%;height:96%;perspective:640px}
+.sl-doorway{position:absolute;inset:0;background:#121614;box-shadow:inset 0 0 18px #000}
+.sl-door{position:absolute;inset:0;background:#80735f;border:6px solid #615b4e;transform-origin:left center;transition:transform .9s cubic-bezier(.2,.62,.2,1)}
+.is-door .sl-door{transform:rotateY(-72deg);box-shadow:-16px 8px 18px #0005}
 .sl-window{position:absolute;left:14%;right:14%;top:7%;height:38%;background:linear-gradient(120deg,#b0c0b8,#607970);border:4px solid #4e5149;overflow:hidden}
 .sl-shadow{position:absolute;inset:5% 10% -40%;border-radius:50% 50% 0 0;background:#202b29;opacity:0;transform:translateX(-120%)}
 .sl-room[data-hint="1"] .sl-shadow{opacity:.45;animation:sl-shadow 5s infinite}
@@ -44,11 +46,18 @@
 .sl-kid:after{content:'';position:absolute;left:-6%;right:-6%;bottom:-3%;height:9%;background:#8f7455;box-shadow:0 -5px 14px #7fb4ff55}
 
 /* 감독 선생님 */
-.sl-teacher{position:absolute;z-index:4;right:8%;bottom:50%;width:11%;height:30%;opacity:0;transform-origin:bottom;transform:scale(calc(.65 + var(--near) * 1.2));transition:opacity .5s,transform .5s;pointer-events:none}
-.sl-room[data-scan="true"] .sl-teacher{opacity:.95}
-.sl-teacher-head{position:absolute;left:27%;top:0;width:46%;height:24%;background:#292f30;border-radius:50%}
-.sl-room[data-scan="true"] .sl-teacher-head{animation:sl-look 2.4s ease-in-out infinite alternate}
-.sl-teacher-body{position:absolute;inset:20% 0 0;background:#303b3b;border-radius:35% 35% 5% 5%}
+.sl-teacher{position:absolute;z-index:4;right:7%;bottom:28%;width:9%;height:36%;opacity:0;transform-origin:bottom center;transform:translateX(22%) scale(.58);pointer-events:none}
+.sl-room[data-mode="scan"] .sl-teacher{animation:sl-enter 5.4s cubic-bezier(.22,.55,.28,1) forwards}
+.sl-room[data-mode="leave"] .sl-teacher{animation:sl-exit 2.1s ease-in forwards}
+.sl-teacher-head{position:absolute;left:22%;top:0;width:56%;height:22%;background:#292f30;border-radius:50%}
+.sl-room[data-mode="scan"] .sl-teacher-head{animation:sl-look 2.4s ease-in-out 1.1s infinite alternate}
+.sl-teacher-body{position:absolute;left:8%;right:8%;top:18%;bottom:16%;background:#303b3b;border-radius:32% 32% 8% 8%}
+.sl-leg{position:absolute;bottom:0;width:22%;height:18%;background:#242a2a;transform-origin:top center;border-radius:2px}
+.sl-leg.l{left:18%}
+.sl-leg.r{right:18%}
+.sl-room[data-mode="scan"] .sl-leg.l,.sl-room[data-mode="leave"] .sl-leg.l{animation:sl-step .38s ease-in-out infinite alternate}
+.sl-room[data-mode="scan"] .sl-leg.r,.sl-room[data-mode="leave"] .sl-leg.r{animation:sl-step .38s ease-in-out infinite alternate-reverse}
+.sl-teacher:after{content:"";position:absolute;left:6%;right:6%;bottom:-4%;height:8%;border-radius:50%;background:#0005;filter:blur(2px)}
 .sl-cast{position:absolute;z-index:5;inset:0}
 .sl-cast:before{content:'';position:absolute;inset:0;background:linear-gradient(to left,#000d,#0000 85%);opacity:0;transition:opacity .5s}
 .sl-room[data-scan="true"] .sl-cast:before{opacity:var(--near)}
@@ -166,6 +175,9 @@
 @keyframes sl-shadow{0%,100%{transform:translateX(-120%)}50%{transform:translateX(30%)}}
 @keyframes sl-feet{0%{left:-25%;opacity:.9}100%{left:105%;opacity:.9}}
 @keyframes sl-look{to{transform:rotate(14deg)}}
+@keyframes sl-enter{0%{opacity:0;transform:translateX(26%) scale(.52)}18%{opacity:1;transform:translateX(4%) scale(.68)}52%{opacity:1;transform:translateX(-70%) scale(.94)}100%{opacity:1;transform:translateX(-42%) scale(1)}}
+@keyframes sl-exit{0%{opacity:1;transform:translateX(-42%) scale(1)}72%{opacity:1;transform:translateX(8%) scale(.66)}100%{opacity:0;transform:translateX(24%) scale(.5)}}
+@keyframes sl-step{to{transform:rotate(16deg)}}
 @keyframes sl-nudge{50%{transform:translateX(-7px)}}
 @keyframes sl-type{to{transform:translateY(-2.5%)}}
 @keyframes sl-thump{20%{transform:translateY(4px)}}

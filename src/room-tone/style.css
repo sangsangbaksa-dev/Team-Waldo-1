@@ -446,6 +446,12 @@ kbd {
   border-radius: 50%;
   margin-right: 0.45rem;
 }
+.statusfoot.is-live .rec:before {
+  animation: rec-blink 1.1s steps(1, end) infinite;
+}
+@keyframes rec-blink {
+  50% { opacity: 0.28; }
+}
 .statusline {
   width: 1px;
   height: 13px;

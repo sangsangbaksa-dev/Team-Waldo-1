@@ -5,7 +5,7 @@ export const WORLD_R = 3200;        // 이 반경 밖에서는 경고 후 기수
 export const SEA_Y = 0;
 export const MIN_SPEED = 70, MAX_SPEED = 230, CRUISE = 140;
 export const GUN_RANGE = 650, GUN_DMG = 7, MISSILE_DMG = 55;
-export const LOCK_CONE = Math.cos(THREE.MathUtils.degToRad(16)), LOCK_RANGE = 1700, LOCK_TIME = 0.9;
+export const LOCK_CONE = Math.cos(THREE.MathUtils.degToRad(16)), LOCK_RANGE = 1700, LOCK_TIME = 0.62;
 
 /** 섬 높이 함수 — 보기 좋은 군도. 충돌 판정과 지형 메시가 같은 함수를 씁니다. */
 const ISLANDS = [
@@ -141,7 +141,7 @@ export class SkySim {
     if (p.speed < MIN_SPEED * 0.9 && this.stallWarnT <= 0) { this.events.push({ t: 'stall' }); this.stallWarnT = 1; }
     // 기관포
     p.gunCd -= dt; p.heat = Math.max(0, p.heat - dt * (p.heat > 1 ? 0.35 : 0.55));
-    if (inp.fire && p.gunCd <= 0 && p.heat < 1.2) { this.fireGun(p, 0.012); p.gunCd = this.overdrive > 0 ? 0.04 : 0.065; p.heat += this.overdrive > 0 ? 0.015 : 0.03; if (p.heat >= 1.2) p.gunCd = 1.2; }
+    if (inp.fire && p.gunCd <= 0 && p.heat < 1.2) { this.fireGun(p, p.lockT > 0.12 ? 0.0055 : 0.011); p.gunCd = this.overdrive > 0 ? 0.04 : 0.058; p.heat += this.overdrive > 0 ? 0.015 : 0.028; if (p.heat >= 1.2) p.gunCd = 1.05; }
     // 락온
     const t = this.bestTarget(p);
     if (t) { if (p.lockId !== t.id) { p.lockId = t.id; p.lockT = 0; this.events.push({ t: 'lock', id: t.id }); } else if (p.lockT < LOCK_TIME) { p.lockT += dt; if (p.lockT >= LOCK_TIME) this.events.push({ t: 'lockdone' }); } }

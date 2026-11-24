@@ -21,9 +21,9 @@ export const createClassroomView: CreateView = (sim, audio) => {
       <div class="sl-world">
         <div class="sl-ceiling"><div class="sl-light"></div><div class="sl-light"></div></div>
         <div class="sl-wall"><div class="sl-clock">10:24</div><div class="sl-board"><small>오늘의 자습</small><span>조용히, 끝까지.</span><i>수고했어, 오늘도.</i></div>
-          <div class="sl-door"><div class="sl-window"><div class="sl-shadow"></div><div class="sl-face"><i></i><i></i></div></div><div class="sl-handle"></div><div class="sl-gap"><i></i><i></i></div></div></div>
+          <div class="sl-doorframe"><div class="sl-doorway"></div><div class="sl-door"><div class="sl-window"><div class="sl-shadow"></div><div class="sl-face"><i></i><i></i></div></div><div class="sl-handle"></div><div class="sl-gap"><i></i><i></i></div></div></div>
         <div class="sl-rows">${KIDS}</div>
-        <div class="sl-teacher"><div class="sl-teacher-head"></div><div class="sl-teacher-body"></div></div>
+        <div class="sl-teacher"><div class="sl-teacher-head"></div><div class="sl-teacher-body"></div><i class="sl-leg l"></i><i class="sl-leg r"></i></div>
         <div class="sl-desk"></div>
         <div class="sl-laptop">
           <div class="sl-lid"><div class="sl-screen">
@@ -183,7 +183,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
         case 'peek': audio.play('peek'); break;
         case 'quiet': quiet = 3; break;
         case 'strike': strike = 2; break;
-        case 'leave': relief = 2; room.classList.remove('is-door'); break;
+        case 'leave': relief = 2; break;
         case 'fun': if (ev.amount >= 1 && popT <= 0) { popT = 0.8; pop.textContent = `+${Math.round(ev.amount)} 재미`; restart(pop, 'on'); } break;
       }
     },

@@ -292,7 +292,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (playing) player.update(dt, mv, colliders, frozen);
     // 가까운 장소
     near = playing ? city.nearestSpot(player.pos.x, player.pos.z, PROMPT_RANGE) : null;
-    if (playing) { const id = near && !near.spot.locked ? near.id : null; core.setPresence(id); }
+    if (playing) { const id = near && !near.spot.locked ? near.id : null; core.setPresence(id); paintPrompt(); }
     if (playing && !paused()) audio.step(player.speed, nowS);
     // 월드 갱신
     const minutes = playing ? st.minutes : 17.4 * 60, focus = playing ? player.pos : titleFocus;
@@ -369,10 +369,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       cashEl.animate([{ transform: 'translateY(0)', filter: 'brightness(1)' }, { transform: 'translateY(-2px)', filter: 'brightness(1.5)' }, { transform: 'translateY(0)', filter: 'brightness(1)' }], { duration: 360, easing: 'ease-out' });
     }
     set('cash', cashText); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
-    set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
+    set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '밤' : '낮');
     for (const b of q('#ty-speed').children) (b as HTMLElement).classList.toggle('on', Number((b as HTMLElement).dataset.speed) === s.speed);
     style('energy', 'width', `${s.energy}%`); set('energy-n', String(s.energy)); q('#ty-energy').parentElement!.classList.toggle('low', s.energy < 25);
-    html('carry', `${s.cargo?.units ? `<span>📦 재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>🍾 빈 병 ${s.bottles}</span>` : ''}`);
+    html('carry', `${s.cargo?.units ? `<span>재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>빈 병 ${s.bottles}</span>` : ''}`);
     html('goal', `<b>${esc(s.goal.label)}</b><div class="ty-bar gold"><i style="width:${Math.round(s.goal.progress * 100)}%"></i></div>${s.goal.steps.filter(x => !x.done).slice(0, 3).map(x => `<small>○ ${esc(x.label)}</small>`).join('')}`);
     // 활동·과제
     const a = s.activity; q('#ty-activity').hidden = !a; if (a) { set('act-label', a.label); style('act-bar', 'width', `${Math.round(a.progress * 100)}%`); }
@@ -381,9 +381,22 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       const d = city.doorOf(t.targetSpotId); set('task-label', t.label); set('task-sub', `${formatMoney(t.reward)} · ${t.minutesLeft > 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}`);
       if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = -(ang + player.camYaw) + Math.PI / 2 + Math.PI; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
     }
-    // 프롬프트
+    paintPrompt(s);
+  }
+  let promptKey = '';
+  let promptLead = '';
+  function paintPrompt(s: TycoonState = core.state): void {
     const p = q<HTMLButtonElement>('#ty-prompt');
-    if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
+    if (!(near && !modal && !s.activity)) { p.hidden = true; promptKey = ''; return; }
+    const key = `${near.id}|${near.spot.locked}|${Math.floor(s.cash)}|${Math.floor(s.energy)}|${s.stage}`;
+    if (key !== promptKey) {
+      promptKey = key;
+      promptLead = near.spot.locked
+        ? `${STAGE_NAMES[near.spot.minStage]} 단계에 열림`
+        : (core.actionsAt(near.id).find(a => a.enabled)?.label ?? '살펴보기');
+    }
+    p.hidden = false;
+    html('prompt', `${touch ? '' : '<kbd>E</kbd>'}<b>${esc(near.spot.name)}</b><em>${esc(promptLead)} · ${Math.max(1, Math.round(near.dist))}m</em>`);
   }
 
   // ---------- 종료 ----------

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { aimSway, eye, RIFLE, type Player } from '../domain/combat.js';
+import { impactLook, type ImpactKind } from '../domain/feedback.js';
 import type { MatchEvent, Snapshot } from '../domain/match.js';
 import { angleDelta, lerp } from '../domain/math.js';
 import type { World } from '../domain/world.js';
@@ -23,7 +24,7 @@ export class FieldRenderer {
   private readonly tracks = new Map<string, OperatorView>();
   private readonly tracerGeometry = new THREE.BufferGeometry();
   private readonly tracerPositions = new Float32Array(3 * 2 * 48);
-  private readonly impacts: { mesh: THREE.Mesh; until: number }[] = [];
+  private readonly impacts: { mesh: THREE.Mesh; until: number; life: number }[] = [];
   private readonly impactGeometry = new THREE.IcosahedronGeometry(0.13);
   private readonly landscape: ReturnType<typeof buildLandscape>;
   private readonly incoming: Incoming[] = [];
@@ -44,7 +45,7 @@ export class FieldRenderer {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.65));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.19;
+    this.renderer.toneMappingExposure = 1.08;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
@@ -127,13 +128,15 @@ export class FieldRenderer {
       transparent: true, depthWrite: false,
     }));
     const material = mesh.material as THREE.MeshBasicMaterial;
-    material.color.set(event.type === 'hit' ? '#dfac69' : '#ad9c7f');
-    material.opacity = 0.85;
+    const kind: ImpactKind = event.type === 'hit' ? (event.headshot ? 'head' : 'body') : 'world';
+    const look = impactLook(kind, event.player === self);
+    material.color.set(look.color);
+    material.opacity = 0.9;
     const p = event.position;
     mesh.position.set(p.x, p.y, p.z);
-    mesh.scale.setScalar(event.player === self ? 1.4 : 1);
+    mesh.scale.setScalar(look.scale);
     this.scene.add(mesh);
-    this.impacts.push({ mesh, until: this.renderTime + 0.29 });
+    this.impacts.push({ mesh, until: this.renderTime + look.life, life: look.life });
   }
 
   draw(snapshot: Snapshot, player: Player, zoom: number, dt: number, now: number, online: boolean): void {
@@ -178,14 +181,11 @@ export class FieldRenderer {
     this.updateTracers(snapshot, time - snapshot.time);
     for (let i = this.impacts.length - 1; i >= 0; i--) {
       const effect = this.impacts[i];
-      const life = (effect.until - this.renderTime) / 0.29;
+      const life = (effect.until - this.renderTime) / effect.life;
       if (life <= 0) {
         this.retireImpact(effect.mesh);
         this.impacts.splice(i, 1);
-      } else {
-        (effect.mesh.material as THREE.MeshBasicMaterial).opacity = life * 0.65;
-        effect.mesh.scale.addScalar(dt * 2.7);
-      }
+      } else (effect.mesh.material as THREE.MeshBasicMaterial).opacity = life * 0.9;
     }
     this.viewRifle.update(player, time, this.aim, player.steady);
     this.renderer.clear();

@@ -45,8 +45,8 @@
 .sz-hitmark.pop{animation:szpop .22s ease-out}
 @keyframes szpop{0%{transform:scale(1.9)}100%{transform:scale(1)}}
 .sz-nums{position:absolute;left:50%;top:50%;width:0;height:0}
-.sz-nums b{white-space:nowrap;position:absolute;top:-34px;font-size:15px;font-weight:800;color:#fff;text-shadow:0 1px 4px #000,0 0 2px #000;animation:sznum .7s ease-out forwards;pointer-events:none}
-.sz-nums b.head{color:#ff5a4d;font-size:19px}
+.sz-nums b{white-space:nowrap;position:absolute;top:-42px;font-size:18px;font-weight:800;color:#fff;background:#10120fcc;border-radius:3px;padding:2px 6px;text-shadow:0 1px 0 #000;animation:sznum .8s ease-out forwards;pointer-events:none}
+.sz-nums b.head{color:#ffd4cc;font-size:22px}
 @keyframes sznum{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-38px)}}
 .sz-dmgs{position:absolute;left:50%;top:50%}
 .sz-dmgs i{position:absolute;left:-60px;top:-120px;width:120px;height:120px;transform-origin:60px 120px;border-radius:50% 50% 0 0;background:radial-gradient(ellipse at 50% 0,rgba(255,40,30,.85),transparent 70%);clip-path:polygon(0 0,100% 0,100% 28%,0 28%);animation:szdmg .9s ease-out forwards}
@@ -303,10 +303,11 @@
 .sz-slots span .gi{display:inline-block;width:30px;height:20px;flex:none;filter:drop-shadow(0 1px 1px #000a)}
 .sz-slots span .gi .zi{display:block;width:100%;height:100%}
 .sz-slots span.gear{background:linear-gradient(180deg,#1b2420d9,#0d1311d9);box-shadow:inset 0 1px 0 #ffffff1f,0 2px 6px #0008}
-.sz-bar.hp i{background:linear-gradient(180deg,#8fe79d 0,#3fae5a 45%,#2b8044 100%);box-shadow:0 0 10px #4fdc7a66}
-.sz-bar.ar i{background:linear-gradient(180deg,#a6d2ff 0,#3c78d6 45%,#2a58a8 100%);box-shadow:0 0 10px #5aa0ff66}
-.sz-bar{box-shadow:inset 0 2px 5px #000a,0 2px 8px #0007}
-.sz-ammo b{text-shadow:0 2px 0 #000b,0 0 18px #c4df9133}
+.sz-bar.hp i{background:#3d9a52;box-shadow:none}
+.sz-bar.ar i{background:#3d74c4;box-shadow:none}
+.sz-bar{box-shadow:inset 0 1px 2px #000a}
+.sz-ammo b{text-shadow:0 1px 0 #000,0 2px 0 #000}
+.sz-ammo b.low{color:#ffd0c6}
 
 @media(max-width:480px){.sz-tl{gap:4px;left:max(6px,env(safe-area-inset-left))}.sz-stat{min-width:0;padding:6px 7px}.sz-stat b{font-size:20px}.sz-tc{top:80px;padding:5px 10px}.sz-tc b{font-size:18px}.sz-tr{right:max(6px,env(safe-area-inset-right))}.sz-tr canvas{width:72px;height:72px}}
 

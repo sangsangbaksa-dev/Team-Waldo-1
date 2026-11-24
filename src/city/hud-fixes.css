@@ -1,5 +1,14 @@
 /* LAST CITY 플레이테스트 수정(2026-11-22): HUD 겹침·가격 표기·좁은 화면 배치. city.css 뒤에 불러옵니다. */
 
+.c-damage{color:#fff4f1;font-size:20px;background:#1a100ee6;border:1px solid #e7b2a866;border-radius:4px;padding:3px 8px}
+.c-cross.hit b{background:linear-gradient(45deg,transparent 46%,#f3e2b8 46% 54%,transparent 54%),linear-gradient(-45deg,transparent 46%,#f3e2b8 46% 54%,transparent 54%)}
+.c-cross.kill b{filter:none;inset:-12px;background:linear-gradient(45deg,transparent 43%,#ffb4a8 43% 57%,transparent 57%),linear-gradient(-45deg,transparent 43%,#ffb4a8 43% 57%,transparent 57%)}
+.c-hurt.storm{background:radial-gradient(ellipse at center,transparent 58%,#5a4034b8 118%)}
+.c-quest,.c-feed div{font-size:13px}
+.c-target{font-size:14px;font-weight:700}
+.c-target i{width:148px;height:7px;background:#120e0ce6;border:1px solid #ffffff2e}
+.c-ammo small{opacity:.92;color:#e7efe9}
+
 /* 하단 중앙 지휘 줄이 좌하단 보스 패널(최대 342px)을 덮지 않도록 패널 오른쪽에서 시작해 가운데 정렬 */
 .c-bc{left:356px;right:12px;transform:none;justify-content:center;flex-wrap:wrap}
 .touch .c-bc{display:none}

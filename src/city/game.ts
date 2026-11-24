@@ -29,6 +29,7 @@ import { PVP_ENABLED } from '../net/config';
 import { ChatLimiter, cleanChat, pushChat, visibleChat, type ChatLine } from './chat';
 import { gemIcon, starIcon } from '../shared/glyphs';
 import { cityIcon, hudIcon } from './icons';
+import { playerHitCue, stackDamage, threatWash, type DamageStack } from './domain/feedback';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
@@ -62,7 +63,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const audio = new CityAudio(); audio.enabled = prefs.sound;
   type View = 'fp' | 'tp' | 'top';
   let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
-  let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
+  let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0, dmgStack: DamageStack | null = null;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0, heartbeatT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
   let demolishArmed: { id: number; at: number } | null = null;
@@ -111,7 +112,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true; demolishArmed = null; placeKey = '';
+    keys.clear(); mouse.down = false; touchFire = false; acc = 0; killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true; demolishArmed = null; placeKey = ''; hitT = 0; hurt = 0; dmgStack = null; cross.classList.remove('hit', 'kill');
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
@@ -734,9 +735,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       for (const e of w.events) {
         const d = Math.hypot(e.x - lx, e.y - ly), vol = Math.max(0, 1 - d / 1200);
         if (e.t === 'shot') { audio.play(e.s!, vol * (e.f === 0 ? 1 : 0.6)); if (vol > 0.3) combat = Math.min(1, combat + 0.08); }
-        else if (e.t === 'boom') audio.play('boom', vol); else if (e.t === 'hit') { if (e.a === 1) { hitT = 0.14; cross.classList.add('hit'); audio.play('hit', 0.9); } else audio.play('hit', vol * 0.5); } else if (e.t === 'spark') audio.play('hit', vol * 0.4); else if (e.t === 'death') audio.play('death', vol);
-        else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); killStreak = !w.boss(0) ? 0 : now - lastKillAt <= 8000 ? killStreak + 1 : 1; lastKillAt = now; w.say(`${killStreak > 1 ? `${killStreak} \uC5F0\uC18D \uCC98\uCE58! \u00B7 ` : ''}처치 · ${e.s ?? '적'}`, '#e9c989'); }
-        else if (e.t === 'phurt') { hurt = Math.min(1, hurt + (e.a ?? 10) / 45); audio.play('hurt', 0.7); const el = q('#c-damage'); el.textContent = `−${Math.ceil(e.a ?? 0)}`; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
+        else if (e.t === 'boom') audio.play('boom', vol); else if (e.t === 'hit') { const cue = playerHitCue(e.a === 1, false); if (cue.seconds > 0) { hitT = cue.seconds; cross.classList.add('hit'); cross.classList.remove('kill'); audio.play('hit', 0.9); } else audio.play('hit', vol * 0.5); } else if (e.t === 'spark') audio.play('hit', vol * 0.4); else if (e.t === 'death') audio.play('death', vol);
+        else if (e.t === 'kill') { const cue = playerHitCue(true, true); hitT = cue.seconds; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); killStreak = !w.boss(0) ? 0 : now - lastKillAt <= 8000 ? killStreak + 1 : 1; lastKillAt = now; w.say(`${killStreak > 1 ? `${killStreak} \uC5F0\uC18D \uCC98\uCE58! \u00B7 ` : ''}처치 · ${e.s ?? '적'}`, '#e9c989'); }
+        else if (e.t === 'phurt') { hurt = Math.min(1, hurt + (e.a ?? 10) / 45); audio.play('hurt', 0.7); const stacked = stackDamage(dmgStack, e.a ?? 0, now / 1000); dmgStack = stacked; const el = q('#c-damage'); el.textContent = stacked.label; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
         else if (e.t === 'income') { const el = q('#c-income'), rr = q('#c-res').getBoundingClientRect(); el.style.left = `${Math.round(rr.right + 8)}px`; el.style.top = `${Math.round(rr.top + 6)}px`; el.textContent = `+$${$(e.a ?? 0)}`; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
         else if (e.t === 'cash' && e.f === 0) audio.play('cash'); else if (e.t === 'pickup' && d < 60) audio.play('pickup'); else if (e.t === 'levelup' && e.f === 0) audio.play('levelup');
         else if (e.t === 'order') { if (tut) tut.c.orders++; } else if (e.t === 'quest') { audio.play('quest'); banner(`목표 달성 +$${e.a}`); } else if (e.t === 'siren') audio.play('siren'); else if (e.t === 'announce') { audio.play('announce'); banner(e.s!); }
@@ -752,9 +753,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     audio.setEngine(veh ? Math.min(1, spd / veh.maxSpeed) : -1);
     if (hitT > 0) { hitT -= dt; if (hitT <= 0) cross.classList.remove('hit', 'kill'); }
-    hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
+    hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.28 + Math.sin(now / 160) * 0.08 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
     if (low && !paused && !w.over && f.pending === 0 && now >= heartbeatT) { audio.play('heartbeat'); heartbeatT = now + 1250; }
-    hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
+    const wash = threatWash(hurt, low, outside); hurtEl.style.opacity = String(wash.opacity); hurtEl.classList.toggle('storm', wash.storm);
     if (three && R3) {
       if (ghost) { const p = R3.buildPoint(ghost.kind); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = !w.buildError(0, ghost.kind, ghost.x, ghost.y); }
       R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;

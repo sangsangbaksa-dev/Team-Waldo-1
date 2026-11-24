@@ -215,3 +215,7 @@
 @media(prefers-reduced-motion:reduce) {
   .sl-root .sl-tip,.sl-root .sl-vignette,.sl-root .sl-fun .sl-track i,.sl-root .sl-risk em { animation:none; transition:none; }
 }
+
+.sl-root .sl-hud[hidden], .sl-root .sl-modal[hidden], .sl-root .sl-tip[hidden] { display:none; }
+.sl-root .sl-notices:has(.sl-tip[hidden]):has(.sl-toast:empty) { display:none; }
+.sl-root .sl-chip [data-strikes]::after { content:"/3"; color:var(--sl-muted); font-weight:400; }

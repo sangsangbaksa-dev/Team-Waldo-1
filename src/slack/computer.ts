@@ -11,12 +11,12 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
 const pick = <T,>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
 
 const videos = [
-  { t: '새벽 감성 모음 ☁', ch: '달빛 라디오', views: '12만회', len: 728, h: 230, subs: ['오늘도 수고 많았어요', '잠시 눈을 감고 숨을 쉬어 봐요', '창밖에는 푸른 새벽이 오고 있어요', '내일의 나에게 맡겨요'] },
+  { t: '새벽 감성 모음', ch: '달빛 라디오', views: '12만회', len: 728, h: 230, subs: ['오늘도 수고 많았어요', '잠시 눈을 감고 숨을 쉬어 봐요', '창밖에는 푸른 새벽이 오고 있어요', '내일의 나에게 맡겨요'] },
   { t: '고양이가 키보드를 밟았을 때', ch: '냥냥TV', views: '88만회', len: 215, h: 20, subs: ['어 저거 내 숙제인데', '엔터를 눌러 버렸다', '전송 완료... 였다', '집사는 말이 없었다'] },
   { t: '급식 랭킹 TOP 10 (진짜 맛집)', ch: '급식왕', views: '41만회', len: 504, h: 110, subs: ['10위 멸치 볶음', '7위 돈가스는 못 참지', '3위 치킨 나오는 날', '1위는 역시 떡볶이'] },
   { t: '공부 브이로그 (공부는 안 함)', ch: '열공러', views: '6.2만회', len: 391, h: 300, subs: ['오늘의 계획은 완벽합니다', '일단 책상 정리부터', '그리고 간식 타임', '내일부터 진짜 시작'] },
 ];
-const commentPool = ['이 시간에 보는 사람 손 ✋', '내일의 나야 미안해', '사감 오면 바로 끌 준비 완료', '첫 댓글!', '자막 센스 미쳤다', '오늘 자습 진짜 길다', '추천 알고리즘 고마워요', '새벽 2시 출석체크'];
+const commentPool = ['이 시간에 보는 사람 있나요', '내일의 나야 미안해', '사감 오면 바로 끌 준비 완료', '첫 댓글!', '자막 센스 미쳤다', '오늘 자습 진짜 길다', '추천 알고리즘 고마워요', '새벽 2시 출석체크'];
 
 const initialRooms = [
   { name: '우리 반 비밀방', sub: '3명', msgs: [{ m: false, who: '지후', t: '오늘 자습 진짜 길다...' }, { m: true, who: '', t: '그러니까 ㅠㅠ' }, { m: false, who: '서연', t: '끝나고 매점 갈 사람?' }], pool: ['사감 아직 안 왔지?', '나 오늘 진짜 졸려...', '조용히 하자 ㅋㅋ', '끝나면 같이 가자!', '매점 문 닫기 전에 가야 해'], reply: ['ㅋㅋㅋㅋ 인정', '나도 갈래!', '쉿 조용히 해'], unread: 0 },
@@ -289,7 +289,8 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const buttonDown = (event: PointerEvent) => {
     if (event.button !== 0 || coverPointer !== null) return;
-    event.preventDefault(); coverButton.focus({ preventScroll: true }); coverButton.setPointerCapture(event.pointerId);
+    event.preventDefault(); coverButton.focus({ preventScroll: true });
+    try { coverButton.setPointerCapture(event.pointerId); } catch { /* window-level release handles missing capture */ }
     audio.resume(); audio.play('click'); coverPointer = event.pointerId; updateCover();
   };
   const buttonUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); } };
@@ -306,7 +307,8 @@ export const createComputerView: CreateView = (sim, audio) => {
   el.addEventListener('keydown', keydown, options); el.addEventListener('keyup', keyup, options);
   el.addEventListener('focusout', focusout, options); el.addEventListener('pointerdown', pointerdown, options);
   host.addEventListener('scroll', scroll, { ...options, capture: true });
-  window.addEventListener('pointerup', pointerup, options); window.addEventListener('pointercancel', pointerup, options); window.addEventListener('blur', blur, options);
+  window.addEventListener('pointerup', pointerup, options); window.addEventListener('pointercancel', pointerup, options);
+  window.addEventListener('pointerup', buttonUp, options); window.addEventListener('pointercancel', buttonUp, options); window.addEventListener('blur', blur, options);
   coverButton.addEventListener('pointerdown', buttonDown, options); coverButton.addEventListener('pointerup', buttonUp, options);
   coverButton.addEventListener('pointercancel', buttonUp, options); coverButton.addEventListener('lostpointercapture', buttonUp, options);
   renderApp(null);

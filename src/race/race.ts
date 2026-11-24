@@ -5,6 +5,7 @@ import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
 import { mapById } from './maps';
 import { GhostRecorder, type Ghost } from './ghost';
+import { createCleanSectors, stepCleanSectors, type CleanSectors } from './clean-sectors';
 import { createDrift, flushDrift, nitroForChain, stepDrift, type DriftScore } from './driftscore';
 
 export interface Racer {
@@ -21,6 +22,7 @@ export type RaceEvent =
   | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' } | { type: 'finalLap' }
   | { type: 'lap'; lap: number; time: number; best: boolean } | { type: 'finish'; place: number; time: number }
   | { type: 'hit'; power: number } | { type: 'driftBoost'; secs: number } | { type: 'pad' } | { type: 'bump'; power: number }
+  | { type: 'cleanSector'; count: number; nitro: number }
   | { type: 'driftBank'; points: number; mult: number } | { type: 'driftLost'; points: number }
   /** 녹아웃: 선두가 랩을 마칠 때 꼴찌가 탈락합니다. player 가 true 면 내 차가 탈락해 레이스가 끝납니다. */
   | { type: 'knockout'; name: string; place: number; player: boolean; left: number };
@@ -31,6 +33,7 @@ export interface RaceState {
   trial?: boolean; ghost?: Ghost | null; rec?: GhostRecorder;
   /** 드리프트 점수(모든 모드) */
   drift: DriftScore;
+  cleanSectors?: CleanSectors;
   /** 녹아웃(서바이벌) 모드: 지금까지 탈락시킨 횟수 */
   knockout?: { done: number };
 }
@@ -75,7 +78,7 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     const pace = opts.knockout ? level.koPace : 1, ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul * pace, grip: f.grip * handling * handling * level.gripMul * pace * pace, skill: 1, line: level.line, nitro: level.nitro };
     return mk(i + 1, f.name, def, false, [SLOTS[0], SLOTS[1], SLOTS[3]][i], ai);
   });
-  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), ...(opts.knockout ? { knockout: { done: 0 } } : {}) };
+  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), cleanSectors: createCleanSectors(track.n, laps), ...(opts.knockout ? { knockout: { done: 0 } } : {}) };
 }
 
 const score = (r: Racer): number => (r.out !== undefined ? -1e9 - r.out : r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
@@ -169,6 +172,15 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
   for (const k of r.racers) if (!k.link && k.out === undefined) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  if (r.cleanSectors && racing) {
+    const c = r.player.car;
+    const clean = stepCleanSectors(r.cleanSectors, c.total, ev.some(e => e.type === 'hit' || e.type === 'bump'));
+    if (clean) {
+      const before = c.nitro;
+      c.nitro = Math.min(1, c.nitro + 0.08);
+      ev.push({ type: 'cleanSector', count: r.cleanSectors.clean, nitro: Math.round((c.nitro - before) * 100) });
+    }
+  }
   // 랩·결승
   if (r.rec && r.phase === 'racing') r.rec.tick(r.clock, r.player.car);
   for (const k of r.racers) {

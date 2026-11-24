@@ -306,7 +306,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.code === 'Escape') {
       e.preventDefault();
       if (!e.repeat) {
-        if (modal?.kind === 'menu' || modal?.kind === 'map') closeModal(true);
+        if (modal) closeModal(true);
         else openModal({ kind: 'menu' });
       }
       return;

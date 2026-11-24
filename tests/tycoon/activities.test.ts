@@ -19,7 +19,7 @@ function playBet(seed: number, stake = 10) {
   core.setPresence('casino');
   const started = core.perform('casino', `casino_flip_${stake}`);
   expect(started.ok, started.message).toBe(true);
-  settle(core);
+  expect(core.state.activity).toBeNull();
   return { core, events, beforeEarned, started };
 }
 
@@ -60,8 +60,8 @@ describe('HUSTLE new side activities', () => {
     expect(loss.core.data.lifetimeEarned).toBe(loss.beforeEarned);
     expect(win.events.some(event => event.type === 'cash' && event.amount === 10)).toBe(true);
     expect(loss.events.some(event => event.type === 'cash' && event.amount === -10)).toBe(true);
-    expect(win.events.some(event => event.type === 'toast' && event.tone === 'good' && event.text?.includes('순이익 +10'))).toBe(true);
-    expect(loss.events.some(event => event.type === 'toast' && event.tone === 'bad' && event.text?.includes('10 손실'))).toBe(true);
+    expect(win.started.message).toContain('순이익 +10');
+    expect(loss.started.message).toContain('10 손실');
     const restored = createCore({ save: win.core.serialize() });
     expect(restored.state.cash).toBe(win.core.state.cash);
     expect(restored.data.rng).toBe(win.core.data.rng);

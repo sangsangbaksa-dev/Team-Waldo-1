@@ -215,20 +215,16 @@ function casinoActions(ctx: ActionCtx): ActionSpec[] {
     desc: `HUSTLE 게임 현금만 사용 (실제 결제·보상 없음). 승리 ${CASINO_WIN_CHANCE * 100}% · 당첨 시 총 ${fmt(stake * 2)} 지급, 순이익 +${fmt(stake)} · 패배 시 ${fmt(stake)} 전액 손실.`,
     cost: stake,
     reward: stake,
-    durationSec: 1.8,
-    lockMovement: true,
     ...(!open ? off('영업 시간은 07:00~23:00입니다') : {}),
     run: () => {
       g.cash -= stake;
       if (rand(g) < CASINO_WIN_CHANCE) {
         g.cash += stake * 2;
         ctx.emit({ type: 'cash', text: `+${fmt(stake)}`, amount: stake, spotId: 'casino' });
-        ctx.emit({ type: 'toast', text: `승리! 순이익 +${fmt(stake)} · 총 지급 ${fmt(stake * 2)} · 잔액 ${fmt(g.cash)}`, tone: 'good' });
-        return '';
+        return `승리! 순이익 +${fmt(stake)} · 총 지급 ${fmt(stake * 2)}`;
       }
       ctx.emit({ type: 'cash', text: `−${fmt(stake)}`, amount: -stake, spotId: 'casino' });
-      ctx.emit({ type: 'toast', text: `패배 · ${fmt(stake)} 손실 · 잔액 ${fmt(g.cash)}`, tone: 'bad' });
-      return '';
+      return `패배 · ${fmt(stake)} 손실`;
     },
   }, ctx));
 }

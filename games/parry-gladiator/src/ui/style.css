@@ -409,7 +409,7 @@ kbd {
   transform: translate(-50%, -50%) rotate(45deg);
   box-shadow: 0 0 10px #2e1515aa;
 }
-.target.threat span { border-color: #ffd08e; background: #b35a37; box-shadow: 0 0 11px #fda768; }
+.target.threat span { border-color: #ffd08e; background: #b35a37; box-shadow: none; }
 .reaction {
   position: absolute;
   z-index: 2;
@@ -520,7 +520,7 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
-.target.timing span { border-color: #fff5bf; background: #ffb763; box-shadow: 0 0 0 3px #965632b3, 0 0 12px #fda768; }
+.target.timing span { border-color: #fff5bf; background: #ffb763; box-shadow: 0 0 0 2px #965632b3; }
 #app[data-motion="reduced"] .announcer.arrive { animation: none; }
 #app[data-motion="reduced"] .meter i { transition: none; }
 .touch-actions [data-feint="true"] { border-color: #ffba86; background: #633626; }

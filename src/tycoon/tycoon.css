@@ -154,6 +154,38 @@
 .ty-titlebox .ty-first-route b { margin-right: 6px; color: #f1b77e; }
 .ty-titlebox.win { padding: 28px; background: rgba(10, 14, 22, .9); border: 1px solid var(--line); border-radius: 24px; }
 
+/* Editorial opening: quiet surfaces, visible city, deliberate typography. */
+.ty-title { position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-start;
+  padding:clamp(24px,5vw,84px); background:linear-gradient(90deg,rgba(6,13,21,.96) 0%,rgba(6,13,21,.79) 48%,rgba(6,13,21,.2) 100%); }
+.ty-title[hidden] { display:none; }
+.ty-titlebox { text-align:left; width:min(710px,92vw); max-width:100%; animation:ty-panel .38s ease-out; }
+.ty-titlebox .kick { margin:0 0 22px; display:inline-block; padding-bottom:10px; border-bottom:1px solid #ae9470;
+  font-size:11px; color:#d3be93; letter-spacing:.24em; font-weight:750; }
+.ty-titlebox h1 { margin:0 0 18px; font-size:clamp(62px,11vw,112px); line-height:.88; letter-spacing:-.06em;
+  font-weight:830; color:#f6f0e5; background:none; filter:none; text-shadow:0 6px 16px #0005; }
+.ty-titlebox .sub { margin:0 0 24px; max-width:560px; font-size:clamp(15px,2vw,19px); color:#c9d1d8; line-height:1.55; }
+.ty-ladder-lg { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:6px 7px;
+  margin:0 0 30px; font-size:12px; color:#a8b4bd; }
+.ty-ladder-lg span { padding:0; border:0; background:none; border-radius:0; }
+.ty-ladder-lg i { font-style:normal; opacity:.4; color:#d5bb84; }
+.ty-title-btns { display:flex; justify-content:flex-start; flex-wrap:wrap; gap:8px; }
+.ty-title-btns button { min-width:136px; min-height:48px; padding:12px 20px; border-radius:5px; border:1px solid #556273;
+  background:#1a2531e8; font-size:14px; font-weight:720; backdrop-filter:none; transition:background .16s,border-color .16s; }
+.ty-title-btns button:hover { background:#344458; border-color:#a3b0be; }
+.ty-title-btns button.primary { background:#edc884; color:#111923; border-color:#edc884; box-shadow:none; }
+.ty-title-btns button.primary:hover { background:#f5d7a3; border-color:#f5d7a3; }
+.ty-title-btns button small { display:block; font-size:11px; font-weight:600; opacity:.78; }
+.ty-titlebox .keys { margin:30px 0 0; max-width:630px; padding-top:14px; border-top:1px solid #75808a55; color:#adbac5; font-size:12px; line-height:1.8; }
+.ty-titlebox.win { padding:28px; background:#0a111ce8; border:1px solid #445162; border-radius:9px; }
+@media(max-width:600px) {
+  .ty-title { padding:clamp(18px,6vw,28px); background:linear-gradient(90deg,#09121deb,#09121dd1); }
+  .ty-titlebox .kick { margin-bottom:14px; }
+  .ty-titlebox h1 { margin-bottom:12px; font-size:clamp(55px,15vw,85px); }
+  .ty-ladder-lg { margin-bottom:20px; font-size:10px; }
+  .ty-title-btns button { min-width:112px; padding:11px 13px; }
+  .ty-titlebox .keys { margin-top:20px; font-size:11px; }
+}
+
 /* 터치 */
 .ty-touchpad { display: none; }
 .ty-root.touch .ty-touchpad { display: block; position: absolute; inset: 0; pointer-events: none; }
@@ -260,3 +292,112 @@
 .ty-titlebox .ty-title-btns .wd-btn:hover,.ty-pause-panel .ty-acts .wd-btn:hover{border-color:#697078}.ty-titlebox .ty-title-btns .wd-btn.primary:hover,.ty-pause-panel .ty-acts .wd-btn.primary:hover{background:#fff}
 .ty-titlebox .keys{margin:22px 0 0;color:var(--wd-muted);font-size:12px;line-height:1.6}
 .ty-pause-panel .wd-lead{color:var(--wd-muted)}
+
+/* Business dashboard: key financial values and inventory status. */
+.ty-finance { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 12px 0 18px; }
+.ty-finance > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 12px; background: #0d1520; border: 1px solid var(--line); border-radius: 9px; }
+.ty-finance small { color: var(--mute); font-size: 11px; }
+.ty-finance b { color: var(--ink); font-size: clamp(18px, 3vw, 24px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ty-finance > div:first-child b { color: var(--gold); }
+.ty-finance b.cost { color: var(--bad); }
+.ty-supply { margin: 8px 0 4px; font-size: 11px; color: var(--good); font-weight: 700; }
+.ty-supply.low { color: #ffc17a; }
+.ty-factory-note { color: var(--mute); font-size: 12px; margin: 8px 0; }
+.ty-shop .ty-chips .gain { color: var(--good); }
+.ty-shop .ty-chips .cost { color: var(--bad); }
+.ty-map-caption { position: absolute; bottom: 8px; left: 8px; padding: 6px 10px; border-radius: 6px; background: #0b111ce8; color: #dbe6f3; font-size: 11px; pointer-events: none; }
+.ty-task > div { min-width: 0; }
+.ty-task span { display: block; }
+@media (max-width: 380px) {
+  .ty-finance { gap: 5px; }
+  .ty-finance > div { padding: 8px; }
+}
+
+/* HUSTLE — instrument-style driving feedback. */
+.ty-drive { position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
+  min-width:220px; display:grid; justify-items:center; gap:3px; padding:12px 24px;
+  border:1px solid rgba(210,225,240,.22); border-radius:12px; background:rgba(9,16,24,.9);
+  box-shadow:0 12px 32px #0006; backdrop-filter:blur(6px); letter-spacing:.015em; }
+.ty-drive[hidden] { display:none; }
+.ty-drive > span:first-child { font-size:11px; color:#c6d0d9; font-weight:700; letter-spacing:.09em; }
+.ty-drive strong { display:flex; align-items:baseline; gap:7px; font-variant-numeric:tabular-nums; }
+.ty-drive strong b { font-size:38px; line-height:1.05; font-weight:750; color:#faf7ef; }
+.ty-drive strong small { color:#d4bb8b; font-size:11px; font-weight:650; }
+.ty-drive > span:last-child { font-size:10px; color:#aab9c8; }
+.ty-tfoot button:disabled { opacity:.38; cursor:not-allowed; }
+.ty-root.touch .ty-drive { bottom:max(18px,env(safe-area-inset-bottom)); left:54%; min-width:140px; padding:8px 10px; }
+.ty-root.touch .ty-drive > span:last-child { display:none; }
+.ty-root.touch .ty-drive strong b { font-size:28px; }
+@media(max-width:860px) { .ty-root.touch .ty-drive { left:50%; bottom:120px; } }
+@media(max-height:500px) and (orientation:landscape) { .ty-root.touch .ty-drive { left:50%; bottom:8px; padding:4px 10px; } }
+
+/* HUSTLE — personal destination card and click-to-navigate city map. */
+.ty-route { position:absolute; left:50%; top:136px; transform:translateX(-50%); display:flex; align-items:center;
+  gap:11px; width:max-content; max-width:min(280px,80vw); padding:9px 10px 9px 12px; border:1px solid #8b7d60;
+  background:#131d27e8; border-radius:9px; box-shadow:0 8px 24px #0005; color:#f0f1eb; }
+.ty-route[hidden] { display:none; }
+.ty-route.has-task { top:158px; }
+.ty-route-mark { display:block; width:22px; height:22px; line-height:22px; color:#ecc88b; font-size:20px; font-weight:800; text-align:center; transform-origin:center; flex:none; text-shadow:0 1px 4px #000; }
+.ty-route > div { display:flex; flex-direction:column; line-height:1.25; min-width:100px; }
+.ty-route b { font-size:11px; letter-spacing:.04em; color:#ecd49a; }
+.ty-route > div span { font-size:13px; font-variant-numeric:tabular-nums; }
+.ty-route button { width:28px; height:28px; background:#2b3745; border:1px solid #58697a; border-radius:7px; }
+.ty-route button:hover { background:#415165; }
+.ty-bigmap canvas { cursor:crosshair; touch-action:manipulation; }
+.ty-clear-waypoint { position:absolute; right:12px; bottom:46px; padding:7px 11px; border-radius:7px; border:1px solid #bba77a;
+  background:#1b2634e8; color:#f2dda9; font-size:12px; font-weight:700; }
+.ty-clear-waypoint:hover { background:#344052; }
+.ty-bigmap .ty-map-caption { bottom:5px; left:10px; right:10px; text-align:left; font-size:11px; }
+@media(max-width:860px) {
+  .ty-route { top:calc(max(10px, env(safe-area-inset-top)) + 190px); left:50%; padding:7px 8px; gap:8px; }
+  .ty-route.has-task { top:calc(max(10px, env(safe-area-inset-top)) + 245px); }
+  .ty-bigmap .ty-map-caption { font-size:10px; }
+}
+@media(max-height:500px) and (orientation:landscape) {
+  .ty-route { top:82px; right:10px; left:auto; transform:none; }
+}
+
+.ty-controls-note { padding:10px 12px; color:#c0cbd4; font-size:11px; line-height:1.65;
+  border:1px solid #3a4857; border-radius:6px; background:#182330; }
+.ty-root.touch .ty-tfoot button { border-radius:9px; min-height:42px; }
+.ty-root.touch .ty-tfoot button.big { border-radius:9px; }
+@media(prefers-reduced-motion:reduce) {
+  .ty-titlebox { animation:none; }
+  .ty-title-btns button { transition:none; }
+}
+
+/* The same thumb control becomes a momentary brake when driving. */
+.ty-root.touch .ty-tfoot button.brake { background:#49312c; border-color:#a76e5c; color:#ffe7d9; }
+.ty-root.touch .ty-tfoot button.brake.on { background:#bd644a; border-color:#e6a088; color:#fff; }
+
+/* HUSTLE visual system: matte materials and clear instrument hierarchy. */
+.ty-root { --gold:#e9c48a; --ink:#edf1f3; --mute:#b4c0cb; --bg:rgba(12,21,31,.94); --line:rgba(193,210,225,.2); }
+.ty-top > div, .ty-left > div, .ty-task, .ty-activity { background:var(--bg); border-color:var(--line); border-radius:7px; box-shadow:0 4px 14px #0004; backdrop-filter:none; -webkit-backdrop-filter:none; }
+.ty-cash { border-top:1px solid var(--line) !important; border-left:3px solid var(--gold) !important; }
+.ty-cash b { color:#f1d7a6; text-shadow:none; letter-spacing:-.03em; }
+.ty-tools button, .ty-speed button { border-radius:5px; background:#ffffff12; }
+.ty-tools button:hover, .ty-speed button:hover { background:#ffffff20; }
+.ty-bar { height:6px; border-radius:3px; }
+.ty-bar > i { background:#74a8c9; transition:width .2s ease-out; }
+.ty-bar.gold > i { background:#e1b978; }
+.ty-prompt { background:#101b27ec; border-radius:7px; border-color:#8e9fa66d; box-shadow:0 6px 18px #0007; animation:none; }
+.ty-prompt kbd { border-radius:4px; background:#e9c48a; }
+.ty-mini { border-radius:8px; box-shadow:0 5px 20px #0007; }
+.ty-toasts li { border-radius:5px; backdrop-filter:none; -webkit-backdrop-filter:none; }
+.ty-panel { box-shadow:0 18px 48px #0009; }
+.ty-titlebox .sub, .ty-banner p { text-shadow:none; }
+@media(max-width:860px) { .ty-top > div, .ty-left > div { box-shadow:0 2px 9px #0004; } }
+
+/* Touch driving: horn is a secondary control, not a dead primary action. */
+.ty-root.touch .ty-tfoot button.big.horn {
+  background:#2c3a47; color:#f1d59e; border:1px solid #89734f;
+  box-shadow:none; min-height:53px; border-radius:7px;
+}
+.ty-root.touch .ty-tfoot button.big.horn:active {background:#485966;color:#fff2cc;}
+
+/* Clear analogue-style transmission indicator, especially on touch screens. */
+.ty-drive strong {align-items:center}
+.ty-drive strong em {font-style:normal;font-size:12px;line-height:1.4;font-weight:800;
+  letter-spacing:.04em;color:#e9c48a;border:1px solid #6e756d;border-radius:3px;
+  background:#212d32;min-width:22px;padding:3px 5px;text-align:center;align-self:center}
+.ty-root.touch .ty-tfoot button[data-t="ride"]:disabled {opacity:.48}

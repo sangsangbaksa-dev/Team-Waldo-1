@@ -88,7 +88,7 @@ export function titleHtml(has: boolean, summary: string, confirmNew = false): st
       ${has ? `<button type="button" class="wd-btn primary" data-title="continue">이어하기<small>${esc(summary)}</small></button><button type="button" class="wd-btn ghost" data-title="new">${confirmNew ? '저장이 지워집니다 — 한 번 더 누르면 새로 시작' : '다시 시작'}</button>` : '<button type="button" class="wd-btn primary" data-title="new">시작</button>'}
       <button type="button" class="wd-btn ghost" data-title="exit">게임 목록으로</button>
     </div>
-    <p class="keys">WASD 이동 · Shift 달리기 · E 상호작용 · 마우스 드래그로 시점 · V 1인칭 · Tab 현황 · M 지도</p>
+    <p class="keys">WASD 이동 / 운전 · Shift 달리기 · E 상호작용 · F 차량 탑승 · Space 브레이크 · H 경적 · V 시점 · Tab 현황 · M 지도(클릭해 목적지 지정)</p>
   </div>`;
 }
 
@@ -101,4 +101,37 @@ export function winHtml(s: TycoonState): string {
   return `<div class="ty-win-screen wd-screen"><div class="ty-titlebox win wd-panel"><p class="kick wd-eyebrow">HUSTLE / MILESTONE</p><h1 class="wd-title">세계 정복</h1><p class="sub wd-lead">${s.day}일 만에 세계를 손에 넣었습니다. 순자산 ${formatMoney(s.netWorth)}</p>
     <div class="ty-title-btns wd-actions"><button type="button" class="wd-btn primary" data-title="keep">이어하기</button><button type="button" class="wd-btn ghost" data-title="exit">게임 목록으로</button></div></div></div>`;
 }
+/** Accessible map directory: pure HTML renderer, independent of scene and save state. */
+export interface MapCarRow {
+  name: string;
+  active: boolean;
+  reachable: boolean;
+  distance: number;
+}
+
+export function mapDirectoryHtml(cars: readonly MapCarRow[], hasWaypoint: boolean): string {
+  const rows = cars.map((car, index) => {
+    const distance = Number.isFinite(car.distance) ? Math.max(0, Math.round(car.distance)) : 0;
+    const description = car.active ? '현재 운전 중'
+      : car.reachable ? `도로 기준 약 ${distance}미터, 목적지로 설정` : '구역 개방 후 이용 가능';
+    const sub = car.active ? '현재 운전 중' : car.reachable ? `도로 약 ${distance}m` : '구역 개방 후 이용 가능';
+    return `<button type="button" class="ty-map-vehicle" data-vehicle-target="${index}"
+      ${!car.reachable || car.active ? 'disabled' : ''} aria-label="${esc(car.name)} · ${esc(description)}">
+      <span class="ty-map-car-icon" aria-hidden="true">◈</span>
+      <span class="ty-map-car-copy"><strong>${esc(car.name)}</strong><small>${sub}</small></span>
+      <span class="ty-map-car-chevron" aria-hidden="true">${car.reachable && !car.active ? '↗' : '—'}</span></button>`;
+  }).join('');
+  return `<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도">
+    <button type="button" class="ty-x" data-close aria-label="지도 닫기">✕</button>
+    <div class="ty-map-layout">
+      <div class="ty-map-surface"><canvas id="ty-bigmap" width="720" height="720" aria-label="지도를 눌러 원하는 지점에 경로를 표시"></canvas>
+        <div class="ty-map-caption">지도를 눌러 목적지 지정 · 점선은 도로 참고 경로</div></div>
+      <div class="ty-map-aside"><div class="ty-map-aside-head"><small>CITY DIRECTORY</small><h2>이동할 곳을 선택하세요</h2><p>차량을 선택하거나 지도 위의 지점을 눌러 주세요. 도로는 자유롭게 탐험할 수 있지만 사업장 이용에는 성장 단계가 적용됩니다.</p></div>
+        <div class="ty-map-vehicles">${rows || '<p class="ty-map-empty">배치된 차량이 없습니다.</p>'}</div>
+        <button type="button" class="ty-clear-waypoint" data-waypoint-clear ${hasWaypoint ? '' : 'disabled'}>설정한 목적지 지우기</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 export type { SpotDef };

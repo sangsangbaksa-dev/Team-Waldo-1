@@ -54,6 +54,7 @@ export const spotColor = (v: SpotView): string => {
 interface LotGeo { walls: Record<FacadeStyle, GeoBuilder>; roofs: GeoBuilder; detail: GeoBuilder; glow: GeoBuilder; grass: GeoBuilder; dirt: GeoBuilder; boxes: Box[] }
 class BlockView {
   group = new THREE.Group(); bld = new THREE.Group(); disposables: THREE.BufferGeometry[] = [];
+  ownedMaterials: THREE.Material[] = [];
   key = ''; rise = 1; riseDelay = 0; crane: THREE.Object3D | null = null;
 }
 
@@ -61,6 +62,8 @@ export class CityView {
   readonly group = new THREE.Group();
   readonly colliders = new Colliders();
   private views = new Map<Block, BlockView>();
+  private blockLookup: Map<string, Block>;
+  private orderedBlocks: Block[];
   private facade: Record<FacadeStyle, THREE.MeshStandardMaterial>;
   private roofMat = new THREE.MeshStandardMaterial({ map: roofTexture(), vertexColors: true, roughness: 0.92 });
   private detailMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 });
@@ -81,6 +84,8 @@ export class CityView {
   private street: StreetDetail; private nightLevel = 0; private wetLevel = 0;
 
   constructor(private layout: Layout, private quality: Quality) {
+    this.blockLookup = new Map(layout.blocks.map(b => [`${b.i},${b.j}`, b]));
+    this.orderedBlocks = [...layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
     const mk = (style: FacadeStyle, rough: number, metal: number): THREE.MeshStandardMaterial => {
       const m = facadeMaps(style);
       return new THREE.MeshStandardMaterial({ map: m.map, emissiveMap: m.emissive, emissive: 0xffffff, emissiveIntensity: 0.05, vertexColors: true, roughness: rough, metalness: metal });
@@ -219,18 +224,17 @@ export class CityView {
   // ---------- 상태 갱신 ----------
   /** 단계·장소 상태가 바뀌면 달라진 구획만 다시 짓습니다. animate=true 면 새로 열리거나 자란 구획이 솟아오릅니다. */
   sync(stage: Stage, views: SpotView[], animate: boolean): void {
-    const si = stageIndex(stage), changed = this.stage !== si; this.stage = si;
+    const si = stageIndex(stage); this.stage = si;
     this.spotViews.clear(); for (const v of views) this.spotViews.set(v.id, v);
     let order = 0;
-    const sorted = [...this.layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
-    for (const b of sorted) {
+    for (const b of this.orderedBlocks) {
       const key = `${blockUnlocked(b, si) ? 1 : 0}${blockTier(b, si)}|${b.lots.map(l => spotSig(l.spot ? this.spotViews.get(l.spot.id) : undefined)).join(',')}`;
       let v = this.views.get(b);
       if (v && v.key === key) continue;
       const fresh = !v || v.key.slice(0, 2) !== key.slice(0, 2);
       if (!v) { v = new BlockView(); this.views.set(b, v); this.group.add(v.group); } else this.clearBlock(v);
       v.key = key; this.buildBlock(b, v, si);
-      if (animate && fresh && blockUnlocked(b, si) && (changed || true)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
+      if (animate && fresh && blockUnlocked(b, si)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
     }
     this.refillTrees(); this.refillSkyline(); this.recolorBeacons();
     if (this.globeAnchor && !this.globe) this.addGlobe(this.globeAnchor.x, this.globeAnchor.y, this.globeAnchor.z);
@@ -246,7 +250,7 @@ export class CityView {
   }
   /** 배달 목적지 같은 강조 표지(흰색, 더 밝게). */
   setTarget(id: string | null): void { if (id !== this.targetId) { this.targetId = id; this.recolorBeacons(); } }
-  blockOpen(i: number, j: number): boolean { const b = this.layout.blocks.find(x => x.i === i && x.j === j); return !!b && blockUnlocked(b, this.stage); }
+  blockOpen(i: number, j: number): boolean { const b = this.blockLookup.get(`${i},${j}`); return !!b && blockUnlocked(b, this.stage); }
   spotView(id: string): SpotView | undefined { return this.spotViews.get(id); }
   /** 문 앞 표지 위치(없으면 null). */
   doorOf(id: string): { x: number; z: number; fx: number; fz: number } | null { const l = this.layout.spotLots.get(id); return l ? { x: l.doorX, z: l.doorZ, fx: l.fx, fz: l.fz } : null; }
@@ -294,8 +298,8 @@ export class CityView {
   private clearBlock(v: BlockView): void {
     this.construction.delete(v); v.crane = null;
     for (const g of v.disposables) g.dispose(); v.disposables = [];
+    for (const material of v.ownedMaterials) material.dispose(); v.ownedMaterials = [];
     v.group.clear(); v.bld = new THREE.Group();
-    for (const [id, b] of this.beacons) if (b.lot.block && false) void id;
   }
   private addMesh(v: BlockView, parent: THREE.Object3D, gb: GeoBuilder, mat: THREE.Material, cast = true): void {
     const g = gb.build(); if (!g) return; v.disposables.push(g);
@@ -479,6 +483,7 @@ export class CityView {
     const mast = new THREE.Mesh(new THREE.BoxGeometry(1.1, 30, 1.1), steel); mast.position.y = 15; crane.add(mast);
     const jibPivot = new THREE.Group(); jibPivot.position.y = 30; const jib = new THREE.Mesh(new THREE.BoxGeometry(26, 0.9, 0.9), steel); jib.position.x = 9; const cw = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 2), new THREE.MeshStandardMaterial({ color: 0x555a60 })); cw.position.x = -6.5;
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshBasicMaterial({ color: 0xff3030, toneMapped: false })); lamp.position.set(22, 0.9, 0);
+    v.ownedMaterials.push(steel, cw.material as THREE.Material, lamp.material as THREE.Material);
     jibPivot.add(jib, cw, lamp); crane.add(jibPivot); crane.position.set(cx - 7, 0.18, cz + 6); crane.rotation.y = hash01(b.i, b.j) * 6; v.group.add(crane); v.crane = crane; this.construction.add(v);
     v.disposables.push(mast.geometry, jib.geometry, cw.geometry, lamp.geometry);
     // 안내판(구획당 하나지만 텍스처는 공유)
@@ -490,11 +495,52 @@ export class CityView {
   private constructionSign: THREE.MeshBasicMaterial | null = null;
 
   dispose(): void {
-    if (this.disposed) return; this.disposed = true;
+    if (this.disposed) return;
+    this.disposed = true;
     this.street.dispose();
-    this.group.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (mat) for (const x of Array.isArray(mat) ? mat : [mat]) { const t = x as THREE.MeshStandardMaterial; t.map?.dispose(); (t as THREE.MeshStandardMaterial).emissiveMap?.dispose(); x.dispose(); } });
-    for (const v of this.views.values()) for (const g of v.disposables) g.dispose();
-    this.ringTex.dispose();
+    // Some sign materials survive after a block is rebuilt; disposing only the
+    // currently mounted meshes misses their cached textures.
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+    const disposeGeometry = (g: THREE.BufferGeometry): void => {
+      if (geometries.has(g)) return;
+      geometries.add(g); g.dispose();
+    };
+    const disposeTexture = (t: THREE.Texture | null | undefined): void => {
+      if (!t || textures.has(t)) return;
+      textures.add(t); t.dispose();
+    };
+    const disposeMaterial = (mat: THREE.Material): void => {
+      if (materials.has(mat)) return;
+      materials.add(mat);
+      const mapped = mat as THREE.MeshStandardMaterial;
+      for (const tex of [mapped.map, mapped.emissiveMap, mapped.roughnessMap, mapped.alphaMap, mapped.normalMap]) disposeTexture(tex);
+      mat.dispose();
+    };
+    this.group.traverse(object => {
+      if (!(object instanceof THREE.Mesh)) return;
+      disposeGeometry(object.geometry);
+      for (const mat of Array.isArray(object.material) ? object.material : [object.material]) disposeMaterial(mat);
+    });
+    for (const view of this.views.values()) {
+      for (const geo of view.disposables) disposeGeometry(geo);
+      for (const mat of view.ownedMaterials) disposeMaterial(mat);
+    }
+    for (const mat of this.signMats.values()) disposeMaterial(mat);
+    if (this.constructionSign) disposeMaterial(this.constructionSign);
+    this.constructionSign = null;
+    for (const mat of [...Object.values(this.facade), this.roofMat, this.detailMat, this.glowMat, this.walkMat, this.dirtMat, this.grassMat, this.roadMat]) disposeMaterial(mat);
+    disposeTexture(this.ringTex);
+    this.group.removeFromParent();
+    this.group.clear();
+    this.views.clear();
+    this.signMats.clear();
+    this.beacons.clear();
+    this.construction.clear();
+    this.spotViews.clear();
+    this.blockLookup.clear();
+    this.orderedBlocks.length = 0;
   }
 }
 

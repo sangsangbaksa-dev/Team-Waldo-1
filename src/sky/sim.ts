@@ -1,25 +1,10 @@
 // SKY WAR — 공중전 시뮬레이션(렌더링과 무관한 순수 로직). 단순화한 비행 모델 + 웨이브 AI.
 import * as THREE from 'three';
 
-export const WORLD_R = 3200;        // 이 반경 밖에서는 경고 후 기수를 안쪽으로 돌립니다
-export const SEA_Y = 0;
-export const MIN_SPEED = 70, MAX_SPEED = 230, CRUISE = 140;
-export const GUN_RANGE = 650, GUN_DMG = 7, MISSILE_DMG = 55;
-export const LOCK_CONE = Math.cos(THREE.MathUtils.degToRad(16)), LOCK_RANGE = 1700, LOCK_TIME = 0.9;
+import { WORLD_R, SEA_Y, MIN_SPEED, MAX_SPEED, CRUISE, GUN_RANGE, GUN_DMG, MISSILE_DMG, LOCK_CONE, LOCK_RANGE, LOCK_TIME, terrainY, advanceFlight, killPoints, type Team, type Kind, type Difficulty, type Input } from './domain/flight-rules';
+export { WORLD_R, SEA_Y, MIN_SPEED, MAX_SPEED, CRUISE, GUN_RANGE, GUN_DMG, MISSILE_DMG, LOCK_CONE, LOCK_RANGE, LOCK_TIME, terrainY, DIFFS } from './domain/flight-rules';
+export type { Team, Kind, Difficulty, Input } from './domain/flight-rules';
 
-/** 섬 높이 함수 — 보기 좋은 군도. 충돌 판정과 지형 메시가 같은 함수를 씁니다. */
-const ISLANDS = [
-  { x: -700, z: -900, r: 520, h: 300 }, { x: 1200, z: 300, r: 640, h: 380 }, { x: -1500, z: 900, r: 420, h: 220 },
-  { x: 300, z: 1700, r: 560, h: 330 }, { x: 2000, z: -1500, r: 480, h: 260 }, { x: -2100, z: -1700, r: 600, h: 350 }, { x: 100, z: -200, r: 260, h: 120 },
-];
-export function terrainY(x: number, z: number): number {
-  let h = 0;
-  for (const i of ISLANDS) { const d = Math.hypot(x - i.x, z - i.z) / i.r; if (d < 1) { const k = 1 - d * d; h = Math.max(h, i.h * k * k * (0.8 + 0.2 * Math.sin(x * 0.011) * Math.cos(z * 0.013))); } }
-  return h;
-}
-
-export type Team = 'player' | 'enemy';
-export type Kind = 'fighter' | 'bomber' | 'ace' | 'boss';
 export interface Jet {
   id: number; team: Team; kind: Kind;
   pos: THREE.Vector3; q: THREE.Quaternion; yaw: number; pitch: number; speed: number; roll: number; // roll = 시각용 기체 기울기(rad)
@@ -36,15 +21,7 @@ export type SimEvent =
   | { t: 'hit'; id: number; pos: THREE.Vector3; by?: number } | { t: 'nolock' } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
   | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield' } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
 
-export interface Input { pitch: number; roll: number; yaw?: number; throttle: number; fire: boolean; missile: boolean; flare: boolean; boost?: boolean; }
 export interface Pickup { id: number; kind: 'repair' | 'ammo' | 'shield'; pos: THREE.Vector3; life: number; } // pitch/roll -1..1
-
-export interface Difficulty { id: 'easy' | 'normal' | 'hard'; name: string; enemyHp: number; skill: number; count: number; }
-export const DIFFS: Difficulty[] = [
-  { id: 'easy', name: '신병', enemyHp: 0.8, skill: 0.55, count: 0.8 },
-  { id: 'normal', name: '에이스', enemyHp: 1, skill: 0.8, count: 1 },
-  { id: 'hard', name: '전설', enemyHp: 1.3, skill: 1.1, count: 1.25 },
-];
 
 const FWD = new THREE.Vector3(0, 0, -1);
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -161,27 +138,7 @@ export class SkySim {
 
   /** 공용 비행 모델: 뱅크(기울기)가 선회를 만들고, 피치는 기수 상하. 입력 -1..1 */
   flyJet(j: Jet, pitchIn: number, rollIn: number, throttle: number, dt: number, yawIn = 0): void {
-    const heavy = j.kind === 'bomber' || j.kind === 'boss';
-    const targetSpeed = THREE.MathUtils.lerp(MIN_SPEED, MAX_SPEED, throttle) * (heavy ? 0.7 : 1) * (j.team === 'player' ? 1 + 0.3 * this.afterburner : j.boosting ? 1.3 : 1);
-    j.speed += (targetSpeed - Math.sin(j.pitch) * 90 - j.speed) * Math.min(1, dt * 0.9); // 오르면 느려지고 내리면 빨라짐
-    j.speed = THREE.MathUtils.clamp(j.speed, MIN_SPEED * 0.8, MAX_SPEED * 1.45);
-    const agile = j.kind === 'boss' ? 0.4 : j.kind === 'bomber' ? 0.55 : 1;
-    const rate = (1.0 + (1 - (j.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)) * 0.4) * agile;
-    const player = j.team === 'player';
-    const authority = player ? THREE.MathUtils.clamp((j.speed - MIN_SPEED * 0.6) / (MIN_SPEED * 0.3), 0.55, 1) : 1;
-    const rudder = player ? THREE.MathUtils.clamp(yawIn, -1, 1) : 0;
-    j.roll += ((rollIn * 1.25 + rudder * 0.12) - j.roll) * Math.min(1, dt * 3.2 * authority);
-    const yawRate = -Math.sin(j.roll) * rate * 1.15 * authority - rudder * 0.5 * authority;
-    j.yaw += yawRate * dt;
-    let pitchRate = (pitchIn * rate * 0.9 + Math.abs(Math.sin(j.roll)) * 0.18) * authority;
-    if (player) {
-      j.g = THREE.MathUtils.clamp(1 + Math.hypot(yawRate * Math.cos(j.pitch), pitchRate) * j.speed / 35, 0.5, 9);
-      pitchRate *= 1 - Math.max(0, j.g - 6) * 0.04;
-      if (j.speed < MIN_SPEED * 0.9) pitchRate -= 0.12 * (1 - authority) / 0.45;
-    }
-    j.pitch += pitchRate * dt;
-    if (j.team === 'player' && Math.abs(rollIn) < 0.04 && Math.abs(pitchIn) < 0.04) j.pitch *= 1 - Math.min(1, dt * 0.4); // 손을 떼면 서서히 수평
-    j.pitch = THREE.MathUtils.clamp(j.pitch, -1.2, 1.2);
+    advanceFlight(j, pitchIn, rollIn, throttle, dt, yawIn, this.afterburner);
     j.q.setFromEuler(eul.set(j.pitch, j.yaw, -j.roll, 'YXZ'));
     forward(j, tmpV); j.pos.addScaledVector(tmpV, j.speed * dt);
     if (j.team !== 'player' && !this.edging && Math.hypot(j.pos.x, j.pos.z) > WORLD_R) { this.edging = true; this.steerTo(j, tmpV2.set(0, j.pos.y, 0), dt, 1.2); this.edging = false; } // 재귀 방지
@@ -303,7 +260,7 @@ export class SkySim {
     if (j.team === 'enemy' && (j.kind === 'boss' || Math.random() < 0.25)) { const drop = Math.random(); this.pickups.push({ id: this.nid++, kind: j.kind === 'boss' ? 'repair' : drop < 0.34 ? 'shield' : drop < 0.67 ? 'repair' : 'ammo', pos: j.pos.clone(), life: 25 }); }
     if (j.team === 'enemy' && by === this.player.id) {
       this.kills++; this.combo = Math.min(5, this.combo + 1); this.bestCombo = Math.max(this.bestCombo, this.combo); this.comboT = 6;
-      points = Math.round((j.kind === 'boss' ? 2500 : j.kind === 'bomber' ? 300 : j.kind === 'ace' ? 500 : 200) * (1 + (this.combo - 1) * 0.25)); this.score += points;
+      points = killPoints(j.kind, this.combo); this.score += points;
       if (this.combo === 3) this.player.missiles = Math.min(8, this.player.missiles + 1);
       if (this.combo === 5 && this.overdrive <= 0) { this.overdrive = 5; this.events.push({ t: 'overdrive' }); }
     }

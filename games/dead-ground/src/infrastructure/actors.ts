@@ -68,6 +68,8 @@ function glintTexture(): THREE.CanvasTexture {
 }
 
 let glintMap: THREE.Texture | undefined;
+import { blendMotion } from './visual-motion.js';
+
 export class OperatorView {
   readonly root = new THREE.Group();
   private readonly spine = new THREE.Group();
@@ -76,6 +78,9 @@ export class OperatorView {
   private readonly glint: THREE.Sprite;
   private readonly protector: THREE.Mesh;
   private gait = 0;
+  private phase = 0;
+  private aim = 0;
+  private generation = -1;
 
   constructor() {
     this.root.add(this.spine);
@@ -128,27 +133,31 @@ export class OperatorView {
   update(player: Player, camera: THREE.Vector3, dt: number, time: number): void {
     this.root.visible = player.alive;
     if (!player.alive) return;
+    if (this.generation !== player.generation) { this.generation = player.generation; this.gait = this.phase = this.aim = 0; }
     this.root.position.set(player.position.x, player.position.y, player.position.z);
     this.root.rotation.y = player.yaw;
     this.root.scale.y = player.height / 1.8;
     const gaitTarget = player.moving ? 1 : 0;
     this.gait = THREE.MathUtils.lerp(this.gait, gaitTarget, 1 - Math.exp(-dt * 13));
-    const stride = Math.sin(time * (player.sprinting ? 15 : 10)) * this.gait;
-    this.spine.rotation.x = player.sprinting ? -0.18 : player.crouched ? -0.15 : 0;
+    this.phase += dt * (player.sprinting ? 15 : 10);
+    const stride = Math.sin(this.phase) * this.gait;
+    this.aim += (Number(player.aiming) - this.aim) * blendMotion(dt, 14);
+    this.spine.rotation.x += ((player.sprinting ? -0.18 : player.crouched ? -0.15 : 0) - this.spine.rotation.x) * blendMotion(dt, 12);
     this.legs[0].rotation.x = stride * 0.7;
     this.legs[1].rotation.x = -stride * 0.7;
     this.arms[0].rotation.x = -1.13 + stride * 0.14;
     this.arms[1].rotation.x = -1.48 - stride * 0.14;
     const weapon = this.spine.getObjectByName('weapon')!;
-    weapon.rotation.x = player.aiming ? player.pitch : -0.18 + stride * 0.07;
-    weapon.position.y = player.aiming ? 1.416 : 1.329;
+    weapon.rotation.x = THREE.MathUtils.lerp(-0.18 + stride * 0.07, player.pitch, this.aim);
+    weapon.position.y = THREE.MathUtils.lerp(1.329, 1.416, this.aim);
     this.glint.position.y = weapon.position.y + 0.08;
     const dx = camera.x - player.position.x, dz = camera.z - player.position.z;
     const distance = Math.hypot(dx, dz);
     const facing = (-Math.sin(player.yaw) * dx - Math.cos(player.yaw) * dz) / Math.max(distance, 1);
-    this.glint.visible = player.aiming && facing > 0.76 && distance > 27;
+    const glint = this.aim * THREE.MathUtils.smoothstep(facing, 0.76, 0.94) * THREE.MathUtils.smoothstep(distance, 27, 42);
+    this.glint.visible = glint > 0.01;
     this.glint.scale.setScalar(0.36 + Math.min(distance * 0.008, 1.6));
-    this.glint.material.opacity = THREE.MathUtils.clamp((facing - 0.74) * 3.2, 0, 0.66);
+    this.glint.material.opacity = glint * 0.52;
     this.protector.visible = player.protectedUntil > time;
     (this.protector.material as THREE.MeshBasicMaterial).opacity = 0.08 + Math.sin(time * 9) * 0.035;
   }
@@ -162,6 +171,9 @@ export class OperatorView {
 export class ViewRifle {
   readonly root = new THREE.Group();
   private readonly bolt: THREE.Group;
+  private stride = 0;
+  private phase = 0;
+  private lastTime = -1;
 
   constructor() {
     this.bolt = rifle(this.root);
@@ -172,8 +184,13 @@ export class ViewRifle {
     part(this.root, unitSphere, DARK, -0.047, -0.071, -0.245, 0.128, 0.094, 0.166);
   }
 
+  reset(): void { this.stride = this.phase = 0; this.lastTime = -1; }
+
   update(player: Player, time: number, aim: number, breath: boolean): void {
-    const stride = player.moving ? Math.sin(time * (player.sprinting ? 13 : 9)) : 0;
+    const dt = this.lastTime < 0 ? 0 : Math.max(0, Math.min(0.065, time - this.lastTime)); this.lastTime = time;
+    this.stride += (Number(player.moving) - this.stride) * blendMotion(dt, 12);
+    this.phase += dt * (player.sprinting ? 13 : 9);
+    const stride = Math.sin(this.phase) * this.stride;
     const settle = (1 - aim) * (breath ? 0.3 : 1);
     const reload = player.reloadUntil > time ? Math.sin(Math.PI * Math.min(1, (player.reloadUntil - time) / RIFLE.reload)) : 0;
     const cycle = player.boltUntil > time ? 1 - (player.boltUntil - time) / RIFLE.cycle : 0;

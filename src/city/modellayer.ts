@@ -29,6 +29,7 @@ export class ModelLayer {
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.12 }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
+  private vmReload = 0;
 
   constructor(private scene: THREE.Scene, private world: World, private models: Models, glow: THREE.Texture, shadows: boolean) {
     const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, cap: number, tint: boolean, shadow = shadows): THREE.InstancedMesh => {
@@ -232,10 +233,11 @@ export class ModelLayer {
       if (tpl) { this.vm = instantiate(tpl); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; }); this.vm.add(this.flash); this.flash.position.set(MUZZLE[id] ?? 0.6, 0.05, 0); this.vmScene.add(this.vm); }
     }
     if (!this.vm) return; this.vm.visible = show; if (!show) return;
-    this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, bob = Math.sin(t * 9) * 0.35 * moving, sway = Math.cos(t * 4.5) * 0.25 * moving;
+    this.vmSwap = Math.max(0, this.vmSwap - dt); this.vmReload += (Number(reloading) - this.vmReload) * (1 - Math.exp(-dt * 13));
+    const sw = (this.vmSwap / 0.35) ** 2, bob = Math.sin(t * 9) * 0.23 * moving, sway = Math.cos(t * 4.5) * 0.18 * moving;
     const big = id === 'rocket' || id === 'minigun' || id === 'sniper' ? 11 : 12.5;
-    this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.1 - (reloading ? 0.7 : 0) - sw * 0.8, Math.PI / 2 + recoil * 0.02, 0);
-    this.vm.position.set(4.6 + sway, -4.4 + bob - (reloading ? 3 : 0) - sw * 5, -9.5 + recoil * 1.4);
+    this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.1 - this.vmReload * 0.7 - sw * 0.8, Math.PI / 2 + recoil * 0.02, 0);
+    this.vm.position.set(4.6 + sway, -4.4 + bob - this.vmReload * 3 - sw * 5, -9.5 + recoil * 1.4);
     this.flash.visible = fireFlash; this.flash.material.rotation = t * 40;
   }
   syncViewCam(cam: THREE.PerspectiveCamera): void { this.vmCam.fov = cam.fov; this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); }

@@ -165,11 +165,7 @@ export class ViewRifle {
 
   constructor() {
     this.bolt = rifle(this.root);
-    const arm = part(this.root, unitCapsule, JACKET, 0.047, -0.205, 0.32, 0.19, 0.49, 0.21);
-    arm.rotation.x = -0.72;
-    const support = part(this.root, unitCapsule, JACKET, -0.142, -0.17, -0.103, 0.17, 0.45, 0.2);
-    support.rotation.z = -0.72;
-    part(this.root, unitSphere, DARK, -0.047, -0.071, -0.245, 0.128, 0.094, 0.166);
+
   }
 
   update(player: Player, time: number, aim: number, breath: boolean): void {

@@ -1,4 +1,6 @@
-﻿import './classroom.css';
+import { CoverInput } from './cover-input';
+import { capturePointer, releasePointer } from './pointer-capture';
+import './classroom.css';
 import type { CreateView, SlackEvent } from './types';
 import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
 
@@ -77,9 +79,9 @@ export const createClassroomView: CreateView = (sim, audio) => {
   // 영상 창은 양쪽 AI 가 싸우는 장면, 게임 창은 청군을 내가 지휘한다(점수는 창 안에서만 씀)
   const vid = createBattle(false);
   const game = createBattle(true, e => { if (e === 'train') audio.play('key', 0.4); else if (e === 'order') audio.play('click', 0.3); else if (e === 'hq') audio.play('fun', 0.4); else if (e === 'win') audio.play('chime'); else if (e === 'lose') audio.play('click', 0.5); });
-  let coverKey = false, coverPointer: number | null = null;
+  const coverInput = new CoverInput();
   let step = 0, stepLv = 0, relief = 0, popT = 0, quiet = 0, strike = 0, vt = 0, gHand = 0.5;
-  const syncCover = () => sim.setCover(coverKey || coverPointer !== null || !sim.state.activity);
+  const syncCover = () => sim.setCover(coverInput.active || !sim.state.activity);
   const choose = (id: Pick) => {
     audio.resume();
     const next = sim.state.activity === id ? null : id;
@@ -94,26 +96,25 @@ export const createClassroomView: CreateView = (sim, audio) => {
     if (event.code === 'Space') {
       if (event.target instanceof HTMLButtonElement && event.target !== cover) return;
       event.preventDefault();
-      if (!event.repeat) { audio.resume(); coverKey = true; syncCover(); }
+      if (!event.repeat) { audio.resume(); coverInput.pressKey(); syncCover(); }
     } else if (!event.repeat && (event.key === '1' || event.key === '2')) {
       event.preventDefault(); choose(picks[Number(event.key) - 1].id);
     } else if (!event.repeat && view() === 'game' && /^[qwe]$/i.test(event.key)) train(({ q: 'w', w: 'i', e: 't' } as const)[event.key.toLowerCase() as 'q' | 'w' | 'e']);
   };
-  const keyup = (event: KeyboardEvent) => { if (coverKey && event.code === 'Space') { event.preventDefault(); coverKey = false; syncCover(); } };
+  const keyup = (event: KeyboardEvent) => { if (event.code === 'Space' && coverInput.releaseKey()) { event.preventDefault(); syncCover(); } };
   const release = () => {
-    if (!coverKey && coverPointer === null) return;
-    const pointer = coverPointer; coverKey = false; coverPointer = null; syncCover();
-    if (pointer !== null && cover.hasPointerCapture(pointer)) cover.releasePointerCapture(pointer);
+    if (!coverInput.active) return;
+    const pointer = coverInput.clear(); syncCover();
+    releasePointer(cover, pointer);
   };
   const focusout = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !el.contains(event.relatedTarget)) release(); };
   const pointerDown = (event: PointerEvent) => {
-    if (event.button !== 0 || coverPointer !== null) return;
+    if (event.button !== 0 || !coverInput.claimPrimary(event.pointerId)) return;
     event.preventDefault(); cover.focus({ preventScroll: true }); audio.resume();
-    coverPointer = event.pointerId;
-    try { cover.setPointerCapture(event.pointerId); } catch { /* window-level release below covers browsers without capture */ }
+    capturePointer(cover, event.pointerId);
     syncCover();
   };
-  const pointerUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; syncCover(); } };
+  const pointerUp = (event: PointerEvent) => { if (coverInput.releasePrimary(event.pointerId)) syncCover(); };
   const actionClick = (event: MouseEvent) => {
     const t = event.target as HTMLElement;
     const button = t.closest<HTMLButtonElement>('[data-activity]');
@@ -187,6 +188,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
         case 'fun': if (ev.amount >= 1 && popT <= 0) { popT = 0.8; pop.textContent = `+${Math.round(ev.amount)} 재미`; restart(pop, 'on'); } break;
       }
     },
+    releaseInput: release,
     dispose() {
       resize?.disconnect();
       el.removeEventListener('keydown', keydown); el.removeEventListener('keyup', keyup); el.removeEventListener('focusout', focusout); window.removeEventListener('blur', release);

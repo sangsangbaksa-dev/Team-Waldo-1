@@ -104,6 +104,7 @@ let noticeUntil = 0,
 let guidance = read("rt-guidance") === true;
 let guidePath = [];
 let returnFromMap = resume;
+let returnFromHelp = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
@@ -239,18 +240,19 @@ function resume() {
   scheduleFrame();
   $("viewWrap").focus({ preventScroll: true });
 }
-function guide(fromHome = false) {
+function guide(fromHome = false, returnAction = resume) {
   if (fromHome) {
     $("how").showModal();
     return;
   }
+  returnFromHelp = returnAction;
   modal(
     "조작 안내",
     "숙이면 발소리가 줄어듭니다. 침대 밑이나 커튼 뒤에 숨을 수 있지만, 괴물이 보면 조사할 수 있습니다.",
     (el) => {
       el.innerHTML = $("guideText").innerHTML;
     },
-    [["돌아가기", resume]],
+    [["돌아가기", returnFromHelp]],
     "help",
   );
 }
@@ -268,21 +270,24 @@ $("confirmReset").onclick = () => {
 };
 $("continue").onclick = () => start(true);
 const hubUrl = () => new URL("../", location.href).href;
-function pauseGame() {
-  if (state !== "play") return;
-  save();
+function showPauseMenu() {
   modal(
     "녹음 일시정지",
     chapters[ch].location + " · " + clock(elapsed),
     null,
     [
       ["계속하기", resume],
-      ["조작 안내", () => guide()],
+      ["조작 안내", () => guide(false, showPauseMenu)],
       ["타이틀로", homepage, true],
       ["게임 목록으로", () => location.assign(hubUrl()), true],
     ],
     "pause",
   );
+}
+function pauseGame() {
+  if (state !== "play") return;
+  save();
+  showPauseMenu();
 }
 $("pauseGame").onclick = pauseGame;
 async function setup() {
@@ -975,6 +980,9 @@ function puzzle(reset = true) {
             choices.push(i);
             sound.tone(i);
             puzzle(false);
+            // Keep keyboard control near the newly filled reel slot.
+            ($("panelBody").querySelector(".choiceRow button:not([disabled])") ??
+              $("panelActions").querySelector("button"))?.focus();
           };
           row.append(b);
         }
@@ -1006,6 +1014,7 @@ function puzzle(reset = true) {
             choices[i] = (choices[i] + 1) % opts.length;
             sound.tone(choices[i]);
             puzzle(false);
+            $("panelBody").querySelectorAll(".dials button")[i]?.focus();
           };
           box.append(b);
         }
@@ -1018,6 +1027,7 @@ function puzzle(reset = true) {
       if (response) {
         const p = document.createElement("p");
         p.className = "bad";
+        p.setAttribute("role", "alert");
         p.textContent = response;
         el.append(p);
       }
@@ -1434,6 +1444,24 @@ function frame(ts) {
   sceneDirty = false;
   scheduleFrame();
 }
+// The custom pause/puzzle overlay claims aria-modal, so Tab focus must stay
+// inside its visible controls instead of reaching the underlying gameplay HUD.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || $("dialog").hidden) return;
+  const focusables = [...$("dialog").querySelectorAll(
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled])',
+  )].filter((element) => element.getClientRects().length > 0);
+  if (!focusables.length) return;
+  const first = focusables[0], last = focusables[focusables.length - 1];
+  if (e.shiftKey && (document.activeElement === first || document.activeElement === $("panelTitle"))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.isComposing) return;
   if (e.target instanceof HTMLButtonElement && ["Space", "Enter"].includes(e.code)) return;
@@ -1468,6 +1496,7 @@ document.addEventListener("keydown", (e) => {
   ) {
     e.preventDefault();
     if (state === "map") returnFromMap();
+    else if (state === "help") returnFromHelp();
     else resume();
   }
 });
@@ -1545,7 +1574,7 @@ wrap.addEventListener("pointermove", (e) => {
     lookLast = [e.clientX, e.clientY];
   }
 });
-for (const n of ["pointerup", "pointercancel"])
+for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   wrap.addEventListener(n, (e) => {
     if (lookPointer.release(e.pointerId)) lookLast = null;
   });

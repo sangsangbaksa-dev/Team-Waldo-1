@@ -1,5 +1,7 @@
 ﻿import type { ActivityId, CreateSim, SlackEvent, SlackState, WatchMode, WatcherKind } from './types';
 
+import { activateFocus, createFocus, tickFocus } from './domain/focus';
+
 export const GOALS = [46, 54, 62] as const;
 
 const activities: Record<'class' | 'dorm', ActivityId[]> = {
@@ -44,6 +46,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
     battery: 100, grade: null, caughtBy: null,
   };
   let events: SlackEvent[] = [];
+  const focus = createFocus();
   const isClass = stage === 'class';
   const R = isClass ? { ...rates, ...classRates } : rates;
   const V = isClass ? { ...vis, ...classVis } : vis;
@@ -86,6 +89,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
     }
     if (state.cover === on) return;
     state.cover = on;
+    if (on) tickFocus(focus, 0, true);
     events.push({ t: 'cover', on });
   };
   const strike = (reason: string) => {
@@ -209,8 +213,9 @@ export const createSim: CreateSim = (stage, seed, level) => {
       if (streak > 18 && !boredToast) { boredToast = true; toast('같은 딴짓만 하니 슬슬 질려요. 다른 걸 해볼까요?'); }
       const bored = Math.max(0.4, 1 - Math.max(0, streak - 10) / 35);
       const mood = bored * (novelty > 0 ? 1.35 : 1) * (wifiTime > 0 && online.includes(active) ? 0.3 : 1) * (darkTime > 0 ? 0.5 : 1);
-      const sm = (napTime > 0 ? 0.7 : 1) * (darkTime > 0 ? 0.5 : 1) * V[active];
-      const gain = Math.min(100 - state.fun, R[active][0] * (1 + (state.combo - 1) * 0.15) * mood * RATE * dt);
+      const focused = focus.remaining > 0;
+      const sm = (napTime > 0 ? 0.7 : 1) * (darkTime > 0 ? 0.5 : 1) * V[active] * (focused ? 1.65 : 1);
+      const gain = Math.min(100 - state.fun, R[active][0] * (1 + (state.combo - 1) * 0.15) * mood * RATE * (focused ? 1.6 : 1) * dt);
       state.fun = clamp(state.fun + gain); funPending += gain; comboBonus += gain * (state.combo - 1) * 2;
       state.sus = clamp(state.sus + R[active][1] * sm * dt);
       if (requestTime > 0 && active === requestAct) {
@@ -231,12 +236,18 @@ export const createSim: CreateSim = (stage, seed, level) => {
       }
       if (state.phase === 'play' && state.sus >= 100) strike(why[active]);
     }
+    tickFocus(focus, dt, state.cover || !active);
     state.score = score();
     if (state.phase === 'play' && state.time >= state.limit - 1e-8) { state.time = state.limit; finish(); }
     if (forceCover === 0 && releaseAfterCover) { releaseAfterCover = false; setCover(false); }
   };
   return {
-    state,
+    state, focus,
+    activateFocus() {
+      const ok = activateFocus(focus, state.phase === 'play' && !state.cover && state.activity !== null);
+      if (ok) events.push({ t: 'toast', text: '몰입 시작 · 재미 증가, 발각 위험 증가' });
+      return ok;
+    },
     start() { if (state.phase === 'ready') state.phase = 'play'; },
     update(dt) {
       if (state.phase !== 'play' || !Number.isFinite(dt) || dt <= 0) return;

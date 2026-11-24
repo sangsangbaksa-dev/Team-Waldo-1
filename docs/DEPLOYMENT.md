@@ -4,7 +4,7 @@
 
 ## GitHub Pages
 
-`.github/workflows/pages.yml`이 `claude/funny-noether-4uesaj` 브랜치에 푸시될 때마다 타입 체크, 테스트, 빌드를 거쳐 배포합니다. 병합되면 메인 페이지가 곧바로 공개됩니다. 공개 주소는 `https://sangsangbaksa-dev.github.io/Team-Waldo-1/`입니다.
+`.github/workflows/pages.yml`은 `claude/funny-noether-4uesaj`와 `claude/project-thread-hhffi5`에 푸시되거나 수동 실행될 때 타입 검사, 테스트, 빌드를 거쳐 배포합니다. 공개 주소는 `https://sangsangbaksa-dev.github.io/Team-Waldo-1/`입니다.
 
 ## 확인 순서
 

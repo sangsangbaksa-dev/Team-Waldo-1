@@ -616,7 +616,7 @@ export class RaceView {
       const spine = grainTex(32, 32, 160, g => { for (let x = 3; x < 32; x += 6) { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, 0, 2, 32); g.fillStyle = 'rgba(230,240,190,.5)'; for (let y = 2; y < 32; y += 5) g.fillRect(x - 1, y, 1, 1); } });
       this.disposables.push(spine);
       this.instanced(cactus, mat({ vertexColors: true, map: spine }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = rnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: rnd(0, 6) }; }));
-      // 길가 군사 초소(FRONTLINE 사막 기지와 같은 공용 소품)
+      // 길가 군사 초소용 공용 소품
       this.outposts = buildOutposts(this.scene, t, low); this.disposables.push(this.outposts);
       // 전봇대와 전선(오른쪽 길가)
       const pole = 55, ps: Array<[number, number, number]> = [];

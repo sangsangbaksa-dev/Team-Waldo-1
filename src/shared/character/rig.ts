@@ -1,4 +1,4 @@
-// 공용 캐릭터 — 한 사람 분의 관절 리그. LAST CITY·OUTLAW CITY·ZERO ZONE·FRONTLINE·SPEED RUSH 가 모두 이것을 씁니다.
+// 공용 캐릭터 — LAST CITY, ZERO ZONE, SPEED RUSH에서 사용하는 관절 리그.
 import * as THREE from 'three';
 import type { Baked } from './bake';
 import { HIP, KNEE, LEG_Z, blankPose, calmState, computePose, type Pose, type PoseState } from './pose';

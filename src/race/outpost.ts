@@ -1,4 +1,4 @@
-// SPEED RUSH — 사막 하이웨이 길가 군사 초소. FRONTLINE 사막 기지에서 옮겨 온 공용 소품(src/shared/desertprops.ts)으로
+// SPEED RUSH — 사막 하이웨이 길가 군사 초소. 공용 소품(src/shared/desertprops.ts)으로
 // 곧고 평평한 구간 옆에 감시탑·콘크리트 벽·천막·차량·레이더를 세웁니다. 화면 장식일 뿐 도로·충돌·AI 에는 영향이 없습니다.
 import * as THREE from 'three';
 import { bakeStatic, DesertKit, seeded } from '../shared/desertprops';

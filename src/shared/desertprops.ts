@@ -1,5 +1,5 @@
 // 공용 사막 군사 소품: 감시탑·차량(트럭/험비/유조차)·레이더·발전기·천막·깃발·바람자루·모래주머니·콘크리트 벽·방벽·상자 더미·전차 잔해.
-// FRONTLINE 사막 기지에서 옮겨 와 다른 게임도 가져다 쓰도록 했습니다. 소품은 원점에 놓인 THREE.Group 이고 앞쪽 방향은 +x 입니다.
+// 사막 기지와 도로 주변에서 쓰는 공용 소품입니다. 소품은 원점에 놓인 THREE.Group 이고 앞쪽 방향은 +x 입니다.
 // 깃발·레이더·바람자루처럼 움직이는 소품은 update(t) 가 불러야 움직입니다. 장소 고르기와 배치는 쓰는 게임이 맡습니다.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';

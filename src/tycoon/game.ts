@@ -181,6 +181,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     toast(result.message, result.ok ? 'info' : 'bad');
   }
   function teleportBlock(): string | undefined {
+    if (core.state.task?.express) return '긴급 배송 중에는 직접 이동해야 합니다.';
     if (rides?.driving) return '차량에서 내린 뒤 사용할 수 있어요.';
     if (core.state.activity) return '진행 중인 작업을 마치면 사용할 수 있어요.';
     return undefined;
@@ -584,7 +585,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const a = s.activity; q('#ty-activity').hidden = !a; if (a) { set('act-label', a.label); style('act-bar', 'width', `${Math.round(a.progress * 100)}%`); }
     const t = s.task; q('#ty-task').hidden = !t;
     if (t) {
-      const d = city.doorOf(t.targetSpotId); set('task-label', t.label); set('task-sub', `${formatMoney(t.reward)} · ${t.minutesLeft > 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}`);
+      const d = city.doorOf(t.targetSpotId); set('task-label', t.label); set('task-sub', `${formatMoney(t.reward)} · ${t.minutesLeft >= 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : t.express ? '기한 초과 · 보수 없음' : '지각 · 보수 절반'}`);
       if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = -(ang + player.camYaw) + Math.PI / 2 + Math.PI; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
     }
     // 프롬프트

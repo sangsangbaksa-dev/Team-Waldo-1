@@ -396,6 +396,16 @@ export class Sound {
     this.note(f * 2, f * 2, 0.25, 0.027, at, 0);
   }
 
+  decoy(distance, pan) {
+    if (!this.ready()) return;
+    const volume = Math.pow(limited(1 - distance / 20, 0, 1), 2);
+    if (volume < 0.002) return;
+    const at = this.ctx.currentTime;
+    this.rustle(at, 0.16, 0.10 * volume, 950, pan, 1.1);
+    this.note(220, 208, 0.32, 0.10 * volume, at, pan, "triangle");
+    this.note(330, 310, 0.18, 0.035 * volume, at + 0.2, pan);
+  }
+
   pickup() {
     if (!this.ready()) return;
     const at = this.ctx.currentTime;

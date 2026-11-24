@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createCore, SPOTS } from '../../src/tycoon/core';
 import type { TycoonCore } from '../../src/tycoon/core';
+import { titleHtml } from '../../src/tycoon/ui/render';
+
+it('shows new players the first earning route on the HUSTLE start screen', () => {
+  const html = titleHtml(false, '');
+  expect(html).toContain('빈 병 줍기 → 고물상에서 팔기 → 일자리로 첫 가게 자금 모으기');
+  expect(html).toContain('WASD 이동');
+});
 
 /** 활동이 끝날 때까지 시간을 흘린다 */
 function finish(core: TycoonCore): void {

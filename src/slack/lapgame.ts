@@ -1,4 +1,4 @@
-// 노트북 속 전략 게임(FRONTLINE 풍 탑뷰 RTS). 영상 창은 양쪽 AI 가 싸우는 장면, 게임 창은 왼쪽(0번 팀)을 플레이어가 지시한다. sim 과 무관.
+// 노트북 속 짧은 다리 점령전 탑뷰 전략 게임. 영상 창은 양쪽 AI 가 싸우는 장면, 게임 창은 왼쪽(0번 팀)을 플레이어가 지시한다. Slack 전용이며 별도 sim 과 무관.
 export const W = 320, H = 180;
 const MAX_DPR = 2;
 export function resizeBattleCanvas(canvas: HTMLCanvasElement, cssWidth: number, cssHeight: number, dpr: number): void {

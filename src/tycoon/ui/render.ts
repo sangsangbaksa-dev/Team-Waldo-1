@@ -83,6 +83,7 @@ export function titleHtml(has: boolean, summary: string, confirmNew = false): st
   return `<div class="ty-titlebox wd-panel">
     <p class="kick wd-eyebrow">WALDO / CITY TYCOON</p><h1 class="wd-title">HUSTLE</h1><p class="sub wd-lead">작은 일부터 시작해 나만의 도시를 만들어 보세요.</p>
     <div class="ty-ladder-lg">${STAGES.map(s => `<span>${STAGE_NAMES[s]}</span>`).join('<i>›</i>')}</div>
+    <p class="ty-first-route"><b>첫 목표</b> 빈 병 줍기 → 고물상에서 팔기 → 일자리로 첫 가게 자금 모으기</p>
     <div class="ty-title-btns wd-actions">
       ${has ? `<button type="button" class="wd-btn primary" data-title="continue">이어하기<small>${esc(summary)}</small></button><button type="button" class="wd-btn ghost" data-title="new">${confirmNew ? '저장이 지워집니다 — 한 번 더 누르면 새로 시작' : '다시 시작'}</button>` : '<button type="button" class="wd-btn primary" data-title="new">시작</button>'}
       <button type="button" class="wd-btn ghost" data-title="exit">게임 목록으로</button>

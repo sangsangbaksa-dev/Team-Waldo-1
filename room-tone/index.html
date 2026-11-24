@@ -37,7 +37,7 @@
       <div class="shade"></div>
       <header class="mast">
         <a class="wordmark" href="../" aria-label="게임 목록으로"
-          ><i class="signalMark" aria-hidden="true">∿</i> TEAM WALDO · 게임 목록</a
+          ><i class="signalMark" aria-hidden="true">∿</i> 게임 목록</a
         ><button class="bare" id="sound" type="button">
           <b aria-hidden="true">◖</b> <span>소리 켜짐</span>
         </button>
@@ -46,10 +46,9 @@
         <div class="kicker"><i></i> 1인칭 심리 공포</div>
         <h1>ROOM<br /><em>TONE</em></h1>
         <div class="kname">잔향실</div>
-        <p class="damaged">녹음은 끝났다. 숨소리는 남았다.</p>
+        <p class="damaged">폐쇄된 녹음 시설</p>
         <p class="synopsis">
-          폐쇄된 녹음 시설에 홀로 남겨졌다. 네 구역의 신호를 복원하고, 발소리를
-          쫓아오는 잔향을 피해 탈출하라.
+          네 구역의 신호를 복원하고 출구를 찾아야 한다. 잔향은 발소리를 따라온다.
         </p>
         <div class="startrow">
           <button id="continue" class="primary" hidden>이어하기</button
@@ -88,7 +87,7 @@
         <span class="rec">REC</span><b id="timer">00:00</b
         ><span class="statusline"></span
         ><span>수신 <strong id="strain">안정</strong></span>
-        <div class="stambar" aria-label="달리기 체력"><i id="stamina"></i></div>
+        <span class="stamina-label">체력</span><div class="stambar" aria-label="달리기 체력"><i id="stamina"></i></div>
       </div>
       <div id="prompt" hidden><kbd>E</kbd> <span id="promptText"></span></div>
       <div id="toast" role="status" aria-live="polite"></div>
@@ -137,8 +136,8 @@
           고정이 꺼져 있으면 화면을 드래그하거나 좌우 방향키로 돌릴 수 있습니다.
         </p>
         <p>
-          잠긴 문은 구역의 제어 장치에서 엽니다. 도면의 주황색 장비를 찾고,
-          청록색 장치로 돌아오세요. 길 안내를 켜면 도면에 경로가 표시되고,
+          잠긴 문은 구역의 제어 장치에서 엽니다. 도면의 사각형(■) 장비를 찾고,
+          원형(●) 제어 장치로 돌아오세요. 길 안내를 켜면 도면에 경로가 표시되고,
           이동 화면에서 다음 방향을 볼 수 있습니다. 숙이면 느려지지만 발소리가 줄어듭니다.
         </p>
       </div>

@@ -169,7 +169,8 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     const focusBtn = $<HTMLButtonElement>('[data-focus]'); const f = sim.focus;
     const focusLabel = f.remaining > 0 ? `몰입 ${Math.ceil(f.remaining)}초` : `몰입 ${f.uses}회`;
     if (focusBtn.textContent !== focusLabel) focusBtn.textContent = focusLabel;
-    focusBtn.disabled = f.remaining > 0 || f.uses === 0 || sim.state.cover || !sim.state.activity;
+    const focusDisabled = f.remaining > 0 || f.uses === 0 || sim.state.cover || !sim.state.activity;
+    if (focusBtn.disabled !== focusDisabled) focusBtn.disabled = focusDisabled;
     const s = sim.state, left = Math.max(0, Math.ceil(s.limit - s.time)); $('[data-time]').textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
     $('[data-fun]').textContent = `${Math.round(s.fun)} / ${Math.round(s.goal)}`; $('[data-fun-bar]').style.width = `${Math.min(100, s.fun)}%`; $('[data-goal]').style.left = `${Math.min(100, s.goal)}%`;
     $('[data-strikes]').textContent = String(s.strikes); $('[data-pips]').querySelectorAll('i').forEach((p, i) => p.classList.toggle('on', i < s.strikes));

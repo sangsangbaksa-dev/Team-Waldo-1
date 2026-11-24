@@ -641,14 +641,14 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     }
   }
   function onMyDeath(by: number): void {
-    phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; mouse.fire = mouse.ads = false; tc.fire = false; audio.play('lose');
+    phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; resetInput(); audio.play('lose');
     if (pvp) { pvp.deadAt = match!.t; pvp.net.sendDead(match!.t); settleTie(); }
     else if (room) { const r = room, m = match; r.net.sendDead(m!.t, by, Math.max(0, CAUSES.indexOf(me().killedWeapon ?? 'zone'))); window.setTimeout(() => { if (!closed && room === r && match === m && !r.shown && !m?.over) { r.shown = true; roomResult(); } }, 1600); }
   }
   function onOver(winner: number): void {
     over = true; if (pvp) return;
     if (room) { const r = room, m = match; window.setTimeout(() => { if (!closed && room === r && match === m) roomResult(); }, me().alive ? 1400 : 500); return; }
-    const p = me(); if (phase !== 'dead') phase = 'over'; const win = winner === p.id; if (win) audio.play('win');
+    const p = me(); if (phase !== 'dead') phase = 'over'; resetInput(); const win = winner === p.id; if (win) audio.play('win');
     if (!resultShown) {
       resultShown = true;
       const finished = match;

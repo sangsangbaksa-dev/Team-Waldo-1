@@ -16,8 +16,9 @@ float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++){ s += a *
 void main(){
   vec3 d = normalize(vDir); float h = clamp(d.y, -0.2, 1.0);
   vec3 col = mix(uHor, uTop, pow(clamp(h, 0.0, 1.0), 0.55));
-  float sunAmt = pow(max(dot(d, uSunDir), 0.0), 6.0) * uGlowAmt; col += uGlow * sunAmt * 0.6 + uGlow * pow(max(dot(d, uSunDir), 0.0), 120.0) * uGlowAmt * 1.8;
-  col = mix(col, uHor * 0.9, smoothstep(0.0, -0.2, d.y));
+  float alignment = max(dot(d, uSunDir), 0.0); float sunAmt = pow(alignment, 10.0) * uGlowAmt;
+  col += uGlow * sunAmt * 0.28 + uGlow * pow(alignment, 180.0) * uGlowAmt * 0.8;
+  col = mix(col, uHor * 0.9, (1.0 - smoothstep(-0.2, 0.0, d.y)));
   if (d.y > 0.0) {
     vec2 uv = d.xz / (d.y + 0.25) * 1.6 + uTime * 0.01; float c = fbm(uv * 1.3); c = smoothstep(0.42 - uCloud * 0.2, 0.9, c) * (0.35 + uCloud * 0.65);
     vec3 cc = mix(vec3(1.0), uHor * 1.2 + 0.1, 0.4) * mix(1.0, 0.35, uNight); cc = mix(cc, vec3(0.34, 0.37, 0.42) * mix(1.0, 0.4, uNight), uCloud);
@@ -28,8 +29,9 @@ void main(){
 }`;
 
 const RAIN_VERT = `uniform float uTime; uniform vec3 uCenter; attribute float aEnd; attribute vec3 aBase; varying float vA;
-void main(){ vec3 b = aBase; float y = mod(b.y - uTime * 26.0, 46.0); vec3 w = vec3(mod(b.x - uCenter.x + 32.0, 64.0) - 32.0, y, mod(b.z - uCenter.z + 32.0, 64.0) - 32.0) + uCenter;
-  w.y += -2.0 - aEnd * 1.6; w.x += aEnd * 0.35; vA = 1.0 - aEnd * 0.6; gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0); }`;
+void main(){ vec3 b = aBase; float y = mod(b.y - uTime * 26.0 - uCenter.y, 46.0); vec3 w = vec3(mod(b.x - uCenter.x + 32.0, 64.0) - 32.0, y, mod(b.z - uCenter.z + 32.0, 64.0) - 32.0) + uCenter;
+  w.y += -5.0 - aEnd * 1.05; w.x += aEnd * 0.23;
+  float distanceToCamera = length(w - uCenter); vA = (1.0 - aEnd * 0.6) * smoothstep(1.5, 5.0, distanceToCamera) * (1.0 - smoothstep(23.0, 40.0, distanceToCamera)); gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0); }`;
 const RAIN_FRAG = 'uniform float uOpacity; varying float vA; void main(){ gl_FragColor = vec4(0.72, 0.8, 0.9, uOpacity * vA); }';
 
 export interface SkyState { daylight: number; wet: number; night: number; hour: number }
@@ -54,7 +56,7 @@ export class Atmosphere {
     this.skyU = mat.uniforms; this.dome = new THREE.Mesh(new THREE.SphereGeometry(1500, 32, 16), mat); this.dome.renderOrder = -10; this.dome.frustumCulled = false; scene.add(this.dome);
     this.sun.castShadow = quality !== 'low';
     const sz = quality === 'high' ? 2048 : 1024, sc = this.sun.shadow.camera; this.sun.shadow.mapSize.set(sz, sz); sc.near = 10; sc.far = 260; sc.left = sc.bottom = -70; sc.right = sc.top = 70; this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.6;
-    scene.add(this.sun, this.sun.target, this.moon, this.hemi);
+    scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.hemi);
     // 비 줄기
     const N = quality === 'low' ? 900 : 2600, base = new Float32Array(N * 6), end = new Float32Array(N * 2), pos = new Float32Array(N * 6);
     for (let k = 0; k < N; k++) { const x = Math.random() * 64, y = Math.random() * 46, z = Math.random() * 64; for (let e = 0; e < 2; e++) { base.set([x, y, z], (k * 2 + e) * 3); end[k * 2 + e] = e; } }
@@ -65,7 +67,7 @@ export class Atmosphere {
   }
   private buildEnv(): void {
     const s = new THREE.Scene(), g = new THREE.SphereGeometry(50, 32, 16);
-    const m = new THREE.ShaderMaterial({ side: THREE.BackSide, vertexShader: 'varying vec3 v; void main(){ v = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }', fragmentShader: 'varying vec3 v; void main(){ float h = normalize(v).y; vec3 c = mix(vec3(0.28,0.3,0.34), vec3(0.62,0.74,0.9), smoothstep(-0.1, 0.9, h)); c += vec3(1.0,0.7,0.4) * smoothstep(0.55, 0.0, abs(h - 0.08)) * 0.5; gl_FragColor = vec4(c, 1.); }' });
+    const m = new THREE.ShaderMaterial({ side: THREE.BackSide, vertexShader: 'varying vec3 v; void main(){ v = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }', fragmentShader: 'varying vec3 v; void main(){ float h = normalize(v).y; vec3 c = mix(vec3(0.28,0.3,0.34), vec3(0.62,0.74,0.9), smoothstep(-0.1, 0.9, h)); c += vec3(1.0,0.7,0.4) * (1.0 - smoothstep(0.0, 0.55, abs(h - 0.08))) * 0.5; gl_FragColor = vec4(c, 1.); }' });
     s.add(new THREE.Mesh(g, m)); this.env = this.pmrem.fromScene(s, 0.04).texture; this.scene.environment = this.env;
   }
   /** 매 프레임: 시계·날짜·플레이어 위치로 하늘/조명/날씨를 갱신하고 돌려줍니다. */
@@ -91,20 +93,20 @@ export class Atmosphere {
     this.hemi.intensity = lerp(0.28, 0.75, dayK) * (1 - wet * 0.15) + night * 0.05; this.hemi.color.copy(C(0xbfd8ff).lerp(C(0x4b5f95), night)); this.hemi.groundColor.copy(C(0x3a3228).lerp(C(0x101420), night));
     // 번개(비 오는 밤·낮)
     if (wet > 0.8) { this.nextFlash -= dt; if (this.nextFlash <= 0) { this.flash = 1; this.nextFlash = 6 + Math.random() * 14; } }
-    this.flash = Math.max(0, this.flash - dt * 3.5); const fl = this.flash > 0 ? (Math.sin(this.flash * 18) > 0 ? this.flash : 0.2 * this.flash) : 0;
+    this.flash = Math.max(0, this.flash - dt * 3.5); const fl = this.flash * this.flash * 0.65;
     this.hemi.intensity += fl * 1.4; this.skyU.uTop.value = top.clone().lerp(C(0xcfd8ff), fl * 0.6);
     // 안개
     const fogCol = hor.clone().lerp(C(0x141a26), night * 0.5); this.fog.color.copy(fogCol); this.fog.density = lerp(0.0032, 0.0075, wet) + night * 0.0012; (this.scene.background as unknown) = null;
     (this.scene as THREE.Scene & { environmentIntensity: number }).environmentIntensity = lerp(0.18, 0.95, dayK) * (1 - wet * 0.2) + night * 0.22 + wet * 0.15;
     // 비
-    this.rain.visible = wet > 0.04; this.rainU.uTime.value = this.time; this.rainU.uOpacity.value = wet * 0.4; (this.rainU.uCenter.value as THREE.Vector3).copy(camera.position);
+    this.rain.visible = wet > 0.04; this.rainU.uTime.value = this.time; this.rainU.uOpacity.value = wet * 0.32; (this.rainU.uCenter.value as THREE.Vector3).copy(camera.position);
     this.state = { daylight: dayK, wet, night, hour: h };
     return this.state;
   }
   /** 렌더러 노출(밤엔 살짝 올려 어둠이 답답하지 않게). */
   exposure(): number { return lerp(0.95, 1.15, this.state.night); }
   dispose(): void {
-    this.scene.remove(this.dome, this.rain, this.sun, this.moon, this.hemi); this.dome.geometry.dispose(); (this.dome.material as THREE.Material).dispose(); this.rain.geometry.dispose(); (this.rain.material as THREE.Material).dispose();
+    this.scene.remove(this.dome, this.rain, this.sun, this.sun.target, this.moon, this.moon.target, this.hemi); this.dome.geometry.dispose(); (this.dome.material as THREE.Material).dispose(); this.rain.geometry.dispose(); (this.rain.material as THREE.Material).dispose();
     this.env?.dispose(); this.pmrem.dispose(); this.scene.environment = null;
   }
 }

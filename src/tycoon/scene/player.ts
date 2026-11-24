@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import type { CharacterKit, CharacterRig } from '../../shared/character';
 import type { Colliders } from './layout';
+import { cameraClearance, easeCameraDistance } from './camera-motion';
 
 export interface MoveInput { mx: number; mz: number; run: boolean }
 const WALK = 3.4, RUN = 6.4, RADIUS = 0.45, EYE = 1.62;
@@ -21,7 +22,7 @@ export class Player {
   rig: CharacterRig | null = null;
   facing = 0; camYaw = 0; camPitch = 0.28; dist = 7.5; firstPerson = false;
   speed = 0; private bob = 0; private outfit = ''; private wave = 0;
-  private camPos = new THREE.Vector3(); private camInit = false; private tmp = { x: 0, z: 0 };
+  private camDistance = 7.5; private camInit = false; private tmp = { x: 0, z: 0 };
 
   constructor(private scene: THREE.Scene, private kit: CharacterKit | null) {}
 
@@ -32,11 +33,11 @@ export class Player {
     this.rig = this.kit.create(o.kind, o.seed, o.team); this.rig.root.rotation.y = this.facing; this.scene.add(this.rig.root); this.rig.root.visible = !this.firstPerson;
   }
   teleport(x: number, z: number, yaw: number): void {
-    this.pos.set(x, 0.18, z); this.vel.set(0, 0, 0); this.facing = yaw; this.camYaw = yaw + Math.PI; this.camInit = false;
+    this.pos.set(x, 0.18, z); this.vel.set(0, 0, 0); this.facing = yaw; this.camYaw = yaw + Math.PI; this.camInit = false; this.speed = 0; this.bob = 0;
     if (this.rig) { this.rig.root.position.copy(this.pos); this.rig.root.rotation.y = this.facing; }
   }
   celebrate(): void { this.wave = 1.4; }
-  setFirstPerson(on: boolean): void { this.firstPerson = on; if (this.rig) this.rig.root.visible = !on; if (on) this.camPitch = 0; else this.camPitch = 0.28; }
+  setFirstPerson(on: boolean): void { if (this.firstPerson !== on) this.camInit = false; this.firstPerson = on; if (this.rig) this.rig.root.visible = !on; if (on) this.camPitch = 0; else this.camPitch = 0.28; }
 
   update(dt: number, input: MoveInput, colliders: Colliders, frozen: boolean, extra?: (x: number, z: number, radius: number, out: { x: number; z: number }) => void): void {
     const len = Math.hypot(input.mx, input.mz), mag = frozen ? 0 : Math.min(1, len);
@@ -67,19 +68,20 @@ export class Player {
   placeCamera(camera: THREE.PerspectiveCamera, dt: number, colliders: Colliders): void {
     const px = this.pos.x, pz = this.pos.z;
     if (this.firstPerson) {
-      const y = 0.18 + EYE + Math.sin(this.bob * 2) * 0.03 * Math.min(1, this.speed / 3);
+      const y = 0.18 + EYE + Math.sin(this.bob * 2) * 0.018 * Math.min(1, this.speed / 3);
       camera.position.set(px, y, pz); camera.rotation.order = 'YXZ'; camera.rotation.set(this.camPitch, this.camYaw, 0); this.camInit = false; return;
     }
     const ty = 1.55, cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch), sy = Math.sin(this.camYaw), cy = Math.cos(this.camYaw);
-    let d = this.dist; const t = this.tmp;
-    for (let s = 1.2; s <= this.dist; s += 0.5) {
+    const t = this.tmp;
+    const clearance = cameraClearance(this.dist, s => {
       const x = px + sy * cp * s, z = pz + cy * cp * s, y = 0.18 + ty + sp * s;
-      if ((y < 7 && colliders.resolve(x, z, 0.5, t) && Math.hypot(t.x - x, t.z - z) > 0.2) || colliders.crownHit(x, y, z, 0.45)) { d = Math.max(1.4, s - 0.9); break; }
-    }
-    const wx = px + sy * cp * d, wy = Math.max(0.6, 0.18 + ty + sp * d), wz = pz + cy * cp * d;
-    if (!this.camInit) { this.camPos.set(wx, wy, wz); this.camInit = true; }
-    const k = 1 - Math.pow(0.0005, dt); this.camPos.x += (wx - this.camPos.x) * k; this.camPos.y += (wy - this.camPos.y) * k; this.camPos.z += (wz - this.camPos.z) * k;
-    camera.position.copy(this.camPos); camera.lookAt(px, 0.18 + ty, pz);
+      return (y < 7 && colliders.resolve(x, z, 0.5, t) && Math.hypot(t.x - x, t.z - z) > 0.2) || colliders.crownHit(x, y, z, 0.45);
+    });
+    this.camDistance = this.camInit ? easeCameraDistance(this.camDistance, clearance, dt) : clearance;
+    this.camInit = true;
+    const d = this.camDistance;
+    camera.position.set(px + sy * cp * d, Math.max(0.6, 0.18 + ty + sp * d), pz + cy * cp * d);
+    camera.lookAt(px, 0.18 + ty, pz);
   }
   look(dx: number, dy: number): void {
     this.camYaw -= dx; this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * (this.firstPerson ? -1 : 1), this.firstPerson ? -1.3 : -0.1, this.firstPerson ? 1.3 : 1.2);

@@ -1,3 +1,4 @@
+import { EXPRESS_JOB_ID } from './delivery';
 // 내부 상태 → 씬/HUD 가 읽는 스냅샷.
 import { CLOSE_HOUR, CONQUER_SHARE, EVENTS, NIGHT_FROM, NIGHT_TO, OPEN_HOUR, REGIONS, REGION_YIELD, RIVALS, SHOP_KINDS, STAGE_NAMES, WAGES, stageIndex } from './data';
 import { regionInvestCost, rivalValues, takeoverCostForValue } from './actions';
@@ -68,7 +69,7 @@ export function buildState(g: GameData, extra: { presence: string | null; activi
       progress: Math.min(1, extra.activity.elapsed / extra.activity.duration), lockMovement: extra.activity.lockMovement,
     } : null,
     task: g.task ? {
-      id: g.task.id, label: `${SPOT_BY_ID.get(g.task.target)?.name ?? ''}(으)로 배달`, fromSpotId: g.task.from, targetSpotId: g.task.target,
+      id: g.task.id, express: g.task.jobId === EXPRESS_JOB_ID, label: `${SPOT_BY_ID.get(g.task.target)?.name ?? ''} · ${g.task.jobId === EXPRESS_JOB_ID ? '긴급 배송' : '배달'}`, fromSpotId: g.task.from, targetSpotId: g.task.target,
       reward: g.task.reward, minutesLeft: g.task.deadline - absMinute(g),
     } : null,
     goal: goal(g),

@@ -52,6 +52,7 @@ export function fixMonster(THREE, model) {
   });
 }
 import { clone } from "three/addons/utils/SkeletonUtils.js";
+import { portraitDistance } from "./visual-motion.mjs";
 
 
 export function createCaptureShot(THREE, model) {
@@ -82,15 +83,14 @@ export function createCaptureShot(THREE, model) {
   return (renderer, aspect, time, reducedMotion) => {
     const progress = reducedMotion ? 1 : Math.min(1, time / 0.25);
     const punch = 1 - (1 - progress) ** 3;
-    const shake = (1 - progress) ** 2 * size.y * 0.055;
+    const shake = reducedMotion ? 0 : (1 - progress) ** 2 * size.y * 0.012;
     camera.aspect = aspect;
     camera.fov = THREE.MathUtils.lerp(68, 74, punch);
-    const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
-    const heightDistance = size.y / (2 * halfHeight * THREE.MathUtils.lerp(0.66, 0.88, punch));
+    const heightDistance = portraitDistance(size.x, size.y, aspect, camera.fov, THREE.MathUtils.lerp(0.58, 0.84, punch));
     camera.position.set(center.x, faceHeight, faceDepth + heightDistance);
     camera.lookAt(center.x, faceHeight, faceDepth);
-    camera.position.x += Math.sin(time * 141) * shake;
-    camera.position.y += Math.cos(time * 113) * shake;
+    camera.position.x += Math.sin(time * 24) * shake;
+    camera.position.y += Math.cos(time * 19) * shake;
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
   };

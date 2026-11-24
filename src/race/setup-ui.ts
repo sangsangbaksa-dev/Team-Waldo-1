@@ -2,8 +2,8 @@
 import { CARS, LAP_OPTIONS, LEVELS, SKINS, STAT_KEYS, STAT_LABELS, carById, levelById, paintOf, sanitizeSetup, type RaceSetup } from './config';
 import { MAPS, mapById } from './maps';
 import { buildMapTrack } from './track';
-import { buySkin, ownsSkin, writeGarage, type Garage } from './garage';
-import { readGhost } from './ghost';
+import { buySkin, ownsSkin, type Garage } from './domain/garage';
+import { readGhost, writeGarage } from './infrastructure/local-records';
 import { fmtTime, raceRaceKey, type RaceRecords } from '../records';
 
 /** 차량 옆모습 그림(차체색·포인트색을 칠하고 하이라이트·그림자·휠·램프를 겹침). 단색 네모 대신 카드·도장 칩에 씁니다. */

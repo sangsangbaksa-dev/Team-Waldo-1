@@ -286,3 +286,14 @@ kbd{color:var(--paper);display:inline-block;border:1px solid #d6c4a550;padding:.
   .hud-title{font-size:.57rem}
   .map-panel{width:min(64vw,21rem)}
 }
+
+/* Touch controls use the same field inputs as keyboard and mouse. */
+.touch-controls{position:fixed;inset:0;z-index:4;pointer-events:none;touch-action:none;color:var(--paper)}
+.touch-controls[hidden]{display:none}
+.touch-controls button{pointer-events:auto;touch-action:none;min-width:48px;min-height:48px;padding:.35rem .65rem;border:1px solid #c4b79790;background:#191b15d9;color:inherit;font:500 .75rem/1.1 var(--mono);border-radius:4px}
+.touch-controls button[aria-pressed="true"],.touch-controls button:active{background:#d3bf92;color:#191b15}
+.touch-top{position:absolute;top:max(4.8rem,env(safe-area-inset-top));right:max(.6rem,env(safe-area-inset-right));display:flex;gap:.3rem}
+.touch-actions{position:absolute;right:max(.6rem,env(safe-area-inset-right));bottom:calc(5.2rem + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(2,minmax(48px,auto));gap:.35rem}
+.touch-actions .touch-fire{border-color:#d3bf92;min-height:56px}
+.touch-move-label{position:absolute;left:max(1rem,env(safe-area-inset-left));bottom:calc(6.5rem + env(safe-area-inset-bottom));font:500 .7rem var(--mono);opacity:.65}
+@media (pointer:coarse){.field-keys{display:none}.field > canvas{cursor:default}}

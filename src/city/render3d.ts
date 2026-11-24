@@ -89,7 +89,7 @@ export class Renderer3D {
     if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -1100; s.camera.right = s.camera.top = 1100; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
     // 바다 + 지면
     const sea = this.sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2a4558 })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
-    const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
+    const T = quality === 'high' ? 4096 : quality === 'standard' ? 3072 : 2048, k = T / SIZE, gt = canvasTex(T, T, g => {
       g.fillStyle = '#35343c'; g.fillRect(0, 0, T, T); g.scale(k, k);
       g.strokeStyle = 'rgba(214,186,110,0.7)'; g.lineWidth = 3.5; g.setLineDash([24, 26]); g.beginPath();
       for (let i = 0; i <= BLOCKS; i++) { const c = i * PITCH + ROAD / 2; g.moveTo(c, 0); g.lineTo(c, SIZE); g.moveTo(0, c); g.lineTo(SIZE, c); } g.stroke(); g.setLineDash([]);

@@ -57,6 +57,8 @@ class Game {
   private onField = false;
   private rangeAt = 0;
   private lastFrame = 0;
+  private raf = 0;
+  private lastDraw = 0;
 
   constructor() {
     this.name.value = callsign(cfg('name') ?? 'NOMAD');
@@ -121,7 +123,10 @@ class Game {
       if (this.panel === 'controls') this.show(this.panelBeforeGuide);
       else if (this.panel === 'online') this.leave();
     });
-    requestAnimationFrame(this.frame);
+  }
+
+  private scheduleFrame(): void {
+    if (!this.raf) { this.lastFrame = 0; this.raf = requestAnimationFrame(this.frame); }
   }
 
   private playerName(): string {
@@ -145,6 +150,7 @@ class Game {
     notice(element('menu-status'));
     const world = this.world ??= createWorld();
     this.session = new SoloSession(world, this.playerName());
+    this.scheduleFrame();
     const snapshot = this.session.snapshot;
     if (snapshot && this.openField(snapshot)) this.resume();
   }
@@ -152,6 +158,7 @@ class Game {
   private connect(request: Extract<ClientMessage, { type: 'create' | 'join' }>): void {
     this.session?.close();
     this.session = new OnlineSession(request);
+    this.scheduleFrame();
     this.onlineBusy(true);
     notice(element('online-status'), 'Connecting to room server…');
   }
@@ -190,6 +197,7 @@ class Game {
   private leave(message = ''): void {
     this.session?.close();
     this.session = undefined;
+    cancelAnimationFrame(this.raf); this.raf = 0;
     this.controls.disable();
     this.audio.ambiance(false);
     this.renderer?.reset();
@@ -229,6 +237,7 @@ class Game {
     this.prediction = undefined;
     this.predictionSnapshot = undefined;
     this.previousPhase = 'active';
+    this.lastDraw = 0;
     this.renderer.reset();
     this.hud.reset();
     return true;
@@ -304,7 +313,9 @@ class Game {
   }
 
   private frame = (now: number): void => {
-    requestAnimationFrame(this.frame);
+    this.raf = 0;
+    if (!this.session) return;
+    this.raf = requestAnimationFrame(this.frame);
     const dt = Math.min(0.065, Math.max(0, (now - (this.lastFrame || now)) / 1000));
     this.lastFrame = now;
     const session = this.session;
@@ -362,8 +373,10 @@ class Game {
     }
     if (shown.alive && shown.moving && this.controls.active) this.audio.footstep(now / 1000, shown.sprinting, shown.crouched);
     // Keep the menu backdrop alive at a lower frame rate.
-    if (!this.controls.active && Math.floor(now / 65) === Math.floor((now - dt * 1000) / 65) && dt > 0) return;
-    this.renderer.draw(snapshot, shown, this.controls.zoom, dt, now, Boolean(session.room));
+    if (!this.controls.active && now - this.lastDraw < 66) return;
+    const renderDt = this.lastDraw ? Math.min(0.1, (now - this.lastDraw) / 1000) : dt;
+    this.lastDraw = now;
+    this.renderer.draw(snapshot, shown, this.controls.zoom, renderDt, now, Boolean(session.room), this.controls.active);
     if (shown.aiming && now >= this.rangeAt) {
       const line = this.renderer.rangeLine;
       this.hud.range(this.world!.trace(line.from, line.to) * 600);
@@ -371,7 +384,7 @@ class Game {
     }
     this.hud.draw(snapshot, shown, now, this.renderer.aimFraction, this.controls.zoom, {
       score: this.controls.score, map: this.controls.map, room: session.room?.code, latency: session.latency,
-      fallback: this.controls.active && this.controls.fallback,
+      fallback: this.controls.active && this.controls.fallback && !this.controls.touchMode,
     });
   };
 }

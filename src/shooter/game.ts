@@ -68,6 +68,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let soloRecorded = false;
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
+  let mapDrawAt = -Infinity;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
@@ -114,7 +115,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     // The previous renderer forces context loss on dispose. Never reuse its canvas.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
     match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
-    const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
+    const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null; mapDrawAt = -Infinity;
     try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
@@ -375,7 +376,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd); root.addEventListener('lostpointercapture', tEnd);
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else if (act === 'ads') b.classList.toggle('down', tc.ads); else b.classList.add('down'); });
+    b.addEventListener('pointerdown', e => { if (!match || paused || phase !== 'play') return; e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire' || act === 'interact') { try { b.setPointerCapture(e.pointerId); } catch { /* release on pointerleave */ } } if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else if (act === 'ads') b.classList.toggle('down', tc.ads); else b.classList.add('down'); });
     for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads' && act !== 'crouch') b.classList.remove('down'); });
   });
 
@@ -474,7 +475,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       }
       air.classList.toggle('show', !!txt); html(air, 'air', txt); }
     // 줍기 안내
-    let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || (l.kind !== 'weapon' && l.kind !== 'attach')) continue; if (Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup) { if (l.kind === 'weapon') { near = WEAPONS[l.weapon!].name; break; } const t = m.partTarget(p, l.part!); if (t && t.fit === 'swap') { near = `${PARTS[l.part!].name} 교체`; break; } } }
+    let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || (l.kind !== 'weapon' && l.kind !== 'attach')) continue; if ((l.x - p.x) ** 2 + (l.z - p.z) ** 2 < PLAYER.pickup ** 2) { if (l.kind === 'weapon') { near = WEAPONS[l.weapon!].name; break; } const t = m.partTarget(p, l.part!); if (t && t.fit === 'swap') { near = `${PARTS[l.part!].name} 교체`; break; } } }
     if (!near && p.alive && p.air === 0 && p.veh < 0) { const v = m.vehicleNear(p); if (v) near = `${VEHICLES[v.kind].name} 탑승`; }
     q('#sz-prompt').classList.toggle('show', !!near); set(q('#sz-prompt'), 'prompt', near ? `${touch ? '줍기 버튼' : 'E'} · ${near}` : '');
     // 자기장 밖
@@ -498,7 +499,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}">${esc(f.text)}</li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
     html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
-    drawMap(m, p); drawCompass(m, p);
+    if (now >= mapDrawAt) { drawMap(m, p); mapDrawAt = now + 100; }
+    drawCompass(m, p);
   }
 
   // ---------- 이벤트 처리 ----------
@@ -616,7 +618,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase === 'countdown' && !paused) {
       countdown -= dt; const c = Math.ceil(countdown - 0.4), el = q('#sz-count');
       if (c > 0) { set(el, 'cd', String(c)); el.classList.add('show'); } else { set(el, 'cd', '출격'); }
-      if (countdown <= 0.4 && phase === 'countdown') { phase = 'play'; q('#sz-count').classList.remove('show'); audio.play('go'); say('마지막까지 살아남으세요', 2.2) }
+      if (countdown <= 0.4 && phase === 'countdown') { phase = 'play'; q('#sz-count').classList.remove('show'); audio.play('go'); say('경기 시작', 2.2) }
       p.input.yaw = yaw; p.input.pitch = pitch;
     }
     if ((phase === 'play' || phase === 'dead' || phase === 'over') && !paused) {

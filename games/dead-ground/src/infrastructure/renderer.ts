@@ -34,10 +34,16 @@ export class FieldRenderer {
   private lowDetail = false;
   private slowFrames = 0;
   private sharpness = 1;
+  private readonly canvas: HTMLCanvasElement;
+  private pixelRatio(): number {
+    const pixels = Math.max(1, this.canvas.clientWidth * this.canvas.clientHeight);
+    return Math.min(devicePixelRatio, this.lowDetail ? 1 : 1.65, Math.sqrt(1_600_000 / pixels)) * this.sharpness;
+  }
 
   constructor(canvas: HTMLCanvasElement, world: World) {
+    this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.65));
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.19;
@@ -72,7 +78,8 @@ export class FieldRenderer {
 
     const resize = () => {
       const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
-      this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.lowDetail ? 1 : 1.65) * this.sharpness);
+      const ratio = this.pixelRatio();
+      if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio);
       this.renderer.setSize(w, h, false);
       this.camera.aspect = this.rifleCamera.aspect = w / h;
       this.camera.updateProjectionMatrix();
@@ -101,7 +108,8 @@ export class FieldRenderer {
     this.lowDetail = low;
     this.renderer.shadowMap.enabled = !low;
     this.renderer.shadowMap.needsUpdate = true;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, low ? 1 : 1.65) * this.sharpness);
+    const ratio = this.pixelRatio();
+    if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio);
   }
 
   event(event: MatchEvent, self: string): void {
@@ -117,10 +125,10 @@ export class FieldRenderer {
     this.impacts.push({ mesh, until: this.renderTime + 0.29 });
   }
 
-  draw(snapshot: Snapshot, player: Player, zoom: number, dt: number, now: number, online: boolean): void {
-    if (dt > 0.029 && this.lastFrame && !this.lowDetail) this.slowFrames++;
+  draw(snapshot: Snapshot, player: Player, zoom: number, dt: number, now: number, online: boolean, active = true): void {
+    if (active && dt > 0.029 && this.lastFrame && !this.lowDetail) this.slowFrames++;
     else this.slowFrames = Math.max(0, this.slowFrames - 1);
-    if (this.slowFrames > 70 && this.sharpness > 0.77) {
+    if (active && this.slowFrames > 70 && this.sharpness > 0.77) {
       this.sharpness *= 0.85;
       this.setQuality(this.lowDetail);
       this.slowFrames = 0;

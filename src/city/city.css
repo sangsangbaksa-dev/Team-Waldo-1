@@ -62,7 +62,7 @@
 .touch .c-bc{display:none}.touch .c-bl{width:min(250px,48vw);padding:7px}.touch .c-skills,.touch kbd{display:none}.touch .c-prompt{bottom:210px}.touch .c-toast{bottom:250px}
 .c-modal{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:#06090cd4;backdrop-filter:blur(8px);padding:16px;overflow:auto}
 .c-modal:empty{display:none}
-.c-modal section{width:min(880px,100%);background:linear-gradient(160deg,#152428,#0c1618);border:1px solid #d8bc8070;border-radius:20px;padding:clamp(18px,3vw,34px);box-shadow:0 30px 90px #000c}
+.c-modal section{width:min(880px,100%);background:#142024;border:1px solid #d8bc8070;border-radius:20px;padding:clamp(18px,3vw,34px);box-shadow:0 30px 90px #000c}
 .c-kicker{font-size:11px;letter-spacing:.2em;font-weight:600;color:#d8bc80}
 .c-modal h2{font-size:clamp(28px,5vw,52px);font-weight:700;letter-spacing:-.035em;margin:6px 0 8px;line-height:1.05}.c-modal h2 small{font-size:.42em;font-weight:600;opacity:.7;margin-left:8px;letter-spacing:-.02em}
 .c-lead{opacity:.9;line-height:1.7;max-width:680px;margin-bottom:16px;word-break:keep-all}.c-lead b{color:#e2c98a}
@@ -78,7 +78,7 @@
 .c-actions .c-primary{background:#d8bc80;color:#17251f;border-color:#d8bc80}
 .c-help{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.c-help div{background:#00000044;border-radius:10px;padding:10px 12px}.c-help b{color:#d8bc80;font-size:13px}.c-help p{font-size:12px;line-height:1.6;opacity:.85;margin-top:3px}
 .c-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.c-stats div{background:#00000050;border-radius:10px;padding:12px 6px;text-align:center}.c-stats b{display:block;font-size:clamp(16px,2.6vw,24px);font-weight:900}.c-stats span{font-size:11px;opacity:.7}
-.c-result.win{border-color:#ffd24a;box-shadow:0 0 90px #ffd24a44}.c-result.win h2{color:#ffd24a}
+.c-result.win{border-color:#c6a85a}.c-result.win h2{color:#ffd24a}
 @media (max-width:760px){.c-classes,.c-help{grid-template-columns:1fr}.c-stats{grid-template-columns:repeat(3,1fr)}#c-mini{width:118px;height:118px}.c-feed{top:176px;font-size:11px}.c-tc{top:auto;bottom:auto;top:52px;left:12px;transform:none;font-size:11px;gap:8px;padding:4px 10px;border-radius:8px}.c-quest{display:none}.c-panel{top:86px;bottom:12px;z-index:3}.c-res span{padding:4px 8px}.c-res b{font-size:13px}.c-res small{display:none}}
 @media (max-height:520px){.c-panel{top:8px;bottom:8px;z-index:3}.c-feed{display:none}.c-bl{transform-origin:left bottom;transform:scale(.85)}.touch .c-touch{grid-template-columns:repeat(3,52px);gap:6px}.touch .c-touch button{height:42px}.c-modal section{padding:14px}.c-classes{grid-template-columns:repeat(3,1fr)}.c-class p,.c-class small{display:none}.c-help{grid-template-columns:repeat(2,1fr)}}
 
@@ -108,7 +108,7 @@
 
 .c-tutcard{width:100%;text-align:left;display:grid;gap:4px;padding:14px 16px;margin:2px 0 12px;border-radius:14px;background:#ffffff0c;border:1px solid #ffffff2a}
 .c-tutcard span{font-size:10px;letter-spacing:.14em;font-weight:800;color:#8cc3ae}.c-tutcard b{font-size:20px;font-weight:900}.c-tutcard p{font-size:12.5px;opacity:.85;line-height:1.5}
-.c-tutcard.rec{background:linear-gradient(120deg,#17402f,#1f5a43);border-color:#7dffb0;box-shadow:0 0 0 1px #7dffb055,0 10px 34px #0b3d2566}.c-tutcard.rec span{color:#7dffb0}
+.c-tutcard.rec{background:#203b30;border-color:#84b799}.c-tutcard.rec span{color:#7dffb0}
 .c-tutcard:hover{border-color:#d8bc80}.c-sub{font-size:11px;letter-spacing:.08em;opacity:.7;margin:0 2px 8px;font-weight:700}
 .c-tut{left:50%;top:54px;transform:translateX(-50%);width:min(520px,calc(100vw - 24px));background:#0c1a18f2;border:1px solid #7dffb0aa;border-radius:14px;padding:12px 14px 12px;box-shadow:0 14px 44px #000a;pointer-events:auto;z-index:4}
 .c-tut header{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:.12em;font-weight:800;color:#7dffb0;margin-bottom:4px}
@@ -214,3 +214,5 @@
 .c-modal section{max-height:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
 .c-panel{overscroll-behavior:contain}
 .c-modal button:focus-visible{outline:2px solid #e7c58c;outline-offset:3px}
+
+@media (pointer:coarse){.c-res span,.c-tc,.c-banner,.c-bl{backdrop-filter:none}}

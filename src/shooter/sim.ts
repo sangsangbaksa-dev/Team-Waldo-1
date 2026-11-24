@@ -3,6 +3,7 @@ import { AIR, BAG_MAX, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, DRIVE, HELMET_CUT, 
 import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
 import { WATER_SLOW, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
+import { advanceCache, createFieldCaches, CACHE_RADIUS, CACHE_CONTEST_RADIUS, type FieldCache } from './field-cache';
 
 export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 연막탄 던지기(눌린 프레임) */ smoke?: boolean; /** 섬광탄 던지기(눌린 프레임) */ flash?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean; /** 치료 시작: 1 붕대 · 2 구급상자 */ heal?: number }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
@@ -61,6 +62,7 @@ export type MatchEvent =
   | { t: 'kill'; victim: number; attacker: number; weapon: Cause }
   | { t: 'pickup'; id: number; loot: number; kind: Loot['kind']; weapon: WeaponId | null; part?: PartId | null; level?: number }
   | { t: 'drop'; stage: 'call' | 'land'; x: number; z: number }
+  | { t: 'cache'; id: number }
   | { t: 'equip'; id: number; gun: number; slot: PartSlot; part: PartId | null }
   | { t: 'bagfull'; id: number }
   | { t: 'veh'; stage: 'enter' | 'exit' | 'crash' | 'boom'; id: number; x: number; z: number }
@@ -81,13 +83,14 @@ export interface ZoneState { cx: number; cz: number; r: number; nextCx: number; 
 
 export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean; /** 운전할 수 있는 차량(배틀로열) */ vehicles?: boolean; /** 폭격 구역(배틀로열) */ bombs?: boolean;
   /** 온라인 방에서 AI·차량·차 내구도를 이 브라우저가 계산하는지(방장). false 면 AI 는 받은 위치를 따라가는 꼭두각시입니다. 기본 true. */ authority?: boolean;
-  /** 이 브라우저가 새로 만드는 전리품 번호의 시작(온라인에서 참가자마다 겹치지 않게). 기본 0. */ lootBase?: number }
+  /** 이 브라우저가 새로 만드는 전리품 번호의 시작(온라인에서 참가자마다 겹치지 않게). 기본 0. */ lootBase?: number; fieldCaches?: boolean }
 
 export class Match {
   map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
   players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
   /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number; quiet?: boolean }> = [];
   /** 보급 투하(솔로 배틀로열만) */ drops: Drop[] = [];
+  fieldCaches: FieldCache[] = [];
   /** 날아다니는 수류탄 */ nades: Nade[] = []; private nadeId = 1;
   /** 깔려 있는 연막 */ clouds: Cloud[] = []; private cloudId = 1;
   /** 운전할 수 있는 차량 · 폭격 구역과 떨어지는 포탄 */ vehicles: Vehicle[] = []; reds: RedZone[] = []; shells: Shell[] = []; private shellId = 1;
@@ -101,6 +104,7 @@ export class Match {
     this.seed = o.seed; this.mode = o.mode; this.difficulty = o.difficulty; this.authority = o.authority ?? true;
     this.map = generateMap(o.seed, o.mode); this.loot = this.map.loot.map(l => ({ ...l })); this.nextLoot = this.loot.length + 1000 + (o.lootBase ?? 0);
     this.rng = makeRng(o.seed ^ 0x9e3779b9);
+    if (o.fieldCaches && o.mode === 'br' && o.humans.length === 1 && !o.humans[0].remote && o.authority !== false) this.fieldCaches = createFieldCaches(this.map, o.seed);
     if (o.air && o.mode === 'br') {
       const pr = makeRng(o.seed ^ 0x3c6ef372), a = pr() * Math.PI * 2, half0 = MAP_HALF.br, off = (pr() - 0.5) * half0 * 0.9, len = half0 * 2.7, dx = Math.cos(a), dz = Math.sin(a);
       this.plane = { x0: -dx * len / 2 - dz * off, z0: -dz * len / 2 + dx * off, dx, dz, speed: AIR.plane, len, end: len / AIR.plane }; this.zoneDelay = AIR.delay;
@@ -198,6 +202,7 @@ export class Match {
       const sudden = zone.phase >= ZONES[this.mode].length && zone.dps >= ZONES[this.mode][ZONES[this.mode].length - 1].dps * (1 + 25 / 12);
       if (sudden || Math.hypot(p.x - zone.cx, p.z - zone.cz) > zone.r) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
     }
+    this.stepFieldCaches(dt, zone);
     // 마지막 한 명이 남으면 끝납니다(동시에 모두 쓰러졌다면 마지막에 쓰러진 쪽이 승자).
     if (!this.over) {
       const alive = this.players.filter(p => p.alive);
@@ -247,6 +252,22 @@ export class Match {
     p.x += p.vx * dt; p.z += p.vz * dt; p.alt -= (p.air === 3 && p.alt < 4 ? Math.max(3, fall * 0.5) : fall) * dt;
     const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
     if (p.alt <= 0) { p.alt = 0; p.air = 0; p.vx = 0; p.vz = 0; pushOut(this.map, p, PLAYER.radius); p.landedAt = this.t; p.cd = Math.max(p.cd, 0.5); this.events.push({ t: 'land', id: p.id }); }
+  }
+  private stepFieldCaches(dt: number, zone: ZoneState): void {
+    if (!this.fieldCaches.length) return;
+    const p = this.players[0];
+    for (const c of this.fieldCaches) {
+      if (c.claimed || c.expired) continue;
+      const safe = Math.hypot(c.x - zone.cx, c.z - zone.cz) + CACHE_RADIUS <= zone.r;
+      const present = p.alive && !p.air && p.veh < 0 && Math.hypot(p.x - c.x, p.z - c.z) <= CACHE_RADIUS;
+      const contested = present && this.players.some(q => q !== p && q.alive && !q.air && Math.hypot(q.x - c.x, q.z - c.z) <= CACHE_CONTEST_RADIUS);
+      if (!advanceCache(c, dt, present, contested, safe)) continue;
+      this.spawnLoot({ kind: 'armor', weapon: null, level: 2, x: c.x + 1, z: c.z });
+      this.spawnLoot({ kind: 'medkit', weapon: null, x: c.x - 1, z: c.z });
+      this.spawnLoot({ kind: 'ammo', weapon: null, x: c.x, z: c.z + 1 });
+      this.spawnLoot({ kind: 'attach', weapon: null, part: 'quickmag', x: c.x, z: c.z - 1 });
+      this.events.push({ t: 'cache', id: p.id });
+    }
   }
   private stepDrops(): void {
     for (const d of this.drops) {

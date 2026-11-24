@@ -3,7 +3,7 @@ import { CIV, FACTION_COUNT, SIZE } from './defs';
 import { lanePoint, navBlocked } from './map';
 import type { Actor, World } from './world';
 
-export type CityEventKind = 'convoy' | 'rescue' | 'delivery' | 'bounty';
+export type CityEventKind = 'convoy' | 'rescue' | 'delivery' | 'bounty' | 'relay';
 export interface CityEvent {
   kind: CityEventKind; x: number; y: number; /** 남은 시간(초) */ t: number; total: number; /** 수송차 id */ vid: number; /** 구조 진행(초) */ prog: number; ids: number[];
   /** 배달: 0 = 물건 수령 전, 1 = 배달 중(x,y 가 목적지) */ stage: number; tx: number; ty: number; /** 배달·현상금의 기본 보수 */ pay: number;
@@ -13,6 +13,7 @@ export const EVENT_INFO: Record<CityEventKind, { name: string; color: string }> 
   rescue: { name: '조난자 구조', color: '#7dffb0' },
   delivery: { name: '불법 배달', color: '#7dc8ff' },
   bounty: { name: '현상금 사냥', color: '#ff7a5c' },
+  relay: { name: '통신 거점', color: '#c5b18a' },
 };
 /** 부업을 몇 건 끝내면 한 번씩 받는 이정표 보너스 */
 export const SIDE_MILESTONES = [{ n: 3, reward: 400, title: '동네 해결사' }, { n: 6, reward: 900, title: '골목 청소부' }, { n: 10, reward: 1800, title: '도시의 만능 일꾼' }] as const;
@@ -20,8 +21,13 @@ export const SIDE_MILESTONES = [{ n: 3, reward: 400, title: '동네 해결사' }
 export const streakMult = (streak: number): number => 1 + Math.min(5, Math.max(0, streak)) * 0.1;
 export const quickEventBonus = (remaining: number, total: number): number =>
   total > 0 ? Math.round(200 * Math.max(0, Math.min(1, remaining / total))) : 0;
-const KINDS: CityEventKind[] = ['convoy', 'rescue', 'delivery', 'bounty'];
+const KINDS: CityEventKind[] = ['convoy', 'rescue', 'delivery', 'bounty', 'relay'];
 const RESCUE_TIME = 3, FIRST_AT = 70;
+export const RELAY_TIME = 12, RELAY_RADIUS = 105;
+export function relayProgress(progress: number, present: boolean, contested: boolean): number {
+  if (contested || !present) return Math.max(0, progress - 1);
+  return Math.min(RELAY_TIME, progress + 1);
+}
 
 /** 매초 호출. 사건이 없으면 대기 시간을 줄이다 새로 시작하고, 있으면 진행을 확인합니다. */
 export function updateCityEvents(w: World): void {
@@ -43,11 +49,18 @@ export function updateCityEvents(w: World): void {
     const t = w.byId.get(ev.ids[0]);
     if (!t || !t.alive) { finish(w, false); return; }
     ev.x = t.x; ev.y = t.y;
+  } else if (ev.kind === 'relay') {
+    const near = (x: number, y: number) => Math.hypot(x - ev.x, y - ev.y) <= RELAY_RADIUS;
+    const present = !!pb && !pb.inVeh && !w.inside && near(pb.x, pb.y);
+    const contested = w.actors.some(a => a.alive && w.hostile(0, a.f) && near(a.x, a.y));
+    ev.stage = Number(contested);
+    ev.prog = relayProgress(ev.prog, present, contested);
+    if (ev.prog >= RELAY_TIME) { finish(w, true); return; }
   } else if (ev.kind === 'delivery') {
     if (pb && !w.inside && Math.hypot(pb.x - ev.x, pb.y - ev.y) < 70) {
       if (ev.stage === 0) {
         ev.stage = 1; ev.x = ev.tx; ev.y = ev.ty; ev.t = Math.max(ev.t, 80); ev.total = Math.max(ev.total, ev.t);
-        w.say('📦 물건 수령 — 표시된 곳으로 서둘러 배달하세요', EVENT_INFO.delivery.color); w.fx('announce', 0, 0, 0, '물건 수령'); return;
+        w.say('물건 수령 — 표시된 곳으로 서둘러 배달하세요', EVENT_INFO.delivery.color); w.fx('announce', 0, 0, 0, '물건 수령'); return;
       }
       finish(w, true); return;
     }
@@ -80,14 +93,15 @@ function pickDrop(w: World, px: number, py: number): { x: number; y: number } | 
 }
 
 const MSG: Record<CityEventKind, [string, string]> = {
-  convoy: ['💰 현금 수송차가 도심을 지나갑니다 — 격파하면 현금이 쏟아집니다', '현금 수송차 출현'],
-  rescue: ['🆘 조난 신호 — 생존자에게 다가가 구조하세요', '조난 신호 감지'],
-  delivery: ['📦 불법 배달 의뢰 — 표시된 곳에서 물건을 받아 목적지로 전달하세요 (차량 추천)', '배달 의뢰 도착'],
-  bounty: ['🎯 현상금 목표 발견 — 표시된 곳의 우두머리를 쓰러뜨리세요 (경호 2명 동행)', '현상금 사냥 개시'],
+  convoy: ['현금 수송차가 도심을 지나갑니다 — 격파하면 현금이 쏟아집니다', '현금 수송차 출현'],
+  rescue: ['조난 신호 — 생존자에게 다가가 구조하세요', '조난 신호 감지'],
+  delivery: ['불법 배달 의뢰 — 표시된 곳에서 물건을 받아 목적지로 전달하세요 (차량 추천)', '배달 의뢰 도착'],
+  bounty: ['현상금 목표 발견 — 경호원과 목표를 제압하세요.', '현상금 목표 발견'],
+  relay: ['통신 거점 발견. 적을 밀어내고 12초간 지상에서 확보하세요.', '통신 거점 확보'],
 };
 
 export function startEvent(w: World, kind: CityEventKind, px: number, py: number): void {
-  const z = w.zone, time = kind === 'convoy' ? 110 : kind === 'delivery' ? 140 : kind === 'bounty' ? 120 : 90;
+  const z = w.zone, time = kind === 'convoy' ? 110 : kind === 'delivery' ? 140 : kind === 'bounty' || kind === 'relay' ? 120 : 90;
   for (let k = 0; k < 24; k++) {
     const p = lanePoint(w.rng), d = Math.hypot(p.x - px, p.y - py);
     if (d < 650 || d > 1500 || p.x < 80 || p.y < 80 || p.x > SIZE - 80 || p.y > SIZE - 80 || Math.hypot(p.x - z.x, p.y - z.y) > z.r - 60 || navBlocked(w.map, p.x, p.y)) continue;
@@ -99,6 +113,17 @@ export function startEvent(w: World, kind: CityEventKind, px: number, py: number
     } else if (kind === 'convoy') {
       const v = w.spawnVehicle('truck', p.x, p.y, p.dir * Math.PI / 2); v.dir = p.dir; v.nextTurn = p.dir; v.ai = 'traffic'; v.hp = v.maxHp = 1100; v.color = '#caa02a'; ev.vid = v.id;
       const d2 = w.spawnActor('civ', CIV, p.x, p.y); d2.inVeh = v.id; v.driver = d2.id; v.f = CIV;
+    } else if (kind === 'relay') {
+      const rivals = w.factions.filter(r => r.id !== 0 && r.alive);
+      if (!rivals.length) continue;
+      const rf = rivals[Math.floor(w.rng() * rivals.length)].id;
+      const positions = [-35, 35].map(dx => ({ x: p.x + dx, y: p.y }));
+      if (positions.some(q => navBlocked(w.map, q.x, q.y))) continue;
+      for (const q of positions) {
+        const guard = w.spawnUnit('guard', rf, q.x, q.y);
+        guard.order = { type: 'hold', x: q.x, y: q.y }; ev.ids.push(guard.id);
+      }
+      ev.pay = 520;
     } else if (kind === 'bounty') {
       const rivals = w.factions.filter(r => r.id !== 0 && r.alive), rf = (rivals.length ? rivals[Math.floor(w.rng() * rivals.length)].id : 1) % FACTION_COUNT;
       const t = w.spawnUnit('guard', rf, p.x, p.y); t.maxHp = t.hp = 420; t.weapon = 'u_smg'; ev.ids.push(t.id); ev.pay = 500;
@@ -117,7 +142,7 @@ function finish(w: World, ok: boolean): void {
   const ev = w.event!, f = w.factions[0]; w.event = null; w.eventT = 80 + w.rng() * 50;
   if (!ok) {
     w.eventStreak = 0; w.say(`${EVENT_INFO[ev.kind].name} 놓침 — 연속 보너스 초기화`, '#9aa4b2');
-    for (const id of ev.ids) { if (ev.kind === 'bounty') removeActor(w, id); else { const a = w.byId.get(id); if (a) a.order = { type: 'wander', x: a.x, y: a.y }; } }
+    for (const id of ev.ids) { if (ev.kind === 'bounty' || ev.kind === 'relay') removeActor(w, id); else { const a = w.byId.get(id); if (a) a.order = { type: 'wander', x: a.x, y: a.y }; } }
     return;
   }
   w.eventsDone++; w.eventStreak++;
@@ -127,21 +152,27 @@ function finish(w: World, ok: boolean): void {
   if (ev.kind === 'convoy') {
     for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283; w.spawnLoot('cash', ev.x + Math.cos(a) * 46, ev.y + Math.sin(a) * 46, pay(160 + Math.floor(w.rng() * 120))); }
     w.spawnLoot(w.rng() < 0.5 ? 'armor' : 'medkit', ev.x, ev.y, 50);
-    w.say('💰 수송차 격파! 흩어진 현금을 챙기세요' + bonus, EVENT_INFO.convoy.color); w.fx('announce', 0, 0, 0, '수송차 격파');
+    w.say('수송차 격파! 흩어진 현금을 챙기세요' + bonus, EVENT_INFO.convoy.color); w.fx('announce', 0, 0, 0, '수송차 격파');
   } else if (ev.kind === 'delivery') {
     const tb = Math.round(ev.t * 2), amt = pay(ev.pay + tb); cash(amt, 35);
-    w.say(`📦 배달 완료 +$${amt} (시간 보너스 $${tb})${bonus}`, EVENT_INFO.delivery.color); w.fx('announce', 0, 0, 0, `배달 완료 +$${amt}`);
+    w.say(`배달 완료 +$${amt} (시간 보너스 $${tb})${bonus}`, EVENT_INFO.delivery.color); w.fx('announce', 0, 0, 0, `배달 완료 +$${amt}`);
+  } else if (ev.kind === 'relay') {
+    const amt = pay(ev.pay + quickEventBonus(ev.t, ev.total)); cash(amt, 55);
+    for (const id of ev.ids) removeActor(w, id);
+    w.spawnLoot('armor', ev.x + 25, ev.y, 40);
+    w.say(`통신 거점 확보 +$${amt}${bonus}`, EVENT_INFO.relay.color);
+    w.fx('announce', 0, 0, 0, `거점 확보 +$${amt}`);
   } else if (ev.kind === 'bounty') {
     const quick = quickEventBonus(ev.t, ev.total), amt = pay(ev.pay + quick); cash(amt, 70); w.spawnLoot(w.rng() < 0.5 ? 'armor' : 'medkit', ev.x, ev.y, 50);
     for (const id of ev.ids.slice(1)) removeActor(w, id);
-    w.say(`🎯 현상금 사냥 성공 +$${amt} (신속 보너스 $${quick})${bonus}`, EVENT_INFO.bounty.color); w.fx('announce', 0, 0, 0, `현상금 +$${amt}`);
+    w.say(`현상금 사냥 성공 +$${amt} (신속 보너스 $${quick})${bonus}`, EVENT_INFO.bounty.color); w.fx('announce', 0, 0, 0, `현상금 +$${amt}`);
   } else {
     const amt = pay(350); cash(amt, 40); w.spawnLoot('armor', ev.x + 30, ev.y, 40);
     for (const id of ev.ids) { const a = w.byId.get(id); if (a) { a.order = { type: 'wander', x: a.x, y: a.y }; a.fleeT = 0; } }
-    w.say(`🆘 생존자 구조 완료 +$${amt}${bonus}`, EVENT_INFO.rescue.color); w.fx('announce', 0, 0, 0, `구조 완료 +$${amt}`);
+    w.say(`생존자 구조 완료 +$${amt}${bonus}`, EVENT_INFO.rescue.color); w.fx('announce', 0, 0, 0, `구조 완료 +$${amt}`);
   }
   while (w.sideClaimed < SIDE_MILESTONES.length && w.eventsDone >= SIDE_MILESTONES[w.sideClaimed].n) {
     const ms = SIDE_MILESTONES[w.sideClaimed++]; f.cash += ms.reward; f.earned += ms.reward;
-    w.say(`🏅 부업 이정표 「${ms.title}」 +$${ms.reward}`, '#ffd24a'); w.fx('quest', 0, 0, ms.reward, `부업 ${ms.n}건 · ${ms.title}`);
+    w.say(`부업 이정표 「${ms.title}」 +$${ms.reward}`, '#ffd24a'); w.fx('quest', 0, 0, ms.reward, `부업 ${ms.n}건 · ${ms.title}`);
   }
 }

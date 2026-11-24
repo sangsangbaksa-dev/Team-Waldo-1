@@ -27,6 +27,27 @@ function arena(block = false) {
 }
 
 describe('match rules', () => {
+  it('rewards long-distance eliminations with up to three reserve rounds once', () => {
+    const { match, a, b, tick } = arena();
+    tick(PROTECTION_SECONDS + TICK);
+    a.reserve = RIFLE.reserve - 2;
+    match.bullets.set(100, { id: 100, owner: a.id, position: vec(0, eye(b).y, -46),
+      velocity: vec(0, 0, -RIFLE.velocity), expires: match.time + 4, origin: vec(0, eye(b).y, 100), generation: a.generation });
+    match.step();
+    expect(a.reserve).toBe(RIFLE.reserve);
+    expect(match.snapshot().events).toContainEqual(expect.objectContaining({ type: 'kill', bonus: 2, distance: 150 }));
+    match.step();
+    expect(a.reserve).toBe(RIFLE.reserve);
+  });
+  it('does not award reserve ammunition for a projectile from an earlier life', () => {
+    const { match, a, b, tick } = arena();
+    tick(PROTECTION_SECONDS + TICK);
+    a.reserve = 10;
+    match.bullets.set(100, { id: 100, owner: a.id, position: vec(0, eye(b).y, -46),
+      velocity: vec(0, 0, -RIFLE.velocity), expires: match.time + 4, origin: vec(0, eye(b).y, 100), generation: a.generation - 1 });
+    match.step();
+    expect(a.reserve).toBe(10);
+  });
   it('applies body damage, eliminates on a headshot, and respawns under protection', () => {
     const { match, a, b, tick, projectile } = arena();
     tick(PROTECTION_SECONDS + TICK);

@@ -87,6 +87,11 @@ export class Hud {
   }
 
   event(event: MatchEvent, self: string, now: number): void {
+    if (event.type === 'kill' && event.player === self && event.distance !== undefined) {
+      this.lastHit = now;
+      setText(this.hitNote, `${event.headshot ? 'HEADSHOT · ' : ''}${event.distance} M${event.bonus ? ` · +${event.bonus} ROUNDS` : ''}`);
+      return;
+    }
     if (event.type !== 'hit') return;
     if (event.target === self) this.lastDamage = now;
     if (event.player === self) {
@@ -152,10 +157,11 @@ export class Hud {
       this.killfeed.replaceChildren(...events.map(event => {
         const item = document.createElement('li');
         const icon = document.createElement('b');
-        icon.textContent = event.headshot ? '✦' : '›';
+        icon.textContent = event.headshot ? 'HS' : '›';
         icon.title = event.headshot ? 'Headshot' : 'Elimination';
         item.classList.toggle('mine', event.player === player.id);
         item.append(event.attacker, icon, event.victim);
+        if (event.distance !== undefined) { const range = document.createElement('small'); range.textContent = ` ${event.distance} m`; item.append(range); }
         return item;
       }));
     }

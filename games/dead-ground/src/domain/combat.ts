@@ -39,6 +39,7 @@ export interface Player {
 
 export interface Bullet {
   id: number; owner: string; position: Vec3; velocity: Vec3; expires: number;
+  origin?: Vec3; generation?: number;
 }
 
 export interface Movement {

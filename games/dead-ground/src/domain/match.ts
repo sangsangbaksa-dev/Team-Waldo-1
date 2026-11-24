@@ -12,7 +12,7 @@ type EventData =
   | { type: 'reload' | 'bolt' | 'spawn'; player: string }
   | { type: 'impact'; player: string; position: Vec3 }
   | { type: 'hit'; player: string; target: string; headshot: boolean; lethal: boolean; position: Vec3 }
-  | { type: 'kill'; player: string; attacker: string; victim: string; headshot: boolean };
+  | { type: 'kill'; player: string; attacker: string; victim: string; headshot: boolean; distance?: number; bonus?: number };
 
 export type MatchEvent = EventData & { serial: number; time: number };
 export interface Snapshot {
@@ -114,7 +114,7 @@ export class Match {
       phase: this.phase, time: this.time, remaining: this.remaining, round: this.round,
       players: ranked([...this.players.values()]).map(player => ({ ...player, position: { ...player.position } })),
       bullets: [...this.bullets.values()].map(bullet => ({
-        ...bullet, position: { ...bullet.position }, velocity: { ...bullet.velocity },
+        ...bullet, position: { ...bullet.position }, velocity: { ...bullet.velocity }, origin: bullet.origin && { ...bullet.origin },
       })),
       events: this.events.filter(event => this.time - event.time < 7),
     };
@@ -220,7 +220,7 @@ export class Match {
     const origin = eye(player);
     const id = ++this.projectileId;
     this.bullets.set(id, {
-      id, owner: player.id, position: origin,
+      id, owner: player.id, position: origin, origin: { ...origin }, generation: player.generation,
       velocity: vec(aim.x * RIFLE.velocity, aim.y * RIFLE.velocity, aim.z * RIFLE.velocity),
       expires: this.time + RIFLE.lifetime,
     });
@@ -244,7 +244,7 @@ export class Match {
     }
     if (stop <= 1) {
       const point = vec(lerp(from.x, to.x, stop), lerp(from.y, to.y, stop), lerp(from.z, to.z, stop));
-      if (victim) this.damage(bullet.owner, victim, headshot, point);
+      if (victim) this.damage(bullet, victim, headshot, point);
       else this.emit({ type: 'impact', player: bullet.owner, position: point });
       this.bullets.delete(bullet.id);
       return;
@@ -257,8 +257,8 @@ export class Match {
     bullet.velocity.y -= RIFLE.gravity * dt;
   }
 
-  private damage(owner: string, target: Player, headshot: boolean, position: Vec3): void {
-    const attacker = this.players.get(owner);
+  private damage(bullet: Bullet, target: Player, headshot: boolean, position: Vec3): void {
+    const owner = bullet.owner, attacker = this.players.get(owner);
     if (!attacker) return;
     target.health = Math.max(0, target.health - (headshot ? 100 : RIFLE.bodyDamage));
     this.emit({ type: 'hit', player: owner, target: target.id, headshot, lethal: target.health === 0, position });
@@ -268,6 +268,11 @@ export class Match {
     target.respawnAt = this.time + RESPAWN_SECONDS;
     attacker.kills++;
     if (headshot) attacker.headshots++;
-    this.emit({ type: 'kill', player: owner, attacker: attacker.name, victim: target.name, headshot });
+    const range = bullet.origin ? horizontalDistance(bullet.origin, position) : undefined;
+    const distance = range === undefined ? undefined : Math.round(range);
+    const eligible = attacker.alive && attacker.generation === bullet.generation && range !== undefined && range >= 100;
+    const bonus = eligible ? Math.max(0, Math.min(RIFLE.reserve - attacker.reserve, 3)) : 0;
+    attacker.reserve += bonus;
+    this.emit({ type: 'kill', player: owner, attacker: attacker.name, victim: target.name, headshot, distance, bonus });
   }
 }

@@ -787,7 +787,8 @@ dialog h2 {
 }
 
 /* 모노크롬: 화면 전체를 흑백 공포 톤으로 */
-html { background: #000; filter: grayscale(1) contrast(1.14) brightness(0.96); }
+html { background: #090909; }
+.heroart, #viewWrap { filter: grayscale(1) contrast(1.08) brightness(0.96); }
 
 #viewWrap.hiding::after {
   content: "";
@@ -805,7 +806,7 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
 .secondary { background: #191919; border-color: #777; }
 .bare b, .signalMark, .kicker, .intro em, .rec, #guide span,
 .hudleft span, kbd, .dials strong, .bad, .mapkey i,
-.mapkey i:nth-child(n), #toast { color: #d6d6d2 !important; }
+.mapkey i:nth-child(n), #toast { color: #d6d6d2; }
 .signalMark { border-color: #999; }
 .intro h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: -0.075em; }
 .kicker, .wordmark, .hudleft span, .statusfoot, .homefoot { font-family: "Courier New", monospace; }
@@ -829,7 +830,7 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
   background-image: repeating-radial-gradient(circle at 23% 41%, #fff 0 0.45px, transparent 0.8px 3px);
   background-size: 7px 7px;
   opacity: 0.035;
-  animation: film-flicker 5s steps(2, end) infinite;
+  animation: none;
 }
 #viewWrap.noticed .lens { animation: notice-pulse 1.4s ease-out; }
 #game:has(> #viewWrap.caught-shot) > :not(#viewWrap, #dialog),
@@ -880,7 +881,7 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
 .hudleft span, .hudleft strong, .hudright button { color: #fff; text-shadow: 0 1px 4px #000; }
 
 /* Strong contrast keeps the game HUD readable without lightening the world. */
-.hud { background: linear-gradient(#050807f0, #050807a0 55%, transparent); }
+.hud { background: none; }
 .hudleft { background: #050807a8; padding: 0.45rem 0.8rem 0.5rem; border-left: 2px solid #dec099; border-radius: 0 4px 4px 0; }
 .hudleft span { color: #f2d9b2; font-size: 0.92rem; }
 .hudleft strong { color: #fff; font-size: 1.05rem; }
@@ -953,4 +954,96 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
     padding-top: max(1.4rem, env(safe-area-inset-top));
     height: max(78px, calc(env(safe-area-inset-top) + 54px));
   }
+}
+
+/* Recording console: monochrome world, legible controls and a stable safe area. */
+#game {
+  --rt-left: max(12px, env(safe-area-inset-left));
+  --rt-right: max(12px, env(safe-area-inset-right));
+  --rt-top: max(12px, env(safe-area-inset-top));
+  --rt-bottom: max(12px, env(safe-area-inset-bottom));
+}
+#home { padding-bottom: env(safe-area-inset-bottom); }
+.mast { gap:12px; }
+.wordmark { font-family:inherit; font-size:14px; font-weight:650; letter-spacing:0; }
+.signalMark { width:25px; height:25px; font-size:22px; }
+#sound { white-space:nowrap; font-size:13px; }
+.intro h1 { letter-spacing:-.045em; line-height:.85; }
+.intro .kicker { font-family:inherit; letter-spacing:.04em; }
+.intro .damaged { font-weight:650; }
+.synopsis { color:#deded8; }
+.homefoot { flex-wrap:wrap; font-family:inherit; letter-spacing:0; gap:6px 10px; }
+.startrow button { min-height:48px; }
+.startrow:has(#continue:not([hidden])) #new { background:#191919e8; color:#e9e9e4; border-color:#888; }
+.homefoot button { min-height:44px; }
+.hud { padding:var(--rt-top) var(--rt-right) 0 var(--rt-left); align-items:flex-start; }
+.hudleft { min-width:0; max-width:min(560px,62%); border:1px solid #666; border-left:2px solid #d6d6cf; background:#161616f0; border-radius:3px; padding:8px 12px; }
+.hudleft span { font-family:inherit; letter-spacing:0; font-size:12px; line-height:1.35; color:#d3d3cd; }
+.hudleft strong { font-size:15px; line-height:1.45; overflow-wrap:anywhere; color:#fff; }
+#guide { gap:6px; margin-top:4px; }
+#guideArrow { flex:none; }
+#guideTextLabel { min-width:0; overflow-wrap:anywhere; }
+.hudright { flex:none; gap:6px; }
+.hudright button,.gear button,.touchactions button { min-height:44px; border:1px solid #858580; background:#171717f2; color:#eee; border-radius:3px; }
+.hudright button { white-space:nowrap; }
+#pauseGame { min-width:44px; }
+.hudright button:hover,.gear button:hover { background:#353535; }
+.gear { right:var(--rt-right); bottom:var(--rt-bottom); }
+.statusfoot { left:var(--rt-left); bottom:var(--rt-bottom); max-width:calc(100% - var(--rt-left) - var(--rt-right)); padding:7px 10px; gap:8px; background:#161616f0; border:1px solid #666; border-radius:3px; font-family:inherit; font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none; }
+.stamina-label { color:#d3d3cd; font-size:12px; }
+.stambar { height:6px; width:56px; background:#444; }
+#prompt { top:58%; max-width:calc(100% - 28px); white-space:normal; background:#171717f2; border:1px solid #999; border-radius:3px; line-height:1.5; padding:6px 12px; }
+#toast:not(:empty) { width:max-content; max-width:calc(100% - 28px); background:#171717ed; border:1px solid #777; border-radius:3px; padding:6px 10px; font-size:14px; text-shadow:none; }
+.reticle { transform:translate(-50%,-50%); }
+#dialog { padding:max(12px,env(safe-area-inset-top)) var(--rt-right) max(12px,env(safe-area-inset-bottom)) var(--rt-left); }
+.panel,dialog { background:#191919; border:1px solid #73736e; border-radius:4px; padding:clamp(16px,3vw,28px); box-shadow:none; max-height:calc(100dvh - 32px); overscroll-behavior:contain; }
+.panel h2,dialog h2 { font-family:inherit; font-weight:650; font-size:clamp(22px,4vw,30px); margin:10px 0; }
+.panel p,dialog p { color:#d0d0c9; line-height:1.65; }
+.panelActions button { min-height:44px; flex:1 1 auto; }
+.panelActions .primary { color:#161616; }
+.map { width:min(100%,355px,46dvh); border:1px solid #73736e; }
+.mapkey { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 12px; text-align:left; margin:12px auto; max-width:355px; font-size:13px; }
+.mapkey i { white-space:normal; }
+.map-guide { min-height:44px; }
+.keys { gap:9px 12px; grid-template-columns:minmax(0,1fr) auto; }
+.keys dd { color:#efefe8; text-align:right; }
+.touch .gear { bottom:calc(var(--rt-bottom) + 120px); }
+.touch #stick,.touch .touchactions { bottom:calc(var(--rt-bottom) + 52px); }
+.touch #stick { left:var(--rt-left); }
+.touch .touchactions { right:var(--rt-right); }
+.touch #stick { background:#191919b8; border-color:#a6a6a0; }
+.touch #stickknob { background:#b0b0a680; border-color:#ddd; }
+.touch #toast { bottom:calc(var(--rt-bottom) + 178px); }
+@media (max-width:700px) {
+  .intro { padding-top:clamp(32px,9svh,92px); }
+  .intro h1 { font-size:clamp(60px,20vw,112px); }
+  .hudleft { max-width:56%; padding:6px 8px; }
+  .hudleft strong { font-size:14px; }
+  .hudright button,.gear button { font-size:12px; padding:6px 8px; }
+  .hudright kbd,.gear kbd { display:none; }
+  .statusfoot { font-size:12px; gap:5px; }
+  .stambar { width:38px; }
+}
+@media (max-width:500px) and (orientation:portrait) {
+  .hud { flex-direction:column; align-items:stretch; gap:6px; }
+  .hudright { order:-1; align-self:flex-end; }
+  .hudleft { max-width:100%; align-self:flex-start; }
+  .hudleft span,.hudleft strong { white-space:normal; overflow:visible; text-overflow:clip; }
+  #guideTextLabel { white-space:normal; }
+  .gear { bottom:calc(var(--rt-bottom) + 48px); }
+  .touch .gear { bottom:calc(var(--rt-bottom) + 120px); }
+  .touch #prompt { top:55%; }
+}
+@media (max-height:500px) and (orientation:landscape) {
+  .intro { padding:8px 5vw 20px; }
+  .intro h1 { font-size:clamp(44px,11dvh,68px); margin:10px 0; }
+  .mast { height:auto; padding:8px max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left)); }
+  .hud { padding-top:var(--rt-top); }
+  .touch .gear { bottom:calc(var(--rt-bottom) + 102px); }
+  .touch #toast { bottom:calc(var(--rt-bottom) + 40px); max-width:42%; }
+  .map { width:min(100%,37dvh); }
+}
+@media (prefers-reduced-motion:reduce) {
+  #home::after,#viewWrap::before { animation:none; }
+  #viewWrap.noticed::before { opacity:.12; }
 }

@@ -295,7 +295,9 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
   if (!fromHistory) hubScrollY = window.scrollY;
   stopTileImages?.(); stopTileImages = undefined;
   if (STANDALONE.has(id)) {
-    location.assign(`${base}${id}/`);
+    const url = `${base}${id}/`;
+    if (fromHistory) location.replace(url);
+    else location.assign(url);
     return;
   }
   const navigation = ++generation;

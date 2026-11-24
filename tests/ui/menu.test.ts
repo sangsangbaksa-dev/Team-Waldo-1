@@ -13,6 +13,7 @@ vi.mock('../../src/race/game', () => ({ openRace: games.openRace }));
 vi.mock('../../src/shooter/game', () => ({ openShooter: games.openShooter }));
 vi.mock('../../src/tycoon/game', () => ({ openTycoon: games.openTycoon }));
 vi.mock('../../src/sky/game', () => ({ openSky: games.openSky }));
+vi.mock('../../src/net/config', () => ({ PVP_ENABLED: false, CHAT_ENABLED: false }));
 
 async function loadMenu(): Promise<void> {
   await import('../../src/main');

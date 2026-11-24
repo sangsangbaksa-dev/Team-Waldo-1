@@ -20,6 +20,8 @@ const fighter = (side, label, role) => `<section class="fighter ${side}" aria-la
   <div class="fighter-bottom"><div class="meter stamina" role="progressbar" aria-label="${role} stamina" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i class="value"></i></div><div class="pips" aria-label="Round wins">${pip}</div></div>
 </section>`;
 const keyboard = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
+const hubReturn = /\/parry-gladiator\/(?:index\.html)?$/.test(window.location.pathname)
+  ? '<a class="button hub-return" href="../">Return to WALDO hub</a>' : '';
 
 export class View {
   constructor(root, handlers) {
@@ -112,7 +114,7 @@ export class View {
       ${btn('Solo duel', 'solo', { glyph: 'swords', primary: true, meta: 'VS AI' })}
       ${btn('Online duel', 'online', { glyph: 'link', meta: '1 VS 1' })}
       ${btn('Combat practice', 'practice', { glyph: 'shield' })}
-      <div class="menu-secondary">${btn('Controls', 'how', { glyph: 'book' })}${btn('Settings', 'settings', { glyph: 'cog' })}</div></div>`);
+      <div class="menu-secondary">${btn('Controls', 'how', { glyph: 'book' })}${btn('Settings', 'settings', { glyph: 'cog' })}</div></div>${hubReturn}`);
   }
 
   solo(settings) {

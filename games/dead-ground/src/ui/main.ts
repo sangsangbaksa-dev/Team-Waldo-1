@@ -59,6 +59,7 @@ class Game {
   private lastFrame = 0;
 
   constructor() {
+    element<HTMLAnchorElement>('hub-return').hidden = !/\/dead-ground\/(?:index\.html)?$/.test(location.pathname);
     this.name.value = callsign(cfg('name') ?? 'NOMAD');
     const sensitivity = element<HTMLInputElement>('sensitivity');
     sensitivity.value = cfg('sensitivity') ?? '1';

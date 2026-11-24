@@ -52,6 +52,7 @@ p,h1,h2,ol,ul{margin:0}
   padding: clamp(1.1rem,3.15vw,2.6rem) clamp(1.2rem,5.5vw,6.5rem);
 }
 .masthead{align-self: start}
+.masthead-actions{display:flex;align-items:center;gap:.55rem}
 .wordmark {
   display:flex;
   align-items:center;

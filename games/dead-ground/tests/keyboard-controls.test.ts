@@ -78,3 +78,17 @@ it('pauses on tab hide and ignores a rejected lock from an older activation', as
   document.dispatchEvent(new Event('visibilitychange'));
   expect(pause).toHaveBeenCalledTimes(1);
 });
+
+it('allows movement while holding the ControlLeft crouch key', () => {
+  const document = new EventTarget();
+  const window = new EventTarget();
+  const canvas = Object.assign(new EventTarget(), { requestPointerLock: () => Promise.resolve() });
+  vi.stubGlobal('document', document);
+  vi.stubGlobal('window', window);
+  const controls = new Controls(canvas as unknown as HTMLCanvasElement, vi.fn());
+  controls.enable();
+  for (const code of ['ControlLeft', 'KeyW']) {
+    document.dispatchEvent(Object.assign(new Event('keydown', { cancelable: true }), { code, ctrlKey: true }));
+  }
+  expect(controls.sample(0)).toMatchObject({ crouch: true, forward: 1 });
+});

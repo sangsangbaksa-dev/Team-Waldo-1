@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import '../shared/ui.css';
 import './tycoon.css';
 import './ui/map-directory.css';
+import './ui/teleport.css';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { loadCharacterKit, type CharacterKit } from '../shared/character';
@@ -16,6 +17,7 @@ import { Atmosphere } from './scene/sky';
 import { Player } from './scene/player';
 import { Rides } from './scene/rides';
 import { WayfindingMarker } from './scene/wayfinding';
+import { findTeleportLanding } from './scene/teleport';
 import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, pointFromMapClick } from './ui/minimap';
@@ -33,6 +35,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   root.innerHTML = `
     <canvas class="ty-canvas"></canvas>
     <div class="ty-fx"><div class="ty-vig"></div></div>
+    <div class="ty-warp-flash" aria-hidden="true"></div>
     <div class="ty-hud" id="ty-hud" hidden>
       <div class="ty-top">
         <div class="ty-cash"><svg class="ty-ico coin" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="tyg" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff3b0"/><stop offset=".55" stop-color="#ffcf5a"/><stop offset="1" stop-color="#b9801c"/></radialGradient></defs><circle cx="12" cy="12" r="10" fill="url(#tyg)" stroke="#7a4f10" stroke-width="1.5"/><circle cx="12" cy="12" r="6.4" fill="none" stroke="#b9801c" stroke-width="1"/><path d="M12 7v10M14.4 9.4c-.6-.9-4.8-1-4.8.9 0 2.2 4.8 1 4.8 3.3 0 1.9-4.2 1.9-4.8.9" fill="none" stroke="#7a4f10" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl">현금</span><b id="ty-cash">$0</b><small id="ty-debt"></small></div>
@@ -119,7 +122,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
           reachable: true,
           distance: streetDistance(player.pos, car),
         }));
-        h = mapDirectoryHtml(cars, waypoint !== null);
+        h = mapDirectoryHtml(cars, waypoint !== null, teleportBlock());
         break;
       }
     }
@@ -133,6 +136,16 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap');
     if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true, waypoint, vehicles: rides?.positions() });
   }
+  function placeMapPin(point: { x: number; z: number }): void {
+    const roadX = Math.round((point.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
+    const roadZ = Math.round((point.z - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
+    const snap = Math.abs(point.x - roadX) < Math.abs(point.z - roadZ)
+      ? { x: roadX, z: point.z } : { x: point.x, z: roadZ };
+    waypoint = { x: clamp(snap.x, -WORLD_HALF + 4, WORLD_HALF - 4), z: clamp(snap.z, -WORLD_HALF + 4, WORLD_HALF - 4) };
+    hudDirty = true;
+    renderModal();
+  }
+
   function openModal(m: Modal): void {
     if (!modal) modalTrigger = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
     modal = m; if (m && document.pointerLockElement === canvas) document.exitPointerLock(); resetInput(); renderModal();
@@ -149,6 +162,40 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (rides.driving !== wasDriving) { resetInput(); hudDirty = true; if (!player.firstPerson && document.pointerLockElement === canvas) document.exitPointerLock(); }
     toast(result.message, result.ok ? 'info' : 'bad');
   }
+  function teleportBlock(): string | undefined {
+    if (rides?.driving) return '차량에서 내린 뒤 사용할 수 있어요.';
+    if (core.state.activity) return '진행 중인 작업을 마치면 사용할 수 있어요.';
+    return undefined;
+  }
+
+  function teleportToPin(): void {
+    if (phase !== 'play' || modal?.kind !== 'map' || !waypoint) return;
+    const blocked = teleportBlock();
+    if (blocked) { audio.deny(); toast(blocked, 'bad'); return; }
+    const radius = 0.9;
+    const scratch = { x: 0, z: 0 };
+    const point = findTeleportLanding(waypoint, ({ x, z }) =>
+      !colliders.resolve(x, z, radius, scratch) &&
+      !rides?.blocksTraffic(x, z, radius) &&
+      !traffic?.blocks(x, z, radius) &&
+      !crowd?.blocks(x, z, radius),
+    );
+    if (!point) { audio.deny(); toast('착지할 공간이 없습니다. 핀을 다른 곳에 놓아 주세요.', 'bad'); return; }
+
+    player.teleport(point.x, point.z, player.camYaw - Math.PI);
+    waypoint = null;
+    near = null;
+    core.setPresence(null);
+    hudDirty = true;
+    resetInput();
+    closeModal();
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      q('.ty-warp-flash').animate([{ opacity: 0.35 }, { opacity: 0 }], { duration: 440, easing: 'ease-out' });
+    }
+    audio.open();
+    toast('핀 근처로 순간이동했습니다', 'good');
+  }
+
   function honk(): void {
     if (!rides?.driving || modal || phase !== 'play') return;
     const now = performance.now();
@@ -165,6 +212,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   modalEl.addEventListener('click', e => {
     const t = e.target as HTMLElement; audio.unlock();
     if (t.closest('[data-close]') || t === modalEl || t.matches('.ty-pause-screen, .ty-win-screen')) { closeModal(); return; }
+    if (t.closest('[data-waypoint-teleport]')) { teleportToPin(); return; }
     if (t.closest('[data-waypoint-clear]')) { waypoint = null; hudDirty = true; renderModal(); toast('자유 이동 목적지를 해제했습니다'); return; }
     const vehicleTarget = t.closest<HTMLButtonElement>('[data-vehicle-target]');
     if (vehicleTarget && modal?.kind === 'map' && !vehicleTarget.disabled) {
@@ -178,13 +226,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
     const mapCanvas = t.closest<HTMLCanvasElement>('#ty-bigmap');
     if (mapCanvas && modal?.kind === 'map' && e instanceof MouseEvent) {
-      const point = pointFromMapClick(e.clientX, e.clientY, mapCanvas.getBoundingClientRect());
-      const roadX = Math.round((point.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
-      const roadZ = Math.round((point.z - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
-      const snap = Math.abs(point.x - roadX) < Math.abs(point.z - roadZ)
-        ? { x: roadX, z: point.z } : { x: point.x, z: roadZ };
-      waypoint = { x: clamp(snap.x, -WORLD_HALF + 4, WORLD_HALF - 4), z: clamp(snap.z, -WORLD_HALF + 4, WORLD_HALF - 4) };
-      hudDirty = true; renderModal(); toast('목적지를 지도에 표시했습니다', 'good'); return;
+      placeMapPin(pointFromMapClick(e.clientX, e.clientY, mapCanvas.getBoundingClientRect()));
+      toast('목적지를 지도에 표시했습니다', 'good'); return;
     }
     const act = t.closest<HTMLElement>('[data-act]');
     if (act && modal?.kind === 'spot') { doAction(modal.id, act.dataset.act!); return; }
@@ -196,16 +239,19 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function doAction(spotId: string, actionId: string): void {
     const before = core.state.cash, r = core.perform(spotId, actionId);
     if (!r.ok) { audio.deny(); toast(r.message, 'bad'); renderModal(); return; }
-    audio.click(); if (core.state.cash < before) audio.spend();
-    const def = core.actionsAt(spotId).find(a => a.id === actionId); void def;
-    if (core.state.activity) { closeModal(); toast(r.message); } else { toast(r.message, 'good'); renderModal(); }
+    const spent = core.state.cash < before;
+    const bet = spotId === 'casino' && actionId.startsWith('casino_flip_');
+    audio.click(); if (spent) audio.spend();
+    if (bet) save();
+    if (core.state.activity) { closeModal(); toast(r.message); }
+    else { toast(r.message, bet && spent ? 'bad' : 'good'); renderModal(); }
     hudDirty = true;
   }
   /** 저장을 지우고 빈털터리 첫날부터 다시 시작합니다(메뉴에서 두 번 눌러야 실행). */
   function restartGame(): void {
     clearTycoon(); bindCore(createCore());
     modal = null; confirmRestart = false; renderModal(); toastList.length = 0; q('#ty-toasts').replaceChildren(); q('#ty-banner').classList.remove('show');
-    cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true; syncCity(false); startPlay(); save();
+    waypoint = null; cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true; syncCity(false); startPlay(); save();
   }
   function menuAction(m: string): void {
     if (m !== 'restart') confirmRestart = false;
@@ -227,9 +273,28 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     audio.unlock();
     if (phase === 'title') { if (player && e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
     if (phase !== 'play') return;
-    if (e.code === 'Escape') { e.preventDefault(); if (modal?.kind === 'menu') closeModal(true); else openModal({ kind: 'menu' }); return; }
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      if (!e.repeat) {
+        if (modal?.kind === 'menu' || modal?.kind === 'map') closeModal(true);
+        else openModal({ kind: 'menu' });
+      }
+      return;
+    }
+    if (modal?.kind === 'map') {
+      if (e.code === 'KeyM' && !e.repeat) { closeModal(true); return; }
+      if (e.target instanceof HTMLCanvasElement && e.target.id === 'ty-bigmap' && (e.code.startsWith('Arrow') || e.code === 'Enter')) {
+        e.preventDefault();
+        const point = waypoint ?? player.pos;
+        const x = point.x + (Number(e.code === 'ArrowRight') - Number(e.code === 'ArrowLeft')) * PITCH;
+        const z = point.z + (Number(e.code === 'ArrowDown') - Number(e.code === 'ArrowUp')) * PITCH;
+        placeMapPin({ x, z });
+        modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap')?.focus({ preventScroll: true });
+      }
+      return;
+    }
     if (modal) {
-      if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a) doAction(modal.id, a.id); e.preventDefault(); }
+      if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a && !e.repeat) doAction(modal.id, a.id); e.preventDefault(); }
       else if ((e.code === 'KeyE' || e.code === 'Tab') && modal.kind !== 'menu') { e.preventDefault(); closeModal(true); }
       return;
     }

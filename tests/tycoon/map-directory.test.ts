@@ -25,6 +25,13 @@ describe('HUSTLE accessible vehicle directory', () => {
     expect(html).toContain('data-waypoint-clear >');
     expect(html).toContain('도로 약 0m');
   });
+  it('only enables the teleport control for an available pin', () => {
+    expect(mapDirectoryHtml(cars, false)).toMatch(/data-waypoint-teleport[^>]+ disabled/);
+    expect(mapDirectoryHtml(cars, true)).toMatch(/data-waypoint-teleport aria-describedby="ty-warp-hint" >/);
+    const busy = mapDirectoryHtml(cars, true, '차량에서 내린 뒤 사용할 수 있어요.');
+    expect(busy).toMatch(/data-waypoint-teleport[^>]+ disabled/);
+    expect(busy).toContain('차량에서 내린 뒤 사용할 수 있어요.');
+  });
   it('offers a helpful empty state when no vehicles are available', () => {
     expect(mapDirectoryHtml([], false)).toContain('배치된 차량이 없습니다.');
   });

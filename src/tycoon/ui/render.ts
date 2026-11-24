@@ -109,7 +109,7 @@ export interface MapCarRow {
   distance: number;
 }
 
-export function mapDirectoryHtml(cars: readonly MapCarRow[], hasWaypoint: boolean): string {
+export function mapDirectoryHtml(cars: readonly MapCarRow[], hasWaypoint: boolean, teleportBlock?: string): string {
   const rows = cars.map((car, index) => {
     const distance = Number.isFinite(car.distance) ? Math.max(0, Math.round(car.distance)) : 0;
     const description = car.active ? '현재 운전 중'
@@ -121,14 +121,20 @@ export function mapDirectoryHtml(cars: readonly MapCarRow[], hasWaypoint: boolea
       <span class="ty-map-car-copy"><strong>${esc(car.name)}</strong><small>${sub}</small></span>
       <span class="ty-map-car-chevron" aria-hidden="true">${car.reachable && !car.active ? '↗' : '—'}</span></button>`;
   }).join('');
+  const canTeleport = hasWaypoint && !teleportBlock;
+  const teleportHint = teleportBlock ?? (hasWaypoint ? '핀 근처의 빈 공간에 착지합니다.' : '지도에서 먼저 핀을 지정하세요.');
   return `<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도">
     <button type="button" class="ty-x" data-close aria-label="지도 닫기">✕</button>
     <div class="ty-map-layout">
-      <div class="ty-map-surface"><canvas id="ty-bigmap" width="720" height="720" aria-label="지도를 눌러 원하는 지점에 경로를 표시"></canvas>
-        <div class="ty-map-caption">지도를 눌러 목적지 지정 · 점선은 도로 참고 경로</div></div>
+      <div class="ty-map-surface"><canvas id="ty-bigmap" width="720" height="720" tabindex="0" aria-label="도시 지도 핀" aria-describedby="ty-map-help"></canvas>
+        <div class="ty-map-caption" id="ty-map-help">지도 클릭 또는 방향키로 핀 지정 · 점선은 도로 경로</div></div>
       <div class="ty-map-aside"><div class="ty-map-aside-head"><small>CITY DIRECTORY</small><h2>이동할 곳을 선택하세요</h2><p>차량을 선택하거나 지도 위의 지점을 눌러 주세요. 도로는 자유롭게 탐험할 수 있지만 사업장 이용에는 성장 단계가 적용됩니다.</p></div>
         <div class="ty-map-vehicles">${rows || '<p class="ty-map-empty">배치된 차량이 없습니다.</p>'}</div>
-        <button type="button" class="ty-clear-waypoint" data-waypoint-clear ${hasWaypoint ? '' : 'disabled'}>설정한 목적지 지우기</button>
+        <div class="ty-warp-controls">
+          <button type="button" class="wd-btn primary" data-waypoint-teleport aria-describedby="ty-warp-hint" ${canTeleport ? '' : 'disabled'}>핀으로 순간이동</button>
+          <small id="ty-warp-hint">${esc(teleportHint)}</small>
+        </div>
+        <button type="button" class="ty-clear-waypoint" data-waypoint-clear ${hasWaypoint ? '' : 'disabled'}>핀 지우기</button>
       </div>
     </div>
   </div>`;

@@ -28,3 +28,8 @@
   opacity: 0;
   background: radial-gradient(ellipse at center, transparent 30%, #63e7e7 100%);
 }
+
+.ty-map-surface canvas:focus-visible {
+  outline: 2px solid #a5eff0;
+  outline-offset: -3px;
+}

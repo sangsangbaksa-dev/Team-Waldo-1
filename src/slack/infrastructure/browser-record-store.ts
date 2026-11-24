@@ -1,4 +1,4 @@
-import type { SlackRecord } from '../types';
+import type { SlackRecord } from '../domain/contracts';
 import type { SlackRecordStore } from '../application/records';
 const key = 'waldo.slack.v1';
 export const browserSlackRecordStore: SlackRecordStore = {

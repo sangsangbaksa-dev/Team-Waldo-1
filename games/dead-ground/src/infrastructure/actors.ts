@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RIFLE, type Player } from '../domain/combat.js';
+import { blendMotion } from './visual-motion.js';
 
 const PANTS = new THREE.MeshStandardMaterial({ color: '#4b5146', roughness: 1 });
 const JACKET = new THREE.MeshStandardMaterial({ color: '#666853', roughness: 0.96 });
@@ -68,8 +69,6 @@ function glintTexture(): THREE.CanvasTexture {
 }
 
 let glintMap: THREE.Texture | undefined;
-import { blendMotion } from './visual-motion.js';
-
 export class OperatorView {
   readonly root = new THREE.Group();
   private readonly spine = new THREE.Group();

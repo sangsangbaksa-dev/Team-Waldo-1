@@ -1,6 +1,6 @@
 import type { TycoonCore } from '../core/types';
-import { TYCOON_SAVE_KEY } from '../core/summary';
-export { TYCOON_SAVE_KEY, readTycoonSummary } from '../core/summary';
+import { TYCOON_SAVE_KEY } from './save-summary';
+export { TYCOON_SAVE_KEY, readTycoonSummary } from './save-summary';
 
 function store(storage?: Storage): Storage | null {
   try { return storage ?? globalThis.localStorage ?? null; } catch { return null; }

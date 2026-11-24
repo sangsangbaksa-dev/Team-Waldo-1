@@ -1,4 +1,5 @@
-﻿import type { ActivityId, CreateSim, SlackEvent, SlackState, WatchMode, WatcherKind } from './types';
+﻿import type { ActivityId, CreateSim, SlackEvent, SlackState, WatchMode, WatcherKind } from './domain/contracts';
+import { scoreRun, gradeRun } from './domain/scoring';
 
 export const GOALS = [46, 54, 62] as const;
 
@@ -124,12 +125,10 @@ export const createSim: CreateSim = (stage, seed, level) => {
       events.push({ t: 'leave' });
     }
   };
-  const score = () => Math.max(0, Math.round(state.fun * 10 + comboBonus + state.study * 3 - state.strikes * 150));
+  const score = () => scoreRun(state, comboBonus);
   const finish = () => {
     state.phase = 'done'; state.score = score();
-    const quality = state.fun / state.goal * 80 + state.study * 0.2 + used.size * 1.5 - state.strikes * 10 - state.sus * 0.12;
-    state.grade = state.fun < state.goal ? (state.fun >= state.goal * 0.6 ? 'C' : 'D')
-      : quality + (level - 1) * 6 >= 114 ? 'S' : quality + (level - 1) * 6 >= 100 ? 'A' : quality + (level - 1) * 6 >= 86 ? 'B' : 'C';
+    state.grade = gradeRun(state, used.size, level);
     events.push({ t: 'done', grade: state.grade });
   };
   const active0 = () => (!state.cover ? state.activity : null);

@@ -19,6 +19,7 @@ import { Player } from './scene/player';
 import { Rides } from './scene/rides';
 import { WayfindingMarker } from './scene/wayfinding';
 import { findTeleportLanding } from './scene/teleport';
+import { readSessionPosition, type SessionPosition } from './scene/session-position';
 import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, pointFromMapClick } from './ui/minimap';
@@ -89,6 +90,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
   let tutorialTime = -1;
   let lastBet: CasinoOutcome | null = null;
+  let resumePosition: SessionPosition | null = null;
   const waypointVector = new THREE.Vector3();
   let lastCrashAt = -100, lastHonkAt = -1000;
   let modalTrigger: HTMLElement | null = null;
@@ -104,7 +106,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 저장 ----------
-  const save = (): void => { if (core && phase === 'play') saveTycoon(core); };
+  const save = (): void => {
+    if (!core || phase !== 'play') return;
+    const world: SessionPosition = {
+      x: player.pos.x, z: player.pos.z, yaw: player.camYaw - Math.PI,
+      waypoint, ride: rides?.snapshot() ?? null,
+    };
+    saveTycoon({ serialize: () => ({ ...core.serialize(), world }) });
+  };
 
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
@@ -177,18 +186,22 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     return undefined;
   }
 
-  function teleportToPin(): void {
-    if (phase !== 'play' || modal?.kind !== 'map' || !waypoint) return;
-    const blocked = teleportBlock();
-    if (blocked) { audio.deny(); toast(blocked, 'bad'); return; }
+  function safeArrival(target: { x: number; z: number }): { x: number; z: number } | null {
     const radius = 0.9;
     const scratch = { x: 0, z: 0 };
-    const point = findTeleportLanding(waypoint, ({ x, z }) =>
+    return findTeleportLanding(target, ({ x, z }) =>
       !colliders.resolve(x, z, radius, scratch) &&
       !rides?.blocksTraffic(x, z, radius) &&
       !traffic?.blocks(x, z, radius) &&
       !crowd?.blocks(x, z, radius),
     );
+  }
+
+  function teleportToPin(): void {
+    if (phase !== 'play' || modal?.kind !== 'map' || !waypoint) return;
+    const blocked = teleportBlock();
+    if (blocked) { audio.deny(); toast(blocked, 'bad'); return; }
+    const point = safeArrival(waypoint);
     if (!point) { audio.deny(); toast('착지할 공간이 없습니다. 핀을 다른 곳에 놓아 주세요.', 'bad'); return; }
 
     player.teleport(point.x, point.z, player.camYaw - Math.PI);
@@ -202,6 +215,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       q('.ty-warp-flash').animate([{ opacity: 0.35 }, { opacity: 0 }], { duration: 440, easing: 'ease-out' });
     }
     audio.open();
+    save();
     toast('핀 근처로 순간이동했습니다', 'good');
   }
 
@@ -259,6 +273,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   /** 저장을 지우고 빈털터리 첫날부터 다시 시작합니다(메뉴에서 두 번 눌러야 실행). */
   function restartGame(): void {
+    resumePosition = null;
     clearTycoon(); bindCore(createCore());
     modal = null; confirmRestart = false; renderModal(); toastList.length = 0; q('#ty-toasts').replaceChildren(); q('#ty-banner').classList.remove('show');
     waypoint = null; lastBet = null; cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true;
@@ -411,7 +426,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (a === 'exit') { exit(); return; }
     if (a === 'new' && readTycoonSummary().has && !confirmNew) { confirmNew = true; showTitle(); return; } // 저장이 있으면 한 번 더 눌러야 지워집니다
     confirmNew = false;
-    if (a === 'new') { waypoint = null; clearTycoon(); bindCore(createCore()); syncCity(false); rebuildFleet(); }
+    if (a === 'new') { waypoint = null; resumePosition = null; clearTycoon(); bindCore(createCore()); syncCity(false); rebuildFleet(); }
     else if (a === 'continue') { /* 제목 화면에서 이미 저장본으로 만든 코어를 씁니다 */ }
     startPlay();
   }
@@ -419,8 +434,16 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     phase = 'play'; titleEl.hidden = true; hudEl.hidden = false; resetInput(); applyStageLook();
     const sp = layout.spawn, s = core.state; const bench = s.presence ? city.doorOf(s.presence) : null;
     tutorialTime = s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20 ? 0 : -1;
-    if (bench) player.teleport(bench.x + bench.fx * 2.5 + (bench.fz ? 2 : 0), bench.z + bench.fz * 2.5 + (bench.fx ? 2 : 0), Math.atan2(-bench.fx, -bench.fz)); else player.teleport(sp.x, sp.z, sp.yaw);
-    if (s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20) { banner('빈털터리', '벤치에서 눈을 떴습니다. 병을 주워 팔고, 일을 찾아 걸어가 보세요.', 5000); toast('E 로 장소와 상호작용 · 지도(M)로 길을 찾으세요', 'info', 6); }
+    const saved = resumePosition; resumePosition = null;
+    const point = saved && safeArrival(saved);
+    if (saved?.ride && rides?.restore(saved.ride, player)) {
+      player.camYaw = saved.yaw + Math.PI;
+      player.camPitch = 0.35; player.dist = 10;
+    } else if (point && saved) player.teleport(point.x, point.z, saved.yaw);
+    else if (bench) player.teleport(bench.x + bench.fx * 2.5 + (bench.fz ? 2 : 0), bench.z + bench.fz * 2.5 + (bench.fx ? 2 : 0), Math.atan2(-bench.fx, -bench.fz));
+    else player.teleport(sp.x, sp.z, sp.yaw);
+    if (saved) waypoint = saved.waypoint;
+    if (!saved && s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20) { banner('빈털터리', '벤치에서 눈을 떴습니다. 병을 주워 팔고, 일을 찾아 걸어가 보세요.', 5000); toast('E 로 장소와 상호작용 · 지도(M)로 길을 찾으세요', 'info', 6); }
     audio.unlock(); core.tick(0.0001);
   }
 
@@ -605,7 +628,9 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
       prMax = pr = Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1); renderer.setPixelRatio(pr);
       renderer.shadowMap.enabled = quality !== 'low'; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
-      bindCore(createCore({ save: loadTycoon() }));
+      const stored = loadTycoon();
+      resumePosition = readSessionPosition(stored);
+      bindCore(createCore({ save: stored }));
       layout = buildLayout(core.spots() as SpotDef[]);
       city = new CityView(layout, quality); scene.add(city.group); colliders = city.colliders;
       // Build occupied lots and their colliders before choosing safe parked car locations.

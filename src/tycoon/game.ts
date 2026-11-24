@@ -339,10 +339,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { resetInput(); if (document.hidden && phase === 'play' && !modal) openModal({ kind: 'menu' }); };
+  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { last = performance.now(); resetInput(); if (document.hidden && phase === 'play' && !modal) openModal({ kind: 'menu' }); };
   document.addEventListener('visibilitychange', onVisibility);
   canvas.addEventListener('pointerdown', e => {
     audio.unlock(); if (phase !== 'play' || modal) return;
+    if (e.pointerType === 'touch') { e.preventDefault(); try { canvas.setPointerCapture(e.pointerId); } catch { /* Window listeners remain active. */ } }
     if (e.pointerType === 'touch') {
       if (e.clientX < innerWidth * 0.45 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; const st = q('#ty-stick'); st.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
       else if (tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
@@ -360,16 +361,17 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.pointerId === tc.brakeId) { tc.brakeId = -1; tc.brake = false; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); }
     if (e.pointerId === drag) drag = -1;
   };
-  window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
+  window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp); canvas.addEventListener('lostpointercapture', onUp);
   const onWheel = (e: WheelEvent): void => { if (phase === 'play' && !modal && !player.firstPerson) player.dist = clamp(player.dist + e.deltaY * 0.01, 3.5, 14); };
   window.addEventListener('wheel', onWheel, { passive: true });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
     const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') { if (rides?.driving) honk(); else interact(); } else if (t === 'run') {
-      if (rides?.driving) { tc.brakeId = e.pointerId; tc.brake = true; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
+      if (rides?.driving) { try { b.setPointerCapture(e.pointerId); } catch { /* Window listeners remain active. */ } tc.brakeId = e.pointerId; tc.brake = true; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
       else { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); }
     } else if (t === 'view') { toggleView(); }
   });
+  q('.ty-touchpad').addEventListener('lostpointercapture', onUp);
   q('#ty-prompt').addEventListener('click', () => { audio.unlock(); if (rides?.driving || rides?.nearby(player.pos.x, player.pos.z)) toggleRide(); else interact(); });
   q('#ty-route-clear').addEventListener('click', () => { waypoint = null; hudDirty = true; toast('목적지를 해제했습니다'); });
   q('#ty-b-status').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'status' }); });
@@ -407,7 +409,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function attachCarry(force = false): void {
     const s = core.state, key = `${s.cargo?.units ? s.cargo.kind : ''}${s.cargo?.units ?? 0}|${s.bottles}`; if (!force && key === lastCarry) return; lastCarry = key;
-    const rig = player?.rig; if (!rig) return; const old = rig.torso.getObjectByName('carry'); if (old) rig.torso.remove(old);
+    const rig = player?.rig; if (!rig) return; const old = rig.torso.getObjectByName('carry'); if (old) {
+      rig.torso.remove(old);
+      old.traverse(node => { if (node instanceof THREE.Mesh) { node.geometry.dispose(); for (const material of Array.isArray(node.material) ? node.material : [node.material]) material.dispose(); } });
+    }
     if (!s.cargo?.units && !s.bottles) return;
     const g = new THREE.Group(); g.name = 'carry';
     if (s.cargo?.units) { const sz = 0.3 + Math.min(0.35, s.cargo.units / 120); const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, sz, sz * 1.3), new THREE.MeshLambertMaterial({ color: 0xb98a4a })); m.position.set(-0.32, 1.12, 0); g.add(m); }
@@ -459,7 +464,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now;
+    if (document.hidden) return;
     try { tick(dt, now / 1000); } catch (err) { console.error(err); }
   }
   function tick(dt: number, nowS: number): void {
@@ -530,7 +536,6 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     syncT += dt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
     saveT += dt; if (saveT > 25) { saveT = 0; save(); }
     audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder();
-    const fl = q('#ty-flash'); void fl;
     audio.drive(rides?.speed ?? 0, playing && !!rides?.driving && !paused() && !document.hidden);
     // 토스트 정리
     const nowMs = performance.now(); while (toastList.length && toastList[0].at < nowMs) toastList.shift()!.el.remove();
@@ -578,7 +583,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
     for (const b of q('#ty-speed').children) (b as HTMLElement).classList.toggle('on', Number((b as HTMLElement).dataset.speed) === s.speed);
     style('energy', 'width', `${s.energy}%`); set('energy-n', String(s.energy)); q('#ty-energy').parentElement!.classList.toggle('low', s.energy < 25);
-    html('carry', `${s.cargo?.units ? `<span>📦 재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>🍾 빈 병 ${s.bottles}</span>` : ''}`);
+    html('carry', `${s.cargo?.units ? `<span>재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>빈 병 ${s.bottles}</span>` : ''}`);
     html('goal', `<b>${esc(s.goal.label)}</b><div class="ty-bar gold"><i style="width:${Math.round(s.goal.progress * 100)}%"></i></div>${s.goal.steps.filter(x => !x.done).slice(0, 3).map(x => `<small>○ ${esc(x.label)}</small>`).join('')}`);
     // 활동·과제
     const a = s.activity; q('#ty-activity').hidden = !a; if (a) { set('act-label', a.label); style('act-bar', 'width', `${Math.round(a.progress * 100)}%`); }
@@ -589,7 +594,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     }
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
-    if (rides?.driving && !modal) { p.hidden = false; html('prompt', rides.speed > 1 ? '<b>정차한 뒤 하차하세요</b>' : '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
+    const nearbyRide = rides?.nearby(player.pos.x, player.pos.z);
+    if (rides?.driving && !modal) { p.hidden = false; html('prompt', rides.speed > 1 ? '<b>정차한 뒤 하차하세요</b>' : '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (nearbyRide && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(nearbyRide.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
     const actionButton = q<HTMLButtonElement>('[data-t="use"]');
     actionButton.textContent = rides?.driving ? '경적' : '행동';
     actionButton.classList.toggle('horn', !!rides?.driving);
@@ -599,7 +605,6 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     runButton.setAttribute('aria-label', rides?.driving ? '길게 눌러 차량 브레이크' : '달리기 전환');
     runButton.classList.toggle('brake', !!rides?.driving);
     const rideButton = q<HTMLButtonElement>('#ty-t-ride');
-    const nearbyRide = rides?.nearby(player.pos.x, player.pos.z);
     rideButton.textContent = rides?.driving ? (rides.speed > 1 ? '정차 후 하차' : '하차') : '탑승';
     rideButton.disabled = !nearbyRide || !!s.activity || (!!rides?.driving && rides.speed > 1);
     rideButton.setAttribute('aria-label', rides?.driving ? '차량에서 내리기' : '가까운 차량 탑승');
@@ -612,9 +617,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
     window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
-    if (document.pointerLockElement) document.exitPointerLock();
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
     for (const u of unsub) u();
-    try { waypointMarker?.dispose(); rides?.dispose(); crowd?.dispose(); traffic?.dispose(); player?.dispose(); city?.dispose(); atmo?.dispose(); } catch { /* 정리 실패는 무시 */ }
+    if (import.meta.env.DEV) delete (window as unknown as { __ty?: unknown }).__ty;
+    for (const resource of [waypointMarker, rides, crowd, traffic, player, city, atmo]) { try { resource?.dispose(); } catch (err) { console.error(err); } }
     audio.dispose(); post?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }
 

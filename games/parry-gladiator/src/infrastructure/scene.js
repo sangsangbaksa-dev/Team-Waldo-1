@@ -3,7 +3,7 @@ import { attacks } from '../domain/combat.js';
 import { createArena } from './render/arena.js';
 import { createFighter } from './render/fighter.js';
 import { BladeTrail, ImpactRing, Sparks } from './render/effects.js';
-import { clamp, mix } from './render/palette.js';
+import { mix } from './render/palette.js';
 import { duelFraming, impactMotion } from './render/motion.js';
 
 const vec = () => new THREE.Vector3();
@@ -219,7 +219,7 @@ export class Scene {
     this.wasMenu = menu;
     this.portraitLight.visible = menu;
     this.lastRound = state.round;
-    if (reset) { this.sparks.reset(); this.impactRing.reset(); for (const f of this.fighters) f.trail.reset(); }
+    if (reset) { this.shake = 0; this.latched = 0; this.sparks.reset(); this.impactRing.reset(); for (const f of this.fighters) f.trail.reset(); }
     const footsteps = this.fighters.map((rig, i) => this.updateRig(rig, state, state.players[i], i, dt, menu, online, reset, paused, reduced));
     this.setupCamera(local, dt, menu, reduced, reset);
     this.renderer.render(this.scene, this.camera);

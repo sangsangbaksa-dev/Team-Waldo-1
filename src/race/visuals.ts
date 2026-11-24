@@ -65,11 +65,12 @@ export function addRaceScenery(scene: THREE.Scene, track: Track, quality: 'high'
     for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(440 + i * 14, 118); ctx.lineTo(418 + i * 14, 154); ctx.stroke(); }
   }
   const signTexture = new THREE.CanvasTexture(signCanvas); signTexture.colorSpace = THREE.SRGBColorSpace;
-  const signMaterial = new THREE.MeshStandardMaterial({ map: signTexture, roughness: 0.78, metalness: 0.08, side: THREE.DoubleSide });
+  const signMaterial = new THREE.MeshStandardMaterial({ map: signTexture, roughness: 0.78, metalness: 0.08 });
   const signFaces: Placement[] = [];
   for (let i = 12; i < track.n; i += spacing) for (const side of [-1, 1]) {
-    const p = at(i, side * (track.halfWidth + 3.32), 2.05);
-    p.angle += side > 0 ? Math.PI / 2 : -Math.PI / 2; signFaces.push(p);
+    const p = at(i, side * (track.halfWidth + 3.5), 2.05);
+    p.x -= track.tx[i] * 0.16; p.z -= track.tz[i] * 0.16;
+    p.angle -= Math.PI / 2; signFaces.push(p);
   }
   add(new THREE.BoxGeometry(0.18, 2.1, 0.18), dark(), posts);
   add(new THREE.BoxGeometry(0.3, 1.35, 3.8), new THREE.MeshStandardMaterial({ color: 0x142b3a, roughness: 0.45, metalness: 0.35 }), panels);

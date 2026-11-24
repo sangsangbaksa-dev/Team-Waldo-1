@@ -391,6 +391,8 @@ window.addEventListener('popstate', () => {
     returningToHubViaHistory = true;
     try { sessionStorage.setItem('waldo.hubScroll', String(hubScrollY)); } catch { /* 선택 사항 */ }
     location.reload();
+  } else if (!target && location.hash.startsWith('#/')) {
+    leaveGameEntry();
   }
 });
 // 게임 중 새로고침·탭 닫기: 진행이 사라진다고 먼저 알립니다.

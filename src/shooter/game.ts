@@ -366,20 +366,19 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function look(dx: number, dy: number): void { lastLook = performance.now(); const k = sens(); yaw += dx * k; pitch = clamp(pitch - dy * k, -1.4, 1.4); }
   const onMove = (e: MouseEvent): void => { if (!match || closed || paused) return; if (locked) look(e.movementX, e.movementY); else if ((lockFail || lockRejected) && (e.buttons & 3)) look(e.movementX, e.movementY); /* 잠금이 거절된 동안은 버튼을 누른 채 끌어서 시점을 돌립니다 */ };
   const onDown = (e: MouseEvent): void => {
-    if (closed || !match || e.target !== canvas) return; audio.unlock();
-    if (!locked && !touch && !paused && !closeSmith && (phase === 'play' || phase === 'countdown')) { lock(true); if (!lockFail) return; }
+    if (closed || !match || paused || closeSmith || e.target !== canvas || (phase !== 'play' && phase !== 'countdown')) return; audio.unlock();
+    if (!locked && !touch) { lock(true); if (!lockFail) return; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.ads = true;
   };
   const onUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.ads = false; };
   const onKey = (e: KeyboardEvent): void => {
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
     if (closed || room?.chat?.typing || !match || (phase !== 'play' && phase !== 'countdown') || closeSmith || (e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
-    if (e.code === 'Escape' && !e.repeat) { onEsc(); return; }
+    if (e.code === 'Escape') { if (!e.repeat) onEsc(); return; }
     if (paused || (e.repeat && ['KeyR', 'KeyE', 'KeyL', 'Tab', 'KeyQ', 'KeyG', 'KeyB', 'KeyV', 'KeyH', 'KeyJ', 'Digit1', 'Digit2'].includes(e.code))) return;
     keys.add(e.code);
     if (e.code === 'Enter' && room?.chat && !room.done && match && !paused && !closeSmith) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyB') smokeReq = true; else if (e.code === 'KeyV') flashReq = true; else if (e.code === 'KeyL' || e.code === 'Tab') openSmith(); else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
-    else if (e.code === 'Escape') onEsc();
     else if (e.code === 'Space' && phase === 'countdown' && match && me().air === 1) queueJump();
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };

@@ -66,8 +66,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const onMove = (e: PointerEvent): void => {
     if (state !== 'play') return;
     if (e.pointerType === 'touch') { if (e.pointerId !== mouse.touchId) return; mouse.x = clamp((e.clientX - mouse.ox) / 90, -1, 1); mouse.y = clamp((e.clientY - mouse.oy) / 90, -1, 1); mouse.active = true; }
-    else if (locked) { const sx = Math.min(innerWidth, innerHeight * 1.4) * 0.34, sy = innerHeight * 0.32; mouse.x = clamp(mouse.x + e.movementX / sx, -1, 1); mouse.y = clamp(mouse.y + e.movementY / sy, -1, 1); mouse.active = true; }
-    else steerFrom(e.clientX, e.clientY, innerWidth, innerHeight);
+    else if (locked) { mouseFire = mouseFire && (e.buttons & 1) !== 0; mouseMissile = mouseMissile && (e.buttons & 2) !== 0; const sx = Math.min(innerWidth, innerHeight * 1.4) * 0.34, sy = innerHeight * 0.32; mouse.x = clamp(mouse.x + e.movementX / sx, -1, 1); mouse.y = clamp(mouse.y + e.movementY / sy, -1, 1); mouse.active = true; }
+    else { mouseFire = mouseFire && (e.buttons & 1) !== 0; mouseMissile = mouseMissile && (e.buttons & 2) !== 0; steerFrom(e.clientX, e.clientY, innerWidth, innerHeight); }
   };
   // 마우스는 화면 중앙에 고정(포인터 잠금): 움직임을 누적해 조종 입력으로 씁니다.
   let locked = false;
@@ -92,10 +92,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const onKey = (e: KeyboardEvent, down: boolean): void => {
     const k = e.key.toLowerCase();
     if (!down) { keys.delete(k); return; }
-    if (e.isComposing || e.altKey || e.metaKey || (e.ctrlKey && k !== 'control')) return;
+    if (e.isComposing || e.altKey || e.metaKey) return;
     if (k === 'escape' || k === 'p') { if (!e.repeat) togglePause(); return; }
     if (state !== 'play') return;
-    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'w', 'a', 's', 'd', 'q', 'e', 'c', 'm', 'f', 't', 'b', 'shift', 'control'].includes(k)) e.preventDefault();
+    else return;
     if (!pressKey(keys, k, e.repeat)) return;
     audio.unlock();
     if (k === ' ') fireTap.press();

@@ -95,6 +95,16 @@ export class Match {
     command.input = { ...neutralInput(player.yaw, player.pitch), fire: command.fired, reload: command.reloaded };
   }
 
+  /** Pause: keep the pulse counters, but do not move or fire them on the next tick. */
+  freezeInput(id: string, input: Input): void {
+    const command = this.commands.get(id);
+    const player = this.players.get(id);
+    if (!command || !player) return;
+    command.fired = input.fire;
+    command.reloaded = input.reload;
+    command.input = { ...neutralInput(player.yaw, player.pitch), fire: input.fire, reload: input.reload };
+  }
+
   step(dt = TICK): boolean {
     this.time += dt;
     if (this.phase !== 'active') return false;
@@ -121,7 +131,8 @@ export class Match {
   }
 
   private emit(event: EventData): void {
-    this.events = [...this.events.slice(-63), { ...event, serial: ++this.serial, time: this.time }];
+    this.events.push({ ...event, serial: ++this.serial, time: this.time });
+    if (this.events.length > 64) this.events.splice(0, this.events.length - 64);
   }
 
   private spawn(player: Player, initial = false): void {

@@ -15,6 +15,11 @@ import { purchase, type ShopResult } from './shop';
 import { cityHour, incomeMood, phaseOf, weatherAt, type DayPhase, type Weather } from './clock';
 
 export const SQUAD_MAX = 5;
+function dropDead<T extends { alive: boolean }>(list: T[]): void {
+  let write = 0;
+  for (let i = 0; i < list.length; i++) if (list[i].alive) list[write++] = list[i];
+  list.length = write;
+}
 export interface Order { type: 'follow' | 'move' | 'amove' | 'hold' | 'mine' | 'guard' | 'hunt' | 'wander'; x: number; y: number }
 export interface Actor {
   id: number; kind: ActorKind; f: number; x: number; y: number; vx: number; vy: number; r: number; hp: number; maxHp: number; ang: number;
@@ -588,8 +593,8 @@ export class World {
     this.updateBusinesses(dt); this.updateZone(dt); this.updateLoot(dt);
     this.secT += dt; if (this.secT >= 1) { this.secT -= 1; this.everySecond(); }
     this.checkElimination();
-    if (this.actors.length > 60 && this.actors.some(a => !a.alive)) this.actors = this.actors.filter(a => a.alive);
-    this.vehicles = this.vehicles.filter(v => v.alive); this.loot = this.loot.filter(l => l.alive); this.structures = this.structures.filter(s => s.alive);
+    if (this.actors.length > 60) dropDead(this.actors);
+    dropDead(this.vehicles); dropDead(this.loot); dropDead(this.structures);
   }
   respawn(f: Faction): void {
     const hq = this.hq(f.id); if (!hq) return;
@@ -700,7 +705,7 @@ export class World {
     this.dropT -= 1;
     if (this.dropT <= 0 && z.nr > 100 && !this.opts.tutorial) {
       this.dropT = 70 + this.rng() * 25;
-      for (let k = 0; k < 30; k++) { const a = this.rng() * 6.28, d = this.rng() * z.nr * 0.75, x = z.nx + Math.cos(a) * d, y = z.ny + Math.sin(a) * d; if (x > 60 && y > 60 && x < SIZE - 60 && y < SIZE - 60 && !navBlocked(this.map, x, y)) { const ang = this.rng() * 6.28; this.planes.push({ x: x - Math.cos(ang) * 2600, y: y - Math.sin(ang) * 2600, vx: Math.cos(ang) * 520, vy: Math.sin(ang) * 520, tx: x, ty: y, dropped: false }); this.say('✈️ 보급 수송기 접근 — 전설 무기 투하 예정', '#ffe27a'); this.fx('announce', 0, 0, 0, '보급 투하'); break; } }
+      for (let k = 0; k < 30; k++) { const a = this.rng() * 6.28, d = this.rng() * z.nr * 0.75, x = z.nx + Math.cos(a) * d, y = z.ny + Math.sin(a) * d; if (x > 60 && y > 60 && x < SIZE - 60 && y < SIZE - 60 && !navBlocked(this.map, x, y)) { const ang = this.rng() * 6.28; this.planes.push({ x: x - Math.cos(ang) * 2600, y: y - Math.sin(ang) * 2600, vx: Math.cos(ang) * 520, vy: Math.sin(ang) * 520, tx: x, ty: y, dropped: false }); this.say('보급 수송기 접근 — 전설 무기 투하 예정', '#ffe27a'); this.fx('announce', 0, 0, 0, '보급 투하'); break; } }
     }
     if (!this.opts.tutorial) for (const q of this.quests) if (!q.done && q.check(this)) { q.done = true; this.factions[0].cash += q.reward; this.fx('quest', 0, 0, q.reward, q.text); }
     if (!this.opts.duel) updatePopulation(this, false);

@@ -467,10 +467,16 @@ export class Match {
   private lootGrid = new Map<number, number[]>(); private lootIndexed = 0; private lootScratch: Loot[] = []; private lootIdx: number[] = [];
   private lootNear(x: number, z: number): Loot[] {
     for (; this.lootIndexed < this.loot.length; this.lootIndexed++) {
-      const l = this.loot[this.lootIndexed], k = (Math.floor(l.x / 4) + 1024) * 4096 + Math.floor(l.z / 4) + 1024; let c = this.lootGrid.get(k); if (!c) this.lootGrid.set(k, c = []); c.push(this.lootIndexed);
+      const l = this.loot[this.lootIndexed]; if (l.taken) continue;
+      const k = (Math.floor(l.x / 4) + 1024) * 4096 + Math.floor(l.z / 4) + 1024; let c = this.lootGrid.get(k); if (!c) this.lootGrid.set(k, c = []); c.push(this.lootIndexed);
     }
     const idx = this.lootIdx, out = this.lootScratch, cx = Math.floor(x / 4), cz = Math.floor(z / 4); idx.length = 0; out.length = 0;
-    for (let i = cx - 1; i <= cx + 1; i++) for (let j = cz - 1; j <= cz + 1; j++) { const c = this.lootGrid.get((i + 1024) * 4096 + j + 1024); if (c) for (const n of c) idx.push(n); }
+    for (let i = cx - 1; i <= cx + 1; i++) for (let j = cz - 1; j <= cz + 1; j++) {
+      const key = (i + 1024) * 4096 + j + 1024, c = this.lootGrid.get(key); if (!c) continue;
+      let write = 0; for (let n = 0; n < c.length; n++) if (!this.loot[c[n]]?.taken) c[write++] = c[n];
+      if (!write) { this.lootGrid.delete(key); continue; }
+      c.length = write; for (let n = 0; n < write; n++) idx.push(c[n]);
+    }
     if (idx.length > 1) idx.sort((a, b) => a - b);
     for (const n of idx) out.push(this.loot[n]);
     return out;

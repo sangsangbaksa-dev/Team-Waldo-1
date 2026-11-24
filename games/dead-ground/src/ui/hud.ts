@@ -67,6 +67,8 @@ export class Hud {
   private map?: TacticalMap;
   private lastHit = -Infinity;
   private lastDamage = -Infinity;
+  private bearingWidth = 34;
+  private bearingWidthAt = -Infinity;
   private lastFeed = '';
   private lastScore = '';
 
@@ -121,7 +123,11 @@ export class Hud {
     setText(this.breathLabel.firstElementChild as HTMLElement, player.steady ? 'STEADY' : player.breathExhausted && player.aiming ? 'RECOVER' : 'BREATH');
 
     const heading = (360 - player.yaw * 180 / Math.PI) % 360;
-    const width = this.bearing.firstElementChild?.getBoundingClientRect().width ?? 34;
+    if (now - this.bearingWidthAt > 500) {
+      this.bearingWidth = this.bearing.firstElementChild?.getBoundingClientRect().width || 34;
+      this.bearingWidthAt = now;
+    }
+    const width = this.bearingWidth;
     this.bearing.style.transform = `translateX(${-(24.5 + heading / 15) * width}px)`;
     const nearest = LANDMARKS.reduce((a, b) => horizontalDistance(a, player.position) < horizontalDistance(b, player.position) ? a : b);
     setText(this.sector, nearest.name);
@@ -152,7 +158,7 @@ export class Hud {
       this.killfeed.replaceChildren(...events.map(event => {
         const item = document.createElement('li');
         const icon = document.createElement('b');
-        icon.textContent = event.headshot ? '✦' : '›';
+        icon.textContent = event.headshot ? 'HS' : '·';
         icon.title = event.headshot ? 'Headshot' : 'Elimination';
         item.classList.toggle('mine', event.player === player.id);
         item.append(event.attacker, icon, event.victim);

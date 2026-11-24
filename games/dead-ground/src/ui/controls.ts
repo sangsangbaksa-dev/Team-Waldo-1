@@ -86,7 +86,6 @@ export class Controls {
   disable(): void {
     this.active = false;
     this.fallback = false;
-    this.keys.clear();
     this.mouseAiming = this.score = this.map = false;
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }

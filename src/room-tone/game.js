@@ -1315,8 +1315,8 @@ function enemyUpdate(dt, running) {
   $("danger").style.opacity = String(threat * 0.53);
   const label = threatLabel(threat);
   if ($("strain").textContent !== label) $("strain").textContent = label;
-  const level = threatLevel(threat);
-  if ($("strain").dataset.level !== level) $("strain").dataset.level = level;
+  const band = threatLevel(threat);
+  if ($("strain").dataset.level !== band) $("strain").dataset.level = band;
   if (!hiddenSpot && !grace && !exitGrace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }

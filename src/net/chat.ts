@@ -4,7 +4,8 @@
 import type { GameKind } from './types';
 
 /** 대화방 이름. lobby = 전체(허브), g:<게임> = 게임 로비, r:<방 id> = 멀티플레이 방, m:<매치 id> = 무작위 1대1 */
-export type ChatKey = 'lobby' | `g:${GameKind}` | `r:${string}` | `m:${string}`;
+// 배포된 서버가 기존 게임의 채널도 인식하므로 검증 규칙에 남깁니다.
+export type ChatKey = 'lobby' | `g:${GameKind | 'rts' | 'outlaw'}` | `r:${string}` | `m:${string}`;
 export interface ChatMessage { id: number; channel: string; user_id: string; nickname: string; body: string; created_at: string }
 
 export const CHAT_MAX = 140;

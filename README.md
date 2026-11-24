@@ -1,14 +1,18 @@
 # WALDO
 
-브라우저에서 바로 즐기는 다섯 편의 3D 게임입니다. 메인 페이지에서 고릅니다. 혼자 플레이할 때는 로그인 없이 시작할 수 있고, 온라인 대전에는 이메일 계정이 필요합니다.
+브라우저에서 바로 즐기는 아홉 편의 게임입니다. 허브에서 게임을 선택하면 로그인 없이 혼자 플레이할 수 있습니다. 일부 온라인 모드에는 이메일 계정이 필요합니다.
 
 | 게임 | 소개 | 코드 |
 | --- | --- | --- |
 | **LAST CITY** | 도시 점령 서바이벌 | `src/city` |
 | **SPEED RUSH** | 스포츠카 레이싱(코스 7곳·차량 8종·타임어택과 고스트) | `src/race` |
-| **FRONTLINE** | 실시간 전략(AI 4단계·온라인 1대1·팀 라인전) | `src/rts` |
 | **ZERO ZONE** | 줄어드는 자기장 속 총격전. 솔로(나 + AI 99명, 비행기 낙하산 강하, 난이도 4단계), 온라인 1대1과 멀티플레이 방 | `src/shooter` |
-| **OUTLAW CITY** | 도시 탐험·차량·의뢰. 솔로 저장과 온라인 결투·멀티플레이 방 | `src/outlaw` |
+| **HUSTLE** | 도시를 돌아다니며 일자리를 구하고 사업을 키우는 타이쿤 | `src/tycoon` |
+| **SKY WAR** | 파도처럼 몰려오는 적기와 싸우는 비행 아케이드 | `src/sky` |
+| **SLACK OFF** | 감독의 순찰을 피하는 딴짓 시뮬레이션 | `src/slack` |
+| **ROOM TONE** | 신호를 복원하며 진행하는 1인칭 심리 공포 | `src/room-tone` |
+| **PARRY GLADIATOR** | 공격을 막고 받아치는 1대1 검투 | `games/parry-gladiator` |
+| **DEAD GROUND** | 폐허에서 벌어지는 저격 아레나 | `games/dead-ground` |
 
 ## LAST CITY
 
@@ -28,10 +32,6 @@
 - 3D 모델은 Blender 스크립트(`tools/blender`)로 만듭니다. `pip install bpy` 후 `python tools/blender/build_all.py public/assets/models`로 다시 내보냅니다. 사업체 패드 위의 표식 7종(`business.glb`, `biz.py`), 버스 정류장·자판기·광고판 같은 거리 소품(`street.py`), 본부·병영 등 건물(`world.py`)이 여기서 나옵니다. 미리보기 이미지는 `docs/images/last-city`에 있습니다.
 - 한 판은 저장되지 않습니다(약 10~14분). 전적만 브라우저에 남습니다.
 
-## FRONTLINE
-
-스타크래프트처럼 광물을 캐고 건물을 지어 병력을 키우는 3D 실시간 전략입니다. 일꾼·보병·로켓병·전차, 사령부·보급소·병영·공장·방어탑이 있고, 상대의 모든 건물을 파괴하면 이깁니다. AI 대전은 **쉬움 / 보통 / 어려움 / 매우 어려움**(마지막 단계만 채취량 +25%), 온라인 1대1은 방 코드나 무작위 매칭으로 합니다. 조작은 마우스(선택·드래그·우클릭 명령)와 단축키(`A` 공격 이동, `S` 정지, `B` 건설, `Q`/`W` 생산, `R` 집결지, `Ctrl+숫자` 부대), 터치(드래그 이동·탭 명령·두 손가락 확대)입니다. `npm run rts-sim -- hard easy`로 AI끼리 붙여 볼 수 있습니다.
-
 ## SPEED RUSH
 
 LAST CITY의 스포츠카 모델(`vehicles.glb`)로 달리는 아케이드 레이싱입니다. 드리프트 뒤 미니 터보, 니트로(`Shift`), 부스트 패드, 출발 타이밍 보너스가 있고 라이벌 AI가 3대 달립니다. 조작은 `WASD`/방향키, `Space` 드리프트, `Shift` 니트로, 터치 버튼입니다.
@@ -41,14 +41,14 @@ LAST CITY의 스포츠카 모델(`vehicles.glb`)로 달리는 아케이드 레�
 - **코스 7곳**에는 선셋 서킷, 나이트 하버, 알파인 패스, 프로스트 레이크, 데저트 하이웨이, 스톰 코스트, 더스크 파인 패스가 있습니다. 코스 정의와 화면 테마는 `maps.ts`에 있습니다. 레이싱카 모델 3종(gt·wide·long)은 `tools/blender/race.py`가 만드는 `race.glb`입니다.
 - **레이스와 타임어택**에서 각각 1~3랩을 선택할 수 있습니다. 타임어택은 저장된 최고 주행을 고스트로 재생합니다.
 - **난이도 5단계**: 쉬움 → 보통 → 어려움 → 매우 어려움 → 극한. 쉬움이 처음 버전의 3.5단계 수준(두 차례에 걸쳐 모든 단계를 2.5단계 올림)이며, 단계가 오를수록 라이벌의 목표 속도·코너 한계와 추격 보정이 커지고, 코너 안쪽 레이싱 라인을 타며, 모든 단계에서 직선에서 니트로를 씁니다(`config.ts`의 `LEVELS`).
-- **차량 8종**에는 ARC(균형), BOLT(가속), VELOX(최고속), ORBIT(코너링), SLIDE(드리프트), FUSE(니트로), NOVA(고속 코너링), RALLY(랠리)가 있습니다. 다섯 가지 기본 능력치를 1~5점으로 매기고 모든 차량의 합계를 15점으로 맞췄습니다. 차고에서 강화하고 도색을 바꿀 수 있습니다.
+- **차량 8종**에는 ARC(균형), BOLT(가속), VELOX(최고속), ORBIT(코너링), SLIDE(드리프트), FUSE(니트로), NOVA(고속 코너링), RALLY(랠리)가 있습니다. 다섯 가지 기본 능력치를 1~5점으로 매기고 모든 차량의 합계를 15점으로 맞췄습니다. 차고에서 차량 도색을 바꿀 수 있습니다.
 
 기록은 코스별 최고 랩과 코스·랩 수별 최고 기록으로 저장됩니다. 코스·차량·난이도·물리·레이스 규칙(`maps.ts`, `config.ts`, `track.ts`, `physics.ts`, `race.ts`)은 Three.js에 의존하지 않아 `tests/race`에서 검증합니다(차량 능력치 합계, 자동 주행 랩 타임 차이, 코스 형태, 코스·랩 수별 완주 등). 선택 화면은 `setup-ui.ts`입니다.
 
 ## 구조
 
 - `src/main.ts`, `src/style.css`: 메인 페이지. 게임 코드는 선택할 때 동적으로 불러옵니다.
-- 각 게임은 `src/city`, `src/race`, `src/rts`, `src/shooter`, `src/outlaw`에 있습니다. 소리·품질 설정은 `src/prefs.ts`, 이메일 로그인과 온라인 방은 `src/net`을 함께 씁니다.
+- 허브에 통합된 게임은 `src/`, 독립 앱 PARRY GLADIATOR와 DEAD GROUND는 `games/`에 있습니다. 허브 게임은 소리·품질 설정(`src/prefs.ts`)을 공유합니다.
 - `public/assets/models`: Blender로 만든 `.glb` 모델. `public/assets/home`: 메인 페이지 대표 이미지(게임 화면 캡처).
 - `tools/blender`: 모델 생성 스크립트. `tools/city-sim.ts`는 AI끼리 한 판을 돌리는 헤드리스 시뮬레이션, `tools/city-browser-smoke.mjs`는 실제 브라우저 점검입니다.
 
@@ -60,7 +60,8 @@ Node.js 22 이상을 사용합니다.
 npm ci
 npm run dev          # 개발 서버
 npm run lint && npm run typecheck && npm test
-npm run build        # dist/ 생성
+npm run build        # 아홉 게임의 정적 빌드 생성
+npm run preview      # 허브에서 아홉 게임 실행 확인
 ```
 
 `main` 계열 브랜치에 푸시하면 GitHub Pages로 배포됩니다(`.github/workflows/pages.yml`). 자세한 내용은 `docs/DEPLOYMENT.md`를 봅니다.

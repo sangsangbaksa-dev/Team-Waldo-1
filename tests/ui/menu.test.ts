@@ -4,17 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const games = vi.hoisted(() => ({
   openCity: vi.fn<(onExit: () => void) => void>(),
   openRace: vi.fn<(onExit: () => void) => void>(),
-  openRts: vi.fn<(onExit: () => void) => void>(),
   openShooter: vi.fn<(onExit: () => void) => void>(),
-  openOutlaw: vi.fn<(onExit: () => void) => void>(),
   openTycoon: vi.fn<(onExit: () => void) => void>(),
   openSky: vi.fn<(onExit: () => void) => void>(),
 }));
 vi.mock('../../src/city/game', () => ({ openCity: games.openCity }));
 vi.mock('../../src/race/game', () => ({ openRace: games.openRace }));
-vi.mock('../../src/rts/game', () => ({ openRts: games.openRts }));
 vi.mock('../../src/shooter/game', () => ({ openShooter: games.openShooter }));
-vi.mock('../../src/outlaw/game', () => ({ openOutlaw: games.openOutlaw }));
 vi.mock('../../src/tycoon/game', () => ({ openTycoon: games.openTycoon }));
 vi.mock('../../src/sky/game', () => ({ openSky: games.openSky }));
 
@@ -37,11 +33,11 @@ beforeEach(() => {
 });
 
 describe('메인 페이지', () => {
-  it('10개 게임 타일을 보여 준다', async () => {
+  it('9개 게임 타일을 보여 준다', async () => {
     await loadMenu();
     const tiles = [...document.querySelectorAll<HTMLButtonElement>('.tile')];
-    expect(tiles.map(t => t.dataset.game)).toEqual(['slack', 'squad', 'city', 'race', 'rts', 'shooter', 'outlaw', 'tycoon', 'sky', 'parry-gladiator', 'dead-ground', 'room-tone']);
-    expect(document.body.textContent).not.toMatch(/왕국 전쟁|KINGDOMS|군단전/);
+    expect(tiles.map(t => t.dataset.game)).toEqual(['slack', 'city', 'race', 'shooter', 'tycoon', 'sky', 'parry-gladiator', 'dead-ground', 'room-tone']);
+    expect(document.body.textContent).not.toMatch(/왕국 전쟁|KINGDOMS|군단전|FRONTLINE|SQUAD CLASH|OUTLAW CITY/);
   });
 
   it('LAST CITY 버튼이 도시 게임을 연다', async () => {
@@ -59,14 +55,6 @@ describe('메인 페이지', () => {
     expect(games.openCity).not.toHaveBeenCalled();
   });
 
-  it('FRONTLINE 버튼이 실시간 전략 게임을 연다', async () => {
-    await loadMenu();
-    button('#start-rts').click();
-    await vi.waitFor(() => expect(games.openRts).toHaveBeenCalledTimes(1));
-    expect(games.openCity).not.toHaveBeenCalled(); expect(games.openRace).not.toHaveBeenCalled();
-    expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
-  });
-
   it('ZERO ZONE 버튼이 슈팅 게임을 연다', async () => {
     await loadMenu();
     button('#start-shooter').click();
@@ -75,24 +63,14 @@ describe('메인 페이지', () => {
     expect(games.openRace).not.toHaveBeenCalled();
   });
 
-  it('OUTLAW CITY를 실행하고 나오면 10개 게임이 다시 나타난다', async () => {
-    await loadMenu();
-    button('#start-outlaw').click();
-    await vi.waitFor(() => expect(games.openOutlaw).toHaveBeenCalledTimes(1));
-    expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
-    games.openOutlaw.mock.calls[0]![0]();
-    expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(false);
-    expect(document.querySelectorAll('.tile')).toHaveLength(12);
-  });
-
-  it('HUSTLE을 실행하고 나오면 10개 게임이 다시 나타난다', async () => {
+  it('HUSTLE을 실행하고 나오면 9개 게임이 다시 나타난다', async () => {
     await loadMenu();
     button('#start-tycoon').click();
     await vi.waitFor(() => expect(games.openTycoon).toHaveBeenCalledTimes(1));
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
     games.openTycoon.mock.calls[0]![0]();
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(false);
-    expect(document.querySelectorAll('.tile')).toHaveLength(12);
+    expect(document.querySelectorAll('.tile')).toHaveLength(9);
   });
 
   it('저장된 기록이 있으면 타일에 표시한다', async () => {
@@ -102,9 +80,6 @@ describe('메인 페이지', () => {
     await loadMenu();
     expect(button('#start-race').textContent).toContain('선셋 서킷 최고 랩 1:01.234');
     expect(button('#start-city').textContent).toContain('5판 · 2승');
-    localStorage.setItem('waldo.rts.v1', JSON.stringify({ difficulty: 'hard', matches: 4, wins: 1, bestWin: {} }));
-    vi.resetModules(); document.body.innerHTML = '<div id="game"></div>'; await loadMenu();
-    expect(button('#start-rts').textContent).toContain('4판 · 1승');
     expect(button('#start-shooter').textContent).toContain('3판 · 1승');
   });
 
@@ -131,17 +106,29 @@ describe('메인 페이지', () => {
 describe('게임 주소·뒤로가기', () => {
   it('게임을 열면 #/게임 주소가 붙고, 목록으로 돌아오면 지워진다', async () => {
     await loadMenu();
-    button('#start-rts').click();
-    await vi.waitFor(() => expect(games.openRts).toHaveBeenCalledTimes(1));
-    expect(location.hash).toBe('#/rts');
-    expect(document.title).toContain('FRONTLINE');
-    games.openRts.mock.calls[0]![0]();
+    button('#start-sky').click();
+    await vi.waitFor(() => expect(games.openSky).toHaveBeenCalledTimes(1));
+    expect(location.hash).toBe('#/sky');
+    expect(document.title).toContain('SKY WAR');
+    games.openSky.mock.calls[0]![0]();
     expect(location.hash).toBe('');
-    expect(document.title).toContain('10편');
+    expect(document.title).toContain('9편');
+    expect(document.activeElement).toBe(button('#start-sky'));
   });
   it('주소에 #/게임이 있으면 그 게임 화면을 바로 연다', async () => {
     history.replaceState(null, '', '/#/sky');
     await loadMenu();
     await vi.waitFor(() => expect(games.openSky).toHaveBeenCalledTimes(1));
+    expect(location.hash).toBe('#/sky');
+    games.openSky.mock.calls[0]![0]();
+    expect(location.hash).toBe('');
+  });
+
+  it.each(['rts', 'outlaw', 'squad'])('삭제된 게임 주소 #/%s는 목록으로 돌아온다', async id => {
+    history.replaceState(null, '', `/?pvp=local#/${id}`);
+    await loadMenu();
+    expect(location.hash).toBe('');
+    expect(location.search).toBe('?pvp=local');
+    expect(document.querySelectorAll('.tile')).toHaveLength(9);
   });
 });

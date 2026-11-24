@@ -137,7 +137,7 @@ body::before {
 .tile-facts span::before { content: '·'; margin-right: 6px; color: #c5dfb6; }
 .tile-foot { border-top: 1px solid rgba(255,255,255,.08); margin-top: auto; padding-top: 18px; }
 .tile-status { color: #aab4a9; line-height: 1.5; }
-.tile-status::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #8fae85; vertical-align: 2px; }
+.tile-status:not(:empty)::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #8fae85; vertical-align: 2px; }
 .tile-cta { flex-shrink: 0; background: #dcead5; }
 .tile:focus-visible .tile-cta { background: #fff; }
 @keyframes home-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }

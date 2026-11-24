@@ -5,14 +5,6 @@ import { describe, expect, it } from 'vitest';
 // 스타일시트에서 사라지지 않도록 규칙 자체를 지킵니다.
 const css = (path: string): string => readFileSync(path, 'utf8');
 
-describe('OUTLAW CITY 긴 카드의 하단 버튼', () => {
-  const outlaw = css('src/outlaw/outlaw.css');
-  it('주인공 선택·휴대폰·상점 카드는 스크롤되고 버튼 줄은 하단에 고정된다', () => {
-    expect(outlaw).toMatch(/\.ol-card\.shop\{[^}]*max-height:92vh;overflow:auto/);
-    expect(outlaw).toMatch(/\.ol-card\.hero \.ol-btns[^{]*\{[^}]*position:sticky;bottom:/);
-  });
-});
-
 describe('Last City 모바일 HUD', () => {
   const city = css('src/city/city.css');
   it('세로 화면에서는 사격 버튼을 하단 HUD 위로 올린다', () => {

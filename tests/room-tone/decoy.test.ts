@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error JavaScript domain module has no declaration file.
 import { createDecoy, deployDecoy, tickDecoy, decoyTarget } from '../../src/room-tone/domain/decoy.mjs';
 describe('recorder decoy', () => {
   it('has limited uses and cannot override detection or hiding inspection', () => {

@@ -19,6 +19,7 @@ import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
 import { RaceView, setDriverKit } from './view';
 import { loadCharacterKit } from '../shared/character';
+import { backoffMs, fetchBuffer, retryNote, type LoadingScreen } from '../loading';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 
@@ -58,7 +59,7 @@ function isSoftwareGL(): boolean {
   } catch { return false; }
 }
 
-export function openRace(onExit: () => void): void {
+export function openRace(onExit: () => void, opts: { loading?: LoadingScreen } = {}): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, softwareGL = isSoftwareGL();
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
   root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
@@ -434,10 +435,41 @@ export function openRace(onExit: () => void): void {
     b.addEventListener('contextmenu', e => e.preventDefault());
   });
 
-  // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
+  // 레이싱카 모델(race.glb). 연결이 늦으면 받은 만큼의 게이지를 유지한 채 이어 받고, 파일이 없을 때만 단순 차체로 넘어갑니다.
+  opts.loading?.progress(null, '트랙을 준비하는 중');
   void (async () => {
-    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
-    try { setDriverKit(await loadCharacterKit(import.meta.env.BASE_URL)); } catch { setDriverKit(null); }
-    if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
+    const base = import.meta.env.BASE_URL;
+    try {
+      const buf = await loadRaceModel(base, opts.loading, () => closed);
+      const gltf = await new GLTFLoader().parseAsync(buf, `${base}assets/models/`);
+      const found: Record<string, THREE.Object3D> = {};
+      gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; });
+      carTemplate = found;
+    } catch { carTemplate = null; }
+    if (!closed) {
+      try { setDriverKit(await loadCharacterKit(base, f => opts.loading?.progress(0.62 + f * 0.3, '드라이버를 불러오는 중'))); }
+      catch { setDriverKit(null); }
+    }
+    if (closed) { opts.loading?.close(); return; }
+    opts.loading?.progress(1, '준비되었습니다');
+    opts.loading?.close();
+    last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
+}
+
+/** 차량 파일을 끝까지 받습니다. 시간 초과는 진행률을 되돌리지 않고 같은 요청을 이어 갑니다. */
+async function loadRaceModel(base: string, loading: LoadingScreen | undefined, cancelled: () => boolean): Promise<ArrayBuffer> {
+  for (let attempt = 0; ; attempt++) {
+    if (cancelled()) throw new Error('cancelled');
+    try {
+      return await fetchBuffer(`${base}assets/models/race.glb`, (loaded, total) => {
+        loading?.progress(0.36 + 0.26 * Math.min(1, loaded / Math.max(total, 1)), '차량을 불러오는 중');
+      });
+    } catch (error) {
+      if (cancelled()) throw error;
+      if (error instanceof Error && /HTTP 4\d\d/.test(error.message) && !/HTTP 408|HTTP 429/.test(error.message)) throw error;
+      loading?.note(retryNote(attempt + 1));
+      await new Promise(r => window.setTimeout(r, backoffMs(attempt)));
+    }
+  }
 }

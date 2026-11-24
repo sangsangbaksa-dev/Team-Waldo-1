@@ -783,7 +783,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__tut = () => tut;
   // 모델을 다 받을 때까지 로딩 화면을 보여 줍니다. 네트워크가 느리거나 끊겨도 포기하지 않고 계속 받습니다.
   const loading = options.loading ?? showLoading('LAST CITY');
-  loading.progress(0, '도시 자산을 불러오는 중');
+  loading.progress(null, '도시 자산을 불러오는 중');
   const finishLoading = (): void => { if (closed) return; loading.close(); setup(); };
   void loadModels(import.meta.env.BASE_URL, (f, note) => { if (f >= 0) loading.progress(f); loading.note(note); })
     .then(m => { models = m; }).catch(() => { models = null; }).finally(finishLoading);

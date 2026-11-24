@@ -620,8 +620,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 부팅 ----------
   void (async () => {
-    opts.loading?.progress(0, '도시를 준비하는 중');
-    try { kit = await loadCharacterKit(base, f => opts.loading?.progress(f * 0.85, '사람들을 불러오는 중')); } catch (err) { console.error(err); kit = null; }
+    opts.loading?.progress(null, '도시를 준비하는 중');
+    try { kit = await loadCharacterKit(base, f => opts.loading?.progress(0.2 + f * 0.6, '사람들을 불러오는 중')); } catch (err) { console.error(err); kit = null; }
     if (closed) { opts.loading?.close(); return; }
     opts.loading?.progress(0.9, '도시를 짓는 중'); await new Promise(r => setTimeout(r, 30)); if (closed) { opts.loading?.close(); return; }
     try {

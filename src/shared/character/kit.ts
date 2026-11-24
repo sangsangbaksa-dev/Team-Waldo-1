@@ -34,7 +34,9 @@ let cache: Promise<CharacterKit> | null = null;
 /** characters.glb 만 받아 키트를 만듭니다(한 번만 받고 이후는 캐시). */
 export function loadCharacterKit(base: string, onProgress?: (fraction: number) => void): Promise<CharacterKit> {
   cache ??= (async () => {
-    const dir = `${base}assets/models/`, buf = await retry(() => fetchBuffer(`${dir}characters.glb`, (l, t) => onProgress?.(Math.min(0.95, l / Math.max(t, 2_400_000)))));
+    const dir = `${base}assets/models/`;
+    let high = 0;
+    const buf = await retry(() => fetchBuffer(`${dir}characters.glb`, (l, t) => { high = Math.max(high, Math.min(0.95, l / Math.max(t, 2_400_000))); onProgress?.(high); }));
     const kit = kitFromScene((await new GLTFLoader().parseAsync(buf, dir)).scene); onProgress?.(1); return kit;
   })();
   cache.catch(() => { cache = null; });

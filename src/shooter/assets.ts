@@ -2,7 +2,7 @@
 // 필요한 파일 세 개만 받고, 실패하면 게임 쪽에서 단순한 도형으로 대신합니다.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { fetchBuffer, retry } from '../loading';
+import { fetchBuffer, retry, retryNote } from '../loading';
 import { bake, type Baked } from '../shared/character/bake';
 import { kitFromScene, type CharacterKit } from '../shared/character';
 
@@ -24,7 +24,7 @@ export function loadShooterAssets(base: string, onProgress?: (fraction: number) 
   cache ??= (async () => {
     const loader = new GLTFLoader(), dir = `${base}assets/models/`, prog = new Map<string, number>(), total = Object.values(FILES).reduce((a, b) => a + b, 0);
     const get = async (name: string): Promise<THREE.Object3D> => {
-      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { onRetry: n => onNote?.(n < 2 ? '' : `연결이 느립니다. 계속 시도하는 중입니다 (${n}회)`) });
+      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, Math.max(prog.get(name) ?? 0, loaded)); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { onRetry: n => onNote?.(retryNote(n)) });
       return (await loader.parseAsync(buf, dir)).scene;
     };
     const [c, w, p] = await Promise.all(['characters', 'weapons', 'props'].map(get));

@@ -557,6 +557,39 @@ dialog h2 {
   font-size: 0.86rem;
   color: #a9b5a5;
 }
+.loadbar {
+  position: relative;
+  height: 3px;
+  margin: 1.35rem 0 1.6rem;
+  background: #2a332c;
+}
+.loadbar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #d3d3d0;
+  transition: width .4s ease;
+}
+.loadbar span {
+  position: absolute;
+  right: 0;
+  top: 10px;
+  font-size: 0.75rem;
+  letter-spacing: .08em;
+  color: #a9b5a5;
+  font-variant-numeric: tabular-nums;
+}
+.loadbar em {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  font-style: normal;
+  font-size: 0.75rem;
+  color: #a9b5a5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loadbar i { transition: none; }
+}
 .map {
   display: block;
   width: min(100%, 355px);

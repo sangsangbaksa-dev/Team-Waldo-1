@@ -8,6 +8,55 @@
   <title>Dead Ground</title>
 </head>
 <body>
+  <div id="waldo-boot" role="status" aria-live="polite">
+    <p>DEAD GROUND</p>
+    <div class="waldo-boot-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+    <span class="waldo-boot-pct">0%</span>
+  </div>
+  <style>
+    #waldo-boot { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; align-content: center; gap: 14px; background: #141612; color: #f1eadd; font-family: system-ui, sans-serif; }
+    #waldo-boot p { margin: 0; letter-spacing: .18em; font-size: 13px; }
+    .waldo-boot-bar { width: min(280px, 70vw); height: 3px; background: #2a2c26; }
+    .waldo-boot-bar i { display: block; height: 100%; width: 0; background: #ebbf77; transition: width .4s ease; }
+    .waldo-boot-pct { font-variant-numeric: tabular-nums; font-size: 12px; letter-spacing: .08em; opacity: .72; }
+  </style>
+  <script>
+    (function () {
+      var root = document.getElementById("waldo-boot");
+      if (!root) return;
+      var fill = root.querySelector("i");
+      var pct = root.querySelector(".waldo-boot-pct");
+      var bar = root.querySelector(".waldo-boot-bar");
+      var fraction = 0, measured = 0;
+      function paint() {
+        fraction = Math.max(fraction, measured);
+        fill.style.width = (fraction * 100).toFixed(1) + "%";
+        var n = Math.floor(fraction * 100);
+        pct.textContent = n + "%";
+        bar.setAttribute("aria-valuenow", String(n));
+      }
+      var timer = setInterval(function () {
+        var cap = measured <= 0 ? 0.35 : Math.min(0.97, measured + 0.02);
+        if (fraction < cap) fraction = Math.min(cap, fraction + 0.012);
+        paint();
+      }, 400);
+      window.__waldoBoot = {
+        report: function (value) {
+          var next = Number(value);
+          if (next > measured) measured = next > 1 ? 1 : next;
+          paint();
+        },
+        done: function () {
+          clearInterval(timer);
+          measured = 1;
+          paint();
+          var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          setTimeout(function () { root.remove(); }, reduce ? 0 : 420);
+          window.__waldoBoot = undefined;
+        }
+      };
+    })();
+  </script>
   <main id="landing" class="landing">
     <header class="masthead">
       <a href="./" class="wordmark" aria-label="Dead Ground home"><i class="sigil"></i> DEAD GROUND</a>

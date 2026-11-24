@@ -279,6 +279,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     renderer.setPixelRatio(adaptive.pr);
     view = new SkyView(renderer); sim = new SkySim(diff); sim.intermission = 1e9; resize();
   } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
+  opts.loading?.progress(0.86, '하늘을 준비하는 중');
   opts.loading?.close(); last = performance.now(); raf = requestAnimationFrame(frame);
   (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, get renderer() { return renderer; }, start };
 }

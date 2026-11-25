@@ -177,7 +177,7 @@ class Game {
     this.audio.ambiance(false);
     const online = !!this.session?.room;
     setText(element('pause-kicker'), online ? `ROOM ${this.session?.room?.code}` : 'SOLO FIELD');
-    setText(element('pause-note'), online ? 'The online round continues while this menu is open.' : 'Resume when you’re ready.');
+    setText(element('pause-note'), online ? 'The online round continues while this menu is open.' : 'Match paused.');
     this.show('pause');
   }
 

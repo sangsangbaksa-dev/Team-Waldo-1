@@ -51,9 +51,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     <div class="c-bc" id="c-cmd"></div>
     <div class="c-place" id="c-place" hidden><div class="c-place-info"><b id="c-place-name"></b><span id="c-place-msg"></span><small>시선을 돌려 위치 조절 · 우클릭/Esc 취소 · Shift 연속 설치</small></div><div class="c-place-btns"><button data-act="placeok" class="ok">설치</button><button data-act="placecancel">취소</button></div></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
-    <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>OPERATIONS / LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
+    <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
     <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><ul class="c-legend" aria-label="지도 범례"><li><i class="me"></i>내 위치·방향</li><li><i class="hq"></i>본부</li><li><i class="biz"></i>사업체(세력 색)</li><li><i class="cry"></i>크리스탈</li><li><i class="box"></i>보급 상자</li><li><i class="zone"></i>보라색 = 자기장 밖</li><li><i class="next"></i>흰 점선 = 다음 안전지대</li></ul><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
-    <button class="c-fire" id="c-fire">사격</button><div class="c-touch" id="c-touch"><button data-act="interact">E</button><button data-act="vehicle">차량</button><button data-act="skill">스킬</button><button data-act="dash">대시</button><button data-act="weapon">무기</button><button data-act="medkit">회복</button><button data-act="charge">돌격</button><button data-act="order:follow">집결</button><button data-act="panel">지휘</button></div>
+    <button class="c-fire" id="c-fire">사격</button><div class="c-touch" id="c-touch"><button data-act="interact">사용</button><button data-act="vehicle">차량</button><button data-act="skill">스킬</button><button data-act="dash">대시</button><button data-act="weapon">무기</button><button data-act="medkit">회복</button><button data-act="charge">돌격</button><button data-act="order:follow">집결</button><button data-act="panel">지휘</button></div>
   </div>
   <div class="c-modal" id="c-modal"></div>`;
   document.body.append(root);
@@ -99,7 +99,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
 
   function setup(): void {
     modal.innerHTML = `<section class="c-setup wd-panel"><div class="c-kicker wd-eyebrow">WALDO · LAST CITY</div><h2 class="wd-title">LAST CITY <small>최후의 왕국</small></h2>
-      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요. ${touch ? '상단 <b>임무</b> 버튼' : '<b>J</b>'}에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
+      <p class="c-lead">사업체를 확보해 자금을 모으고 병력을 생산하세요. 직접 전투에 참여해 <b>마지막까지 살아남는 왕국</b>이 되면 승리합니다. ${touch ? '상단 <b>임무</b> 버튼' : '<b>J</b>'}에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
       <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
@@ -498,7 +498,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, f = w.factions[0], win = w.winner === 0, place = win ? 1 : f.place || w.aliveCount() + 1; resultShown = true; unlock(); audio.setEngine(-1); audio.play(win ? 'win' : 'lose');
     recordMatch(win, w.time, f.kills);
     try { const c = readCityCareer(); localStorage.setItem(CITY_KEY, JSON.stringify({ matches: c.matches + 1, wins: c.wins + Number(win), best: c.best ? Math.min(c.best, place) : place })); } catch { /* 기록은 선택 사항 */ }
-    modal.innerHTML = `<section class="c-result wd-panel ${win ? 'win' : ''}"><div class="c-kicker wd-eyebrow">경기 결과</div><h2 class="wd-title">${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '도시의 모든 것이 이제 당신의 것입니다.' : place <= 3 ? '거의 다 왔습니다. 한 판 더!' : '경제를 먼저 굴리고, 병력과 함께 움직여 보세요.'}</p>
+    modal.innerHTML = `<section class="c-result wd-panel ${win ? 'win' : ''}"><div class="c-kicker wd-eyebrow">경기 결과</div><h2 class="wd-title">${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '마지막까지 살아남았습니다.' : '생존 순위와 전투 기록입니다.'}</p>
       <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${w.businesses.filter(z => z.owner === 0).length}</b><span>보유 사업체</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
       <div class="c-actions wd-actions"><button data-act="retry" class="c-primary wd-btn primary">다시 시작</button><button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
   }

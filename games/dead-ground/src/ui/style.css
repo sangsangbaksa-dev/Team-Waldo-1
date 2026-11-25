@@ -96,10 +96,10 @@ p,h1,h2,ol,ul{margin:0}
 .eyebrow{display:flex;align-items:center;gap:.76rem;margin-bottom:.72rem}
 .eyebrow i{display:inline-block;width:1.7rem;height:1px;background:var(--sand)}
 h1 {
-  font:900 clamp(5.1rem,12.05vw,12.4rem)/.73 var(--heading);
+  font:900 clamp(4.5rem,10vw,10rem)/.85 var(--heading);
   letter-spacing:-.036em;
   text-transform:uppercase;
-  text-shadow:0 .12em .7em #10110d7d;
+  text-shadow:0 2px 6px #10110d;
   margin-bottom:.19em;
 }
 h1 span{color:#dcb782}
@@ -182,10 +182,10 @@ h1 span{color:#dcb782}
 .compass i{position:absolute;left:calc(50% - 3px);top:0;width:0;height:0;border:3px solid transparent;border-top-color:var(--sand)}
 .sector-label{color:var(--sand);font-size:.62rem;letter-spacing:.14em;margin-top:.31rem}
 .killfeed{margin-left:auto;list-style:none;padding:0;text-align:right;max-width:34vw}
-.killfeed li{background:#151711ae;border-right:2px solid #a59d82;padding:.37rem .58rem;margin-bottom:.22rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.killfeed li{background:#151711e8;border-right:2px solid #a59d82;padding:.37rem .58rem;margin-bottom:.22rem;overflow-wrap:anywhere;line-height:1.35}
 .killfeed li.mine{border-color:var(--sand)}
 .killfeed b{color:var(--sand);margin:0 .35rem}
-.vitals,.weapon{width:min(15rem,30vw);padding:.66rem .75rem;background:linear-gradient(0deg,#12140eae,#15181249);border-bottom:2px solid #f0d6a878}
+.vitals,.weapon{width:min(15rem,30vw);padding:.66rem .75rem;background:#1b1d15ed;border-bottom:2px solid #f0d6a878}
 .hud-title{display:flex;align-items:center;justify-content:space-between;font-size:.72rem;color:#e8dbc0;letter-spacing:.09em}
 .hud-title small{color:var(--sand);font-size:.57rem}
 .health-line,.ammunition{display:flex;align-items:center;gap:.6rem}
@@ -221,15 +221,15 @@ kbd{color:var(--paper);display:inline-block;border:1px solid #d6c4a550;padding:.
 .scope-readout span{font-size:.68rem}
 
 .overlay{display:grid;place-items:center;padding:1rem;overflow:auto}
-.modal-overlay{background:#0d0f0c9c;backdrop-filter:blur(7px);z-index:10}
+.modal-overlay{background:#0d0f0c9c;backdrop-filter:none;z-index:10}
 .score-overlay{background:#0d0f0c61}
 .block {
   position:relative;
-  background:linear-gradient(148deg,#272820,#191b15 75%);
+  background:#22241c;
   border:1px solid #b9ae9252;
   border-top:2px solid #d6a968;
   color:var(--paper);
-  box-shadow:0 1.4rem 5rem #070805a8;
+  box-shadow:0 8px 24px #07080580;
 }
 .modal,.scoreboard{width:min(100%,29rem);padding:clamp(1.2rem,4.5vw,2rem);max-height:calc(100svh - 2rem);overflow:auto}
 .scoreboard{width:min(100%,32rem)}
@@ -286,4 +286,70 @@ kbd{color:var(--paper);display:inline-block;border:1px solid #d6c4a550;padding:.
   .field-id strong{font-size:.9rem}
   .hud-title{font-size:.57rem}
   .map-panel{width:min(64vw,21rem)}
+}
+
+/* Compact instrument panels and readable field overlays. */
+.hud { font-variant-numeric:tabular-nums; text-shadow:0 1px 2px #080907; }
+.top-hud,.bottom-hud { left:max(12px,env(safe-area-inset-left)); right:max(12px,env(safe-area-inset-right)); }
+.top-hud { top:max(12px,env(safe-area-inset-top)); }
+.bottom-hud { bottom:max(12px,env(safe-area-inset-bottom)); }
+.navigation { padding:5px 8px; background:#171915e8; border-top:1px solid #d9c9aa60; }
+.clock { gap:.5rem; }
+.clock strong { letter-spacing:.045em; font-variant-numeric:tabular-nums; }
+.field-id { min-width:0; max-width:26%; background:#171915e8; }
+.field-id strong,.field-id span { overflow-wrap:anywhere; }
+.vitals,.weapon { min-width:0; border:1px solid #d9c9aa60; border-bottom:2px solid #d9c9aa; }
+.health-line .meter { height:8px; }
+.breath .meter { height:5px; }
+.health-line strong,.ammunition strong { font-variant-numeric:tabular-nums; }
+.field-keys { gap:.3rem .55rem; align-self:end; }
+.field-keys span { white-space:nowrap; }
+.scope-readout,.combat-status { max-width:calc(100vw - 24px); white-space:normal; overflow-wrap:anywhere; }
+.overlay { align-items:safe center; padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); }
+.modal,.scoreboard { max-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom))); overscroll-behavior:contain; }
+.modal .button,.modal .quiet-button,.join-form input { min-height:44px; }
+.scoreboard table { table-layout:fixed; }
+.scoreboard th:first-child,.scoreboard td:first-child { width:52%; overflow-wrap:anywhere; }
+.scoreboard td small { display:inline-block; }
+.map-panel { max-width:calc(100vw - 24px); max-height:calc(100dvh - 116px); overflow:auto; }
+.map-panel canvas { width:min(100%,max(100px,calc(100dvh - 220px))); margin-inline:auto; }
+.map-panel p { flex-wrap:wrap; }
+.map-panel p span:last-child { margin-left:0; }
+@media (max-width:600px) {
+  .masthead,.landing-footer { gap:10px; padding:14px; flex-wrap:wrap; }
+  .masthead-actions { flex-wrap:wrap; }
+  .wordmark { letter-spacing:.08em; }
+  .landing-main { padding:16px; }
+  h1 { font-size:clamp(3.8rem,18vw,6.4rem); }
+  .deploy-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .deploy-actions .button { min-width:0; }
+  .top-hud { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:6px; }
+  .field-id { max-width:100%; grid-column:1; }
+  .navigation { position:static; transform:none; grid-row:2; grid-column:1/-1; width:100%; }
+  .killfeed { grid-column:2; grid-row:1; max-width:100%; margin:0; justify-self:stretch; font-size:.65rem; }
+  .killfeed li { padding:3px 5px; }
+  .bottom-hud { gap:8px; }
+  .vitals,.weapon { width:min(46%,15rem); padding:8px; }
+  .hud-title { font-size:.65rem; letter-spacing:0; flex-wrap:wrap; gap:2px; }
+  .hud-title small { font-size:.58rem; }
+  .health-line strong,.ammunition strong { font-size:2.2rem; }
+  .map-panel { top:24%; left:12px; width:min(76vw,21rem); }
+  .join-form div { flex-wrap:wrap; }
+  .join-form .button { width:100%; }
+  .controls-list div { align-items:flex-start; }
+  .controls-list dd { max-width:68%; overflow-wrap:anywhere; }
+}
+@media (max-height:480px) and (orientation:landscape) {
+  .top-hud,.bottom-hud { gap:6px; }
+  .navigation { width:min(36vw,20rem); }
+  .clock strong { font-size:1.65rem; }
+  .field-keys { display:none; }
+  .health-line strong,.ammunition strong { font-size:2rem; }
+  .scope-readout { top:auto; bottom:calc(max(12px,env(safe-area-inset-bottom)) + 76px); }
+  .combat-status { top:60%; }
+  .map-panel { top:12px; max-height:calc(100dvh - 24px); width:min(40vw,18rem); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .button,.meter i,.hit-flash { transition:none; }
+  .button:active:not(:disabled) { transform:none; }
 }

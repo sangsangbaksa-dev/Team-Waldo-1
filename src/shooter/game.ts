@@ -28,7 +28,7 @@ const CAUSE_NAME = { zone: '자기장', grenade: '수류탄', vehicle: '차량',
 const causeName = (w: Cause): string => (w in CAUSE_NAME ? CAUSE_NAME[w as keyof typeof CAUSE_NAME] : WEAPONS[w as keyof typeof WEAPONS].name);
 /** 멀티플레이 방의 AI 채우기 선택지(0 = 사람만) */
 const ROOM_FILLS = [0, 30, 60, 100] as const;
-const CLICK_HINT = '화면을 클릭해 조작 시작';
+const CLICK_HINT = '클릭하여 조작 시작';
 type Phase = 'setup' | 'loading' | 'countdown' | 'play' | 'dead' | 'over';
 interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; chat: ChatBox | null; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync }
 interface Pvp { s: PvpSession; net: ShooterNet; opp: Player | null; target: Pose | null; done: boolean; deadAt: number | null; oppDeadMt: number | null; seed: number; begun: boolean }
@@ -95,7 +95,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     setupEl.hidden = false; setupEl.setAttribute('role', 'dialog'); setupEl.setAttribute('aria-label', 'ZERO ZONE 출격 설정');
     setupEl.innerHTML = `
       <div class="sz-setup-inner wd-panel">
-        <header><span class="sz-eyebrow wd-eyebrow">배틀로열</span><h2 class="wd-title">ZERO ZONE</h2><p class="wd-lead">줄어드는 자기장 안에서 마지막까지 살아남으세요.</p></header>
+        <header><span class="sz-eyebrow wd-eyebrow">배틀로열</span><h2 class="wd-title">ZERO ZONE</h2><p class="wd-lead">줄어드는 자기장 안에서 최후의 1인까지 생존.</p></header>
         <section class="wd-field"><h3 class="wd-label">모드 선택</h3><div class="sz-seg three">
           <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>솔로 배틀로열</b><em>나 + AI 99명 · 비행기에서 낙하산 강하 · 마지막 1명이 승리</em></button>
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 온라인 대전</b><em>2인 PvP · 무작위 매칭 또는 방 코드</em></button>` : ''}
@@ -563,7 +563,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#sz-banner').classList.remove('show'); }
     // 처치 알림
     while (feed.length && now - feed[0].at > 6000) feed.shift();
-    html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}"><span>${esc(f.text)}</span><b>⌖ ${esc(f.weapon)}</b></li>`).join(''));
+    html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}"><span>${esc(f.text)}</span><b>${esc(f.weapon)}</b></li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
     html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>J / 좌클릭</b> 사격</span><span><b>K / 우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
     if (now - lastMapDraw >= 150) { drawMap(m, p); lastMapDraw = now; } drawCompass(m, p);

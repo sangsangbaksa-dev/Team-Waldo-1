@@ -18,7 +18,7 @@
 .ty-top > div { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 8px 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .ty-cash { min-width: 140px; display: flex; flex-direction: column; position: relative; padding-left: 34px; }
 .ty-ico { width: 18px; height: 18px; flex: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .5)); }
-.ty-cash .ty-ico.coin { position: absolute; left: 0; top: 50%; width: 28px; height: 28px; margin-top: -14px; filter: drop-shadow(0 0 8px rgba(255, 207, 90, .45)); }
+.ty-cash .ty-ico.coin { position: absolute; left: 0; top: 50%; width: 24px; height: 24px; margin-top: -12px; filter: none; }
 .ty-top > .ty-cash { padding-left: 46px; }
 .ty-top > .ty-cash .ty-ico.coin { left: 11px; }
 .ty-cash .lbl { position: static; transform: none; font-size: 11px; color: var(--mute); letter-spacing: .08em; }
@@ -30,7 +30,7 @@
 .ty-ladder { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; }
 .ty-ladder li i { display: block; width: 22px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .16); }
 .ty-ladder li.done i { background: #7a8cff; }
-.ty-ladder li.now i { background: var(--gold); box-shadow: 0 0 8px rgba(255, 207, 90, .7); }
+.ty-ladder li.now i { background: var(--gold); box-shadow: none; }
 .ty-clock { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .ty-clock #ty-sun { font-size: 20px; }
 .ty-clock b { font-size: 22px; font-variant-numeric: tabular-nums; }
@@ -58,7 +58,7 @@
 /* 과제·활동·프롬프트 */
 .ty-task { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: var(--bg); border: 1px solid rgba(255, 255, 255, .3); border-radius: 14px; padding: 8px 16px; backdrop-filter: blur(10px); }
 .ty-task[hidden], .ty-activity[hidden], .ty-prompt[hidden] { display: none; }
-.ty-task i { font-style: normal; font-size: 26px; color: #fff; display: inline-block; text-shadow: 0 0 12px #fff; }
+.ty-task i { font-style: normal; font-size: 26px; color: #fff; display: inline-block; text-shadow: none; }
 .ty-task b { display: block; font-size: 14px; } .ty-task span { color: var(--gold); font-size: 12px; }
 .ty-waypoint { position: absolute; z-index: 3; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; color: #fff2cf; font-weight: 800; font-size: 12px; text-shadow: 0 2px 6px #332018; }
 .ty-waypoint[hidden], .ty-hint[hidden] { display: none; }
@@ -193,7 +193,7 @@
 .ty-stick i { position: absolute; left: 36px; top: 36px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, .5); }
 .ty-tfoot { position: absolute; right: 14px; bottom: 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: auto; }
 .ty-tfoot button { min-width: 84px; padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(14, 18, 26, .7); font-weight: 700; }
-.ty-tfoot button.big { min-width: 104px; padding: 20px 18px; background: linear-gradient(180deg, #ffd96a, #f0a82e); color: #1b1405; font-size: 17px; border: 0; }
+.ty-tfoot button.big { min-width: 104px; padding: 20px 18px; background: var(--gold); color: #1b1405; font-size: 17px; border: 1px solid var(--gold); }
 .ty-tfoot button.on { background: var(--gold); color: #1b1405; }
 .ty-root.touch .ty-prompt { bottom: 214px; }
 .ty-root.touch .ty-activity { bottom: 214px; }
@@ -401,3 +401,96 @@
   letter-spacing:.04em;color:#e9c48a;border:1px solid #6e756d;border-radius:3px;
   background:#212d32;min-width:22px;padding:3px 5px;text-align:center;align-self:center}
 .ty-root.touch .ty-tfoot button[data-t="ride"]:disabled {opacity:.48}
+
+/* HUD surfaces and dialogs share the city's understated instrument palette. */
+.ty-root button:focus-visible,.ty-root canvas:focus-visible{outline:2px solid #e9c48a;outline-offset:2px}
+.ty-top{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top))}
+.ty-cash{min-width:0}
+.ty-cash b{overflow-wrap:anywhere}
+.ty-stagebox{min-width:0}
+.ty-ladder{gap:3px}
+.ty-ladder li{min-width:0}
+.ty-ladder li i{max-width:100%}
+.ty-clock,.ty-tools{white-space:nowrap}
+.ty-speed button,.ty-tools button{min-height:36px}
+.ty-speed button.on,.ty-speed button.on:hover{background:var(--gold);color:#1b1405;border-color:var(--gold)}
+.ty-left,.ty-task,.ty-route{overflow-wrap:anywhere}
+.ty-task{max-width:min(300px,42vw)}
+.ty-route > div{min-width:0}
+.ty-route button{flex:none;min-width:36px;min-height:36px}
+.ty-modal{background:#0b111bd9;backdrop-filter:none;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+.ty-panel{color:var(--ink);background:#19242e;border-color:#53616f;border-radius:9px;max-height:min(86dvh,760px);overscroll-behavior:contain;animation:none;padding:clamp(12px,3vw,20px)}
+.ty-panel header p,.ty-panel .ty-none,.ty-panel footer,.ty-panel .ty-act small,.ty-panel .ty-kv span,.ty-panel .ty-list li span{color:var(--mute)}
+.ty-panel h3{color:var(--gold)}
+.ty-panel header h2,.ty-panel header p{overflow-wrap:anywhere}
+.ty-panel .ty-x{min-width:40px;min-height:40px}
+.ty-panel .ty-act{min-height:44px}
+.ty-panel .ty-act .body{min-width:0;overflow-wrap:anywhere}
+.ty-title.wd-screen,.ty-pause-screen.wd-screen,.ty-win-screen.wd-screen{background:#101922f2}
+.ty-titlebox.wd-panel,.ty-pause-panel.wd-panel{background:#19242e;border-radius:10px;border-color:#52616e;box-shadow:none}
+.ty-titlebox .kick.wd-eyebrow{border:0;padding-bottom:0;letter-spacing:.08em}
+.ty-titlebox .ty-title-btns .wd-btn,.ty-pause-panel .ty-acts .wd-btn{min-height:44px;border-radius:6px}
+.ty-titlebox .ty-title-btns .wd-btn.primary,.ty-pause-panel .ty-acts .wd-btn.primary{background:var(--gold);border-color:var(--gold);color:#1b1405}
+.ty-titlebox .ty-title-btns .wd-btn.primary:hover,.ty-pause-panel .ty-acts .wd-btn.primary:hover{background:#f4d6a6}
+.ty-hint{border-radius:6px;background:#17232eea;border-color:#697683;color:var(--ink)}
+.ty-root.touch .ty-tfoot{right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}
+.ty-root.touch .ty-tfoot button{min-height:44px}
+.ty-drive{min-width:0;max-width:calc(100% - 24px);background:var(--bg);border-radius:7px;box-shadow:none;backdrop-filter:none}
+.ty-drive > span:last-child{font-size:12px;text-align:center;line-height:1.4}
+@media(max-width:600px) and (orientation:portrait){
+  .ty-hud:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto auto auto minmax(0,1fr);gap:5px;align-content:start;align-items:start;padding:max(6px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+  .ty-top{position:static;grid-column:1/-1;grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px;min-width:0}
+  .ty-top > div{min-width:0;padding:5px 7px}
+  .ty-top > .ty-cash{padding-left:33px}
+  .ty-top > .ty-cash .ty-ico.coin{left:6px;width:21px;height:21px;margin-top:-10px}
+  .ty-cash b{font-size:clamp(17px,5vw,22px)}
+  .ty-stagebox b{font-size:12px}
+  .ty-ladder{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+  .ty-ladder li i{width:100%}
+  .ty-clock{grid-column:1/-1;display:flex;gap:6px;justify-content:space-between}
+  .ty-speed{margin-left:auto}
+  .ty-speed button{min-width:44px;min-height:44px;padding:4px}
+  .ty-tools{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .ty-tools button{min-height:44px;padding:4px 6px}
+  .ty-left{position:static;grid-column:1;grid-row:2/5;width:auto;min-width:0;gap:5px}
+  .ty-left > div{padding:6px;min-width:0}
+  .ty-energy{grid-template-columns:auto minmax(0,1fr) auto;gap:4px}
+  .ty-energy .ty-ico{display:none}
+  .ty-goal{font-size:12px}
+  .ty-task,.ty-route,.ty-route.has-task{position:static;transform:none;width:auto;max-width:none;min-width:0;gap:5px;padding:6px}
+  .ty-task{grid-column:2;grid-row:2}
+  .ty-task b{font-size:12px;line-height:1.25}
+  .ty-task span{font-size:11px}
+  .ty-route,.ty-route.has-task{grid-column:2;grid-row:3}
+  .ty-route button{min-width:44px;min-height:44px}
+  .ty-mini,.ty-root.touch .ty-mini{position:static;grid-column:2;grid-row:4;justify-self:end;width:clamp(70px,22vw,96px);height:auto;aspect-ratio:1}
+  .ty-toasts{position:static;grid-column:2;grid-row:5;width:100%;max-height:100%;overflow:hidden;gap:3px;align-items:stretch}
+  .ty-toasts li{font-size:11px;line-height:1.3;padding:5px 6px}
+  .ty-root.touch .ty-prompt,.ty-root.touch .ty-activity{left:max(8px,env(safe-area-inset-left));transform:none;bottom:calc(max(10px,env(safe-area-inset-bottom)) + 225px);max-width:calc(100% - 16px);font-size:13px}
+  .ty-root.touch .ty-hint{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 285px);width:max-content;max-width:85%;font-size:12px}
+  .ty-root.touch .ty-drive{left:50%;bottom:max(10px,env(safe-area-inset-bottom));max-width:40vw;min-width:0;padding:6px 8px}
+  .ty-root.touch .ty-drive strong{gap:4px;flex-wrap:wrap;justify-content:center}
+}
+@media(max-height:500px) and (orientation:landscape){
+  .ty-top{gap:5px}
+  .ty-top > div{padding:4px 7px}
+  .ty-top > .ty-cash{padding-left:34px}
+  .ty-top > .ty-cash .ty-ico.coin{left:6px}
+  .ty-cash b{font-size:19px}
+  .ty-stagebox b{font-size:12px}
+  .ty-ladder li i{width:12px}
+  .ty-clock{margin-left:auto}
+  .ty-tools button,.ty-speed button{padding:4px 6px;min-height:32px}
+  .ty-left{top:calc(max(10px,env(safe-area-inset-top)) + 61px);width:154px}
+  .ty-root.touch .ty-mini{top:calc(max(10px,env(safe-area-inset-top)) + 61px);right:max(8px,env(safe-area-inset-right));width:76px;height:76px}
+  .ty-root.touch .ty-task{top:calc(max(10px,env(safe-area-inset-top)) + 61px);left:50%;right:auto;transform:translateX(-50%);max-width:36vw}
+  .ty-route,.ty-route.has-task{top:calc(max(10px,env(safe-area-inset-top)) + 120px);left:50%;right:auto;transform:translateX(-50%);max-width:36vw}
+  .ty-root.touch .ty-tfoot{gap:5px}
+  .ty-root.touch .ty-tfoot button{padding:5px 10px;min-height:44px}
+  .ty-root.touch .ty-tfoot button.big{padding:8px 12px;min-height:44px}
+  .ty-root.touch .ty-prompt,.ty-root.touch .ty-activity{bottom:68px;max-width:48vw}
+  .ty-root.touch .ty-hint{bottom:120px;max-width:48vw}
+  .ty-root.touch .ty-drive{bottom:max(6px,env(safe-area-inset-bottom));padding:4px 8px}
+}
+
+.ty-title.wd-screen[hidden],.ty-hud[hidden]{display:none}

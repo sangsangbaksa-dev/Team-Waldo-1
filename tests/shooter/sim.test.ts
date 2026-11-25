@@ -326,3 +326,32 @@ describe('마지막 원 교착', () => {
     expect(m.over).toBe(true); expect(steps / 30).toBeLessThan(200);
   });
 });
+
+describe('AI 사격: 낙하 직후 신중한 AI 도 사람은 쏜다', () => {
+  /** 빈 들판에서 방금 내린 권총뿐인 AI(1번)가 20m 앞의 가만히 선 사람(0번)을 본다 */
+  function landed(seconds: number, ids: [string, string] = ['pistol', 'pistol']): { shots: number; hits: number } {
+    const m = new Match({ seed: 3, mode: 'br', difficulty: 'normal', humans: [{ name: '나' }], fill: 3, air: true }); m.map.boxes = []; m.map.grid.clear(); m.loot.forEach(l => { l.taken = true; });
+    const [me, bot, other] = m.players; m.t = 70; for (const p of m.players) { p.air = 0; p.alt = 0; p.landedAt = 60; }
+    me.x = 0; me.z = 0; me.hp = 1e9; bot.x = 20; bot.z = 0; bot.yaw = Math.PI; bot.guns = [{ id: ids[0] as 'pistol', mag: 99, reserve: 99, att: {} }, null]; other.x = -200; other.z = 200; other.alive = false;
+    let shots = 0, hits = 0; for (let i = 0; i < seconds * 60; i++) { m.step(1 / 60); for (const e of m.drain()) { if (e.t === 'shot' && e.id === bot.id) shots++; if (e.t === 'hit' && e.victim === me.id && e.attacker === bot.id) hits++; } }
+    return { shots, hits };
+  }
+  it('권총뿐인 AI 가 착지 직후에도 시야 안의 사람을 쏘고 맞힌다', () => { const r = landed(10); expect(r.shots).toBeGreaterThan(3); expect(r.hits).toBeGreaterThan(0); });
+  it('신중한 AI 는 여전히 먼 AI 와는 싸우지 않는다', () => {
+    const m = new Match({ seed: 3, mode: 'br', difficulty: 'normal', humans: [], fill: 3, air: true }); m.map.boxes = []; m.map.grid.clear(); m.loot.forEach(l => { l.taken = true; });
+    const [a, b, c] = m.players; m.t = 70; for (const p of m.players) { p.air = 0; p.alt = 0; p.landedAt = 60; }
+    a.x = 0; a.z = 0; b.x = 20; b.z = 0; b.yaw = Math.PI; c.alive = false; b.alive = true; a.yaw = 0; let shots = 0;
+    for (let i = 0; i < 6 * 60; i++) { m.step(1 / 60); for (const e of m.drain()) if (e.t === 'shot') shots++; }
+    expect(shots).toBe(0);
+  });
+});
+
+describe('온라인 방: 다른 브라우저에서 날아온 탄', () => {
+  it('움직이는 AI 는 지연된 화면을 보고 쏜 탄도 맞는다', () => {
+    const mk = (): Match => { const m = new Match({ seed: 4, mode: 'duel', difficulty: 'normal', humans: [{ name: 'a', remote: true }], fill: 2 }); m.map.boxes = []; m.map.grid.clear(); return m; };
+    const m = mk(), bot = m.players[1]; bot.x = 30; bot.z = 0; bot.speed = 5; bot.hp = 100;
+    // 손님이 본 AI 자리는 1m 뒤처져 있다: 반대편 방장 쪽에서 AI 가 z 로 1m 벗어나 있어도 맞아야 한다
+    bot.z = 1.0; m.remoteShot(0, 'rifle', 0, 1.15, 0, [[0, 0]]);
+    expect(bot.hp).toBeLessThan(100);
+  });
+});

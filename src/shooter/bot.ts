@@ -72,7 +72,8 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       if (!q.alive || q.id === p.id || q.air) continue;
       const dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz); if (d > T.sight) continue;
       const retaliate = p.hurt > 0 && p.lastHitBy === q.id;
-      if (cautious && !retaliate && d > 9) continue;
+      // 낙하 직후 신중함은 AI 끼리의 싸움을 늦추기 위한 것입니다. 사람(나)은 시야에 들어오면 언제나 쏩니다.
+      if (cautious && !retaliate && d > 9 && q.bot) continue;
       if (!retaliate && d > 9 && Math.abs(angDiff(Math.atan2(dz, dx), p.yaw)) > T.fov) continue;
       if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2, q.z) && !m.smokeBlocks(p.x, p.z, q.x, q.z)) { best = q; bestD = d; }
     }

@@ -629,7 +629,7 @@ export class Match {
     for (const q of this.players) {
       if (!q.alive || q.id === shooter || q.air || q.veh >= 0) continue;
       const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;
-      const R = fromRemote ? 0.62 : 0.5, b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
+      const R = fromRemote ? 0.62 + (q.bot ? Math.min(1, q.speed * 0.2) : 0) : 0.5, /* 다른 브라우저의 탄: 그쪽 화면의 AI 는 지연만큼 뒤처져 보이므로 움직이는 AI 는 더 넉넉하게 맞힙니다 */ b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
       let t = (-b - Math.sqrt(disc)) / (2 * a); if (t < 0) { if (c < 0) t = 0; else continue; }
       if (t >= hitT) continue; const y = oy + dy * t, cr = q.remote ? q.crouch : q.crouch; if (y < 0 || y > heightOf(cr) + 0.1) continue;
       hitT = t; target = q; head = y > headOf(cr);

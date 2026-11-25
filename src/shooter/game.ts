@@ -2,7 +2,7 @@
 import '../shared/ui.css';
 import './shooter.css';
 import { readPreferences, writeSound } from '../prefs';
-import type { LoadingScreen } from '../loading';
+import { loadModule, type LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BAG_MAX, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
@@ -148,8 +148,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 1대1 대전 ----------
   function openPvpLobby(rooms = false): void {
     if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'shooter', maxPlayers: rooms ? ROOM_MAX : 2, config: () => (rooms && roomFill ? { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'br', fill: roomFill, level } : { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'duel' }), onMatch: startPvp, onRoom: startRoom, inGameChat: false, onClose: () => undefined }))
-      .catch(() => { setupEl.querySelector('.sz-note')!.textContent = '대전 화면을 불러오지 못했습니다. 네트워크를 확인해 주세요.'; });
+    void loadModule(() => import('../net/lobby'), { cancelled: () => closed, onNote: text => { if (text) setupEl.querySelector('.sz-note')!.textContent = text; } }).then(({ openLobby }) => openLobby({ game: 'shooter', maxPlayers: rooms ? ROOM_MAX : 2, config: () => (rooms && roomFill ? { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'br', fill: roomFill, level } : { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'duel' }), onMatch: startPvp, onRoom: startRoom, inGameChat: false, onClose: () => undefined }))
+      .catch(() => { setupEl.querySelector('.sz-note')!.textContent = '대전 화면을 여는 중 문제가 생겼습니다. 페이지를 새로고침해 주세요.'; });
   }
   function card(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>', cls = ''): void {
     modal.className = 'sz-modal show wd-screen'; modal.style.setProperty('--wd-hue', '#b8cf91'); modal.innerHTML = `<div class="sz-card wd-panel ${cls}"><span class="sz-eyebrow wd-eyebrow">${eyebrow}</span><h2 class="wd-title">${title}</h2>${body}<div class="sz-actions wd-actions">${actions}</div></div>`;

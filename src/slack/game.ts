@@ -1,7 +1,7 @@
 ﻿import '../shared/ui.css';
 import './slack.css';
 import { readPreferences, writeSound } from '../prefs';
-import type { LoadingScreen } from '../loading';
+import { loadModule, type LoadingScreen } from '../loading';
 import { createSim, GOALS } from './sim';
 import { createSlackAudio } from './audio';
 import { readSlackRecord, recordSlackRun } from './records';
@@ -98,7 +98,8 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     $('.sl-hud').hidden = true; $('.sl-toast').textContent = ''; toastTime = 0;
     $('[data-title]').hidden = true; $('[data-result]').hidden = true; $('[data-paused]').hidden = true; $('[data-tip]').hidden = true; root.classList.remove('tipping');
     try {
-      const createView = stage === 'class' ? (await import('./classroom')).createClassroomView : (await import('./computer')).createComputerView;
+      const note = (text: string): void => { if (text) toast(text, 30); };
+      const createView = stage === 'class' ? (await loadModule(() => import('./classroom'), { cancelled: () => closed, onNote: note })).createClassroomView : (await loadModule(() => import('./computer'), { cancelled: () => closed, onNote: note })).createComputerView;
       if (closed) return; sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; $('.sl-hud').hidden = false; $('[data-battery-chip]').style.display = stage === 'class' ? 'none' : ''; audio.ambience(stage);
       audio.muffle(false); tally = { act: {}, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] }; beat = 0;
       if (tutorial) { tutStep = 0; showTutorialStep(); } else { $('[data-tip]').hidden = true; root.classList.remove('tipping'); }

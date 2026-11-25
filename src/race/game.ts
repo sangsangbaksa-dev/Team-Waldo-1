@@ -2,6 +2,7 @@
 import './race.css';
 import '../shared/ui.css';
 import * as THREE from 'three';
+import { loadModule, retry, fetchBuffer } from '../loading';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readPreferences, writePreferences, writeSound } from '../prefs';
 import { fmtTime, raceRaceKey, readRaceRecords, readRaceSetupRaw, writeRaceRecords, writeRaceSetupRaw } from '../records';
@@ -176,8 +177,8 @@ export function openRace(onExit: () => void): void {
   // ---------- 1대1 대전 ----------
   function openPvpLobby(): void {
     if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onRoom: startMulti, onClose: () => undefined }))
-      .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
+    void loadModule(() => import('../net/lobby'), { cancelled: () => closed }).then(({ openLobby }) => openLobby({ game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onRoom: startMulti, onClose: () => undefined }))
+      .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 여는 중 문제가 생겼어요. 새로고침해 주세요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
   }
   function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
     modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${eyebrow}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
@@ -436,7 +437,7 @@ export function openRace(onExit: () => void): void {
 
   // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
   void (async () => {
-    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
+    try { const gltf = await new GLTFLoader().parseAsync(await retry(() => fetchBuffer(`${import.meta.env.BASE_URL}assets/models/race.glb`), { maxAttempts: 8 }), `${import.meta.env.BASE_URL}assets/models/`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
     try { setDriverKit(await loadCharacterKit(import.meta.env.BASE_URL)); } catch { setDriverKit(null); }
     if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();

@@ -1,0 +1,49 @@
+.ty-casino-table {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #a57c4677;
+  border-radius: 12px;
+  background: linear-gradient(115deg, #312619, #181b24);
+}
+
+.ty-casino-coin {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 3px double #f2cd85;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #ffe5a7, #bd793a 70%);
+  color: #3d2417;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.ty-casino-table[data-result] .ty-casino-coin {
+  animation: ty-casino-flip 330ms ease-out;
+}
+
+.ty-casino-table[data-result="loss"] .ty-casino-coin {
+  border-color: #d4bec7;
+  background: radial-gradient(circle at 36% 30%, #eee1e7, #866577 70%);
+  color: #342438;
+}
+
+.ty-casino-table p {
+  margin: 4px 0 0;
+  color: #e9cfa9;
+  font-size: .9rem;
+  line-height: 1.45;
+}
+
+@keyframes ty-casino-flip {
+  from { transform: rotateY(0); }
+  to { transform: rotateY(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ty-casino-table[data-result] .ty-casino-coin { animation: none; }
+}

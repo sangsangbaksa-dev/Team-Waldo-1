@@ -2,7 +2,7 @@
 import type { CreateView, SlackEvent } from './types';
 import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
 
-// 교실 딴짓은 노트북 하나: video = 전략 게임 플레이 영상, game = 같은 전략 게임 직접 플레이. 수업 자료는 보스키(cover) 화면.
+// 교실 딴짓은 노트북 하나: video = 다리 점령전 하이라이트 영상, game = 같은 전술 게임 직접 플레이. 수업 자료는 보스키(cover) 화면.
 type Pick = 'video' | 'game';
 const picks: { id: Pick; icon: string; name: string }[] = [
   { id: 'video', icon: '▶', name: '전략 영상' },
@@ -30,10 +30,10 @@ export const createClassroomView: CreateView = (sim, audio) => {
             <div class="sl-win doc"><div class="sl-tb"><i></i><span>EduPlus 학습마당 · 중2 수학 문제집</span></div>
               <div class="sl-docbody"><aside><b>단원</b><u>1. 일차방정식</u><u class="on">2. 연립방정식</u><u>3. 일차함수</u><u>4. 도형의 성질</u></aside>
                 <article><div class="sl-pdfbar"><span>‹ 37 / 120 ›</span><span>100%</span><span>★ 북마크</span></div><h4>p.37 연립방정식의 풀이</h4><p>1. 다음 연립방정식을 가감법으로 풀어 보시오.</p><div class="eq">x + y = 12<br>2x − y = 3</div><p>2. 두 수의 합이 25, 차가 7일 때 두 수를 구하시오.</p><div class="ans"></div><p>3. 대입법을 이용하여 해를 구하시오.</p><div class="eq">y = 2x − 1<br>3x + y = 14</div></article></div></div>
-            <div class="sl-win vid"><div class="sl-tb"><i></i><span>FRONTLINE 전술 분석 · 다리 점령전 하이라이트</span></div>
+            <div class="sl-win vid"><div class="sl-tb"><i></i><span>전술 영상 · 다리 점령전 하이라이트</span></div>
               <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-sub"></div></div>
               <div class="sl-pbar"><b>▶</b><span class="sl-track"><i></i></span><em>00:00</em></div></div>
-            <div class="sl-win gm"><div class="sl-tb"><i></i><span>FRONTLINE · 지휘관 모드</span></div>
+            <div class="sl-win gm"><div class="sl-tb"><i></i><span>다리 점령전 · 지휘 모드</span></div>
               <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-end"></div></div>
               <div class="sl-gbar"><span class="sl-res">광물 <b data-ore>0</b></span><button type="button" data-train="w">일꾼 ${COST.w}</button><button type="button" data-train="i">보병 ${COST.i}</button><button type="button" data-train="t">전차 ${COST.t}</button><span class="sl-sc">점수 <b data-sc>0</b></span></div></div>
             <div class="sl-task"><b class="sl-start"></b><span data-w="doc">문제집</span><span data-w="video">영상</span><span data-w="game">게임</span><em class="sl-tbat">100%</em><em>10:24</em></div>
@@ -109,7 +109,9 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const pointerDown = (event: PointerEvent) => {
     if (event.button !== 0 || coverPointer !== null) return;
     event.preventDefault(); cover.focus({ preventScroll: true }); audio.resume();
-    coverPointer = event.pointerId; cover.setPointerCapture(event.pointerId); syncCover();
+    coverPointer = event.pointerId;
+    try { cover.setPointerCapture(event.pointerId); } catch { /* window-level release below covers browsers without capture */ }
+    syncCover();
   };
   const pointerUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; syncCover(); } };
   const actionClick = (event: MouseEvent) => {
@@ -127,8 +129,8 @@ export const createClassroomView: CreateView = (sim, audio) => {
   el.addEventListener('focusout', focusout);
   window.addEventListener('blur', release);
   cover.addEventListener('pointerdown', pointerDown);
-  cover.addEventListener('pointerup', pointerUp);
-  cover.addEventListener('pointercancel', pointerUp);
+  window.addEventListener('pointerup', pointerUp);
+  window.addEventListener('pointercancel', pointerUp);
   cover.addEventListener('lostpointercapture', pointerUp);
   gcv.addEventListener('pointerdown', gDown);
   gcv.addEventListener('pointermove', gMove);
@@ -188,7 +190,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     dispose() {
       resize?.disconnect();
       el.removeEventListener('keydown', keydown); el.removeEventListener('keyup', keyup); el.removeEventListener('focusout', focusout); window.removeEventListener('blur', release);
-      cover.removeEventListener('pointerdown', pointerDown); cover.removeEventListener('pointerup', pointerUp); cover.removeEventListener('pointercancel', pointerUp); cover.removeEventListener('lostpointercapture', pointerUp);
+      cover.removeEventListener('pointerdown', pointerDown); window.removeEventListener('pointerup', pointerUp); window.removeEventListener('pointercancel', pointerUp); cover.removeEventListener('lostpointercapture', pointerUp);
       gcv.removeEventListener('pointerdown', gDown); gcv.removeEventListener('pointermove', gMove);
       el.removeEventListener('click', actionClick);
       release();

@@ -47,19 +47,13 @@ export function writeRaceSetupRaw(v: unknown): void {
   try { localStorage.setItem(RACE_SETUP_KEY, JSON.stringify(v)); } catch { /* 선택은 저장하지 않아도 됩니다. */ }
 }
 
-export const fmtTime = (s: number): string => { if (!Number.isFinite(s)) return '--:--.---'; const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(3)}`; };
-
-export const RTS_KEY = 'waldo.rts.v1';
-export interface RtsRecords { difficulty: string; matches: number; wins: number; bestWin: Record<string, number> }
-export function readRtsRecords(): RtsRecords {
-  const rec: RtsRecords = { difficulty: 'normal', matches: 0, wins: 0, bestWin: {} };
-  try {
-    const r = JSON.parse(localStorage.getItem(RTS_KEY) ?? '{}') as Record<string, unknown>, n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
-    if (typeof r.difficulty === 'string') rec.difficulty = r.difficulty;
-    rec.matches = n(r.matches); rec.wins = n(r.wins); rec.bestWin = timeTable(r.bestWin);
-  } catch { /* 기록 없이도 플레이할 수 있습니다. */ }
-  return rec;
-}
-export function writeRtsRecords(rec: RtsRecords): void {
-  try { localStorage.setItem(RTS_KEY, JSON.stringify(rec)); } catch { /* 저장 불가 환경 */ }
+/** 초 단위 기록을 반올림한 뒤 분·초·밀리초로 표시합니다. */
+export function fmtTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds > Number.MAX_SAFE_INTEGER / 1000) return '--:--.---';
+  const milliseconds = Math.round(seconds * 1000);
+  const minutes = Math.floor(milliseconds / 60000);
+  const remainder = milliseconds - minutes * 60000;
+  const wholeSeconds = Math.floor(remainder / 1000);
+  const fraction = remainder % 1000;
+  return `${minutes}:${String(wholeSeconds).padStart(2, '0')}.${String(fraction).padStart(3, '0')}`;
 }

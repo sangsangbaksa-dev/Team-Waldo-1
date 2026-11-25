@@ -59,6 +59,7 @@ button:disabled { cursor: default; opacity: 0.58; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--copper); outline-offset: 4px; }
 h1:focus { outline: none; }
 [hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 svg { width: 1.25rem; height: 1.25rem; display: block; flex: none; }
 #world, #game-ui, .screen-film, .overlay, #damage { position: absolute; inset: 0; }
 #world { background: radial-gradient(ellipse at 68% 48%, #5a3d36, #151211 72%); outline: none; }
@@ -168,6 +169,7 @@ svg { width: 1.25rem; height: 1.25rem; display: block; flex: none; }
 .button.primary svg, .button.primary small { color: #382017; }
 .button.primary:not(:disabled):hover { background: #ffca91; border-color: #ffd4a8; }
 .menu-secondary .button { min-height: 2.7rem; font-size: 0.93rem; }
+.hub-return { width: max-content; margin-top: 0.75rem; color: var(--cream); text-decoration: none; }
 .back {
   margin: 0 0 1.05rem;
   padding: 0.4rem 0.7rem;

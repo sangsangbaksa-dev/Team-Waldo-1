@@ -1,19 +1,17 @@
 import './style.css';
 import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
-import { showLoading, retry, retryNote } from './loading';
+import { showLoading, loadModule, clearReloadGuard } from './loading';
 import { deferTileImages } from './shared/lazy-images';
-import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
+import { readCityCareer, readRaceRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
-import { readOutlawSummary } from './outlaw/records';
 import { readSkySummary } from './sky/records';
 import { readSlackRecord } from './slack/records';
-import { readSquadSummary } from './squad/records';
 import { readTycoonSummary, STAGE_NAMES } from './tycoon/core/summary';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 import { setRails } from './shared/rails';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone' | 'squad' | 'slack' | 'parry-gladiator' | 'dead-ground';
+type GameId = 'city' | 'race' | 'shooter' | 'tycoon' | 'sky' | 'room-tone' | 'slack' | 'parry-gladiator' | 'dead-ground';
 
 /** 허브와 따로 빌드되어 자기 주소(/<id>/)에서 열리는 게임. */
 const STANDALONE: ReadonlySet<GameId> = new Set<GameId>(['room-tone', 'parry-gladiator', 'dead-ground']);
@@ -26,7 +24,7 @@ interface Entry {
   facts: string[];
   image: string;
   imageAlt: string;
-  status: () => string;
+  status?: () => string;
 }
 
 const base = import.meta.env.BASE_URL;
@@ -43,12 +41,6 @@ const ENTRIES: Entry[] = [
       grades.sort((a, b) => 'SABCD'.indexOf(a) - 'SABCD'.indexOf(b));
       return grades.length ? `최고 ${grades[0]}등급` : '';
     },
-  },
-  {
-    id: 'squad', name: 'SQUAD CLASH', genre: '도형 병사 배치전',
-    summary: '같은 골드로 도형 병사를 배치하고 자동 전투를 지켜보세요. 상성과 진형이 승부를 가릅니다.',
-    facts: ['AI · 한 화면 2인 · 온라인', '병사 5종 · 3판 2선승', '마우스 · 키보드 · 터치'],
-    image: `${base}assets/home/squad-clash.jpg`, imageAlt: '위쪽 빨강 진영과 아래쪽 파랑 진영의 병사들이 마주 선 전장', status: () => { const r = readSquadSummary(); return r.has ? `${r.matches}전 · ${r.wins}승` : ''; },
   },
   {
     id: 'city',
@@ -77,19 +69,6 @@ const ENTRIES: Entry[] = [
     },
   },
   {
-    id: 'rts',
-    name: 'FRONTLINE',
-    genre: '실시간 전략',
-    summary: '광물을 캐고 기지를 세워 병력을 키우고, 상대의 모든 건물을 무너뜨리세요. AI는 쉬움부터 매우 어려움까지.',
-    facts: ['AI 4단계 · 라인전', '일꾼 · 보병 · 전차 · 의무병', '키보드 · 마우스 · 터치'],
-    image: `${base}assets/home/frontline.jpg`,
-    imageAlt: '두 기지가 마주 선 FRONTLINE의 전장',
-    status: () => {
-      const { matches, wins } = readRtsRecords();
-      return matches > 0 ? `${matches}판 · ${wins}승` : '';
-    },
-  },
-  {
     id: 'shooter',
     name: 'ZERO ZONE',
     genre: '배틀로열 슈터',
@@ -103,24 +82,11 @@ const ENTRIES: Entry[] = [
     },
   },
   {
-    id: 'outlaw',
-    name: 'OUTLAW CITY',
-    genre: '오픈월드 범죄 액션',
-    summary: '시민 8명 중 한 명으로 시작해 의뢰를 받고, 차를 몰고, 경찰을 따돌리세요. 배달·응급 이송·지하 격투·카지노·부동산·차고 수집까지 — 도시는 네 놀이터입니다.',
-    facts: ['3인칭 오픈월드 · 차량 14종 · 무기 11종', '의뢰 7개 · 일거리 6종 · 카지노', '키보드 · 마우스 · 터치'],
-    image: `${base}assets/home/outlaw-city.jpg`,
-    imageAlt: '네온이 켜지는 황혼의 도시 거리와 추격전',
-    status: () => {
-      const r = readOutlawSummary();
-      return r.has ? `의뢰 ${r.missions}/7 · 스턴트 ${r.stunts}/12` : '';
-    },
-  },
-  {
     id: 'tycoon',
     name: 'HUSTLE',
     genre: '발로 뛰는 도시 타이쿤',
     summary: '벤치에서 눈을 뜬 빈털터리가 빈 병을 줍고, 알바를 뛰고, 작은 가게를 열어 사업·대기업을 거쳐 세계를 정복합니다. 도시는 당신의 걸음과 함께 자랍니다.',
-    facts: ['3D 도시 · 낮밤 · 비', '빈털터리 → 세계 정복 7단계', '키보드 · 마우스 · 터치'],
+    facts: ['3D 도시 · 차량 운전 · 순간이동', '빈털터리 → 세계 정복 7단계', '키보드 · 마우스 · 터치'],
     image: `${base}assets/home/hustle.jpg`,
     imageAlt: '해 질 녘 번화한 도시 거리와 간판 불빛',
     status: () => {
@@ -149,7 +115,6 @@ const ENTRIES: Entry[] = [
     facts: ['AI · 연습 · 온라인 1 VS 1', '친구와 방 코드로 대결', '키보드 · 마우스 · 터치'],
     image: `${base}assets/home/parry-gladiator.svg`,
     imageAlt: '노을 진 검투장에서 검과 방패를 든 두 검투사가 마주 선 모습',
-    status: () => '',
   },
   {
     id: 'dead-ground',
@@ -159,7 +124,6 @@ const ENTRIES: Entry[] = [
     facts: ['AI 5명 · 온라인 2~6명', '방 코드로 친구와 대결', '키보드 · 마우스 (PC)'],
     image: `${base}assets/home/dead-ground.webp`,
     imageAlt: '폐허가 된 공업 계곡 위로 저격 조준경이 겨눠진 Dead Ground 타이틀 이미지',
-    status: () => '',
   },
   {
     id: 'room-tone',
@@ -169,7 +133,6 @@ const ENTRIES: Entry[] = [
     facts: ['1인 플레이 · 약 30분', '탐색 · 퍼즐 · 추적', '자동 저장 · 터치 지원'],
     image: `${base}room-tone/keyart.jpg`,
     imageAlt: '녹음실 문 뒤에서 복도를 응시하는 잔향',
-    status: () => '',
   },
 ];
 
@@ -198,11 +161,12 @@ function tile(entry: Entry, index: number): string {
 
 let hubScrollY = 0;
 let stopTileImages: (() => void) | undefined;
-const HUB_TITLE = `WALDO · ${ENTRIES.length}편의 브라우저 3D 게임`;
+const HUB_TITLE = `WALDO · ${ENTRIES.length}편의 브라우저 게임`;
 /** 지금 열려 있는 게임. 뒤로가기·새로고침 경고가 이 값을 봅니다. */
 let activeGame: GameId | null = null;
 /** 게임을 열면서 우리가 기록(history)을 하나 쌓았는지. 목록으로 돌아올 때 한 칸 되돌릴지 정합니다. */
 let pushedEntry = false;
+let returningToHubViaHistory = false;
 const gameHash = (id: GameId): string => `#/${id}`;
 const hashGame = (): GameId | null => {
   const id = location.hash.startsWith('#/') ? location.hash.slice(2) : '';
@@ -210,13 +174,14 @@ const hashGame = (): GameId | null => {
 };
 function leaveGameEntry(): void {
   if (pushedEntry) { pushedEntry = false; history.back(); }
-  else if (hashGame()) { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } }
+  else if (location.hash.startsWith('#/')) { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } }
 }
 function renderMenu(): void {
   stopTileImages?.(); stopTileImages = undefined;
   setRails(null);
+  const previousGame = activeGame;
   activeGame = null;
-  leaveGameEntry();
+  if (previousGame) leaveGameEntry();
   generation++;
   unsubscribeAccount?.();
   unsubscribeAccount = undefined;
@@ -256,8 +221,8 @@ function renderMenu(): void {
   app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
     const game = ENTRIES.find(entry => entry.id === button.dataset.game);
     if (!game) return;
-    const status = game.status();
-    button.querySelector('.tile-status')!.textContent = status ? `내 기록 · ${status}` : '아직 플레이 기록이 없어요';
+    const status = game.status?.();
+    if (status) button.querySelector('.tile-status')!.textContent = `내 기록 · ${status}`;
     const image = button.querySelector<HTMLImageElement>('.tile-media img')!;
     const settleImage = (): void => {
       image.parentElement?.classList.add(image.naturalWidth ? 'is-loaded' : 'is-error');
@@ -273,6 +238,7 @@ function renderMenu(): void {
   wireAccount();
   wireChat();
   if (hubScrollY) restoreScroll();
+  if (previousGame) app.querySelector<HTMLButtonElement>(`#start-${previousGame}`)?.focus({ preventScroll: true });
 }
 
 /** 이미지·애니메이션으로 문서 높이가 늦게 정해져도 원래 위치로 돌아가도록 몇 프레임 동안 다시 맞춥니다. */
@@ -293,7 +259,7 @@ function wireChat(): void {
   const gen = generation;
   window.setTimeout(() => {
     if (gen !== generation || hubChat) return;
-    void import('./net/chat-dock').then(({ openChat }) => {
+    void loadModule(() => import('./net/chat-dock'), { cancelled: () => gen !== generation }).then(({ openChat }) => {
       if (gen !== generation || hubChat || app.hidden) return;
       hubChat = openChat({ mode: 'hub', tabs: [{ key: 'lobby', label: '전체 채팅' }] });
     }).catch(() => undefined);
@@ -308,8 +274,11 @@ function wireAccount(): void {
   const label = (nickname: string | null): void => { button.textContent = nickname ? `${nickname} · 랭킹` : '로그인 · 랭킹'; };
   button.onclick = () => {
     button.disabled = true;
-    void import('./net/lobby').then(({ openLobby }) => { openLobby({ onClose: () => { button.disabled = false; } }); })
-      .catch(() => { button.disabled = false; });
+    const before = button.textContent;
+    const restore = (): void => { if (button.textContent === '다시 연결하는 중…') button.textContent = before; };
+    void loadModule(() => import('./net/lobby'), { onNote: text => { if (text) button.textContent = '다시 연결하는 중…'; } })
+      .then(({ openLobby }) => { restore(); openLobby({ onClose: () => { button.disabled = false; } }); })
+      .catch(() => { restore(); button.disabled = false; });
   };
   const gen = generation;
   window.setTimeout(() => {
@@ -323,19 +292,32 @@ function wireAccount(): void {
   }, 1200);
 }
 
+/** 로딩이 길어질 때의 출구: 주소의 #/게임 을 지우고 허브를 새로 엽니다(게임이 만든 화면·루프도 함께 정리됩니다). */
+function backToHub(): void {
+  returningToHubViaHistory = true;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ }
+  location.reload();
+}
+
 async function launch(id: GameId, fromHistory = false): Promise<void> {
+  const entry = ENTRIES.find(game => game.id === id);
+  if (!entry) return;
   if (!fromHistory) hubScrollY = window.scrollY;
   stopTileImages?.(); stopTileImages = undefined;
   if (STANDALONE.has(id)) {
-    location.assign(`${base}${id}/`);
+    const url = `${base}${id}/`;
+    if (fromHistory) location.replace(url);
+    else location.assign(url);
     return;
   }
   const navigation = ++generation;
   activeGame = id;
   // 게임마다 기록 한 칸: 브라우저 뒤로가기가 사이트를 떠나지 않고 게임 목록으로 돌아옵니다. 새로고침해도 같은 게임 화면이 열립니다.
-  if (!hashGame()) { try { history.pushState({ game: id }, '', gameHash(id)); pushedEntry = true; } catch { /* 기록 실패 시 뒤로가기만 기본 동작 */ } }
-  const named = ENTRIES.find(e => e.id === id);
-  if (named) document.title = `${named.name} · WALDO`;
+  pushedEntry = history.state?.game === id;
+  if (hashGame() !== id) {
+    try { history.pushState({ game: id }, '', gameHash(id)); pushedEntry = true; } catch { /* 기록 실패 시 뒤로가기만 기본 동작 */ }
+  }
+  document.title = `${entry.name} · WALDO`;
   const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
   const notice = app.querySelector<HTMLElement>('#home-notice');
   const label = app.querySelector<HTMLElement>(`#start-${id} .tile-cta`);
@@ -343,39 +325,23 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
   closeHubChat();
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
-  // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
-  const loading = showLoading(id === 'slack' ? 'SLACK OFF' : id === 'squad' ? 'SQUAD CLASH' : id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : id === 'sky' ? 'SKY WAR' : 'SPEED RUSH');
+  // 느리거나 끊겨도 포기하지 않고 계속 다시 시도합니다. 오래 걸리면 "처음 화면으로" 버튼이 나타납니다.
+  const loading = showLoading(entry.name, backToHub);
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
-  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
+  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => loadModule(load, { cancelled, onNote: text => loading.note(text) }).then(m => { clearReloadGuard(); return m; });
   try {
-    const entry = ENTRIES.find(e => e.id === id);
-    if (entry) setRails({ name: entry.name, genre: entry.genre, summary: entry.summary, facts: entry.facts, image: entry.image, imageAlt: entry.imageAlt, status: entry.status() });
-    if (id === 'squad') {
-      const { openSquad } = await fetchGame(() => import('./squad/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openSquad(renderMenu, { loading });
-    } else if (id === 'city') {
+    setRails({ name: entry.name, genre: entry.genre, summary: entry.summary, facts: entry.facts, image: entry.image, imageAlt: entry.imageAlt, status: entry.status?.() ?? '' });
+    if (id === 'city') {
       const { openCity } = await fetchGame(() => import('./city/game'));
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openCity(renderMenu, { loading });
-    } else if (id === 'rts') {
-      const { openRts } = await fetchGame(() => import('./rts/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openRts(renderMenu, { loading });
     } else if (id === 'shooter') {
       const { openShooter } = await fetchGame(() => import('./shooter/game'));
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openShooter(renderMenu, { loading });
-    } else if (id === 'outlaw') {
-      const { openOutlaw } = await fetchGame(() => import('./outlaw/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openOutlaw(renderMenu, { loading });
     } else if (id === 'slack') {
       const { openSlack } = await fetchGame(() => import('./slack/game'));
       if (cancelled()) { loading.close(); return; }
@@ -402,7 +368,8 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
     loading.close();
     if (cancelled()) return;
     renderMenu();
-    app.querySelector<HTMLElement>('#home-notice')!.textContent = '게임을 불러오지 못했습니다. 연결을 확인한 뒤 다시 선택해 주세요.';
+    // 여기까지 오는 건 네트워크가 아니라 게임 코드 자체의 오류뿐입니다(연결 문제는 위에서 계속 다시 시도).
+    app.querySelector<HTMLElement>('#home-notice')!.textContent = '게임을 여는 중 문제가 생겼습니다. 페이지를 새로고침한 뒤 다시 선택해 주세요.';
     app.querySelector<HTMLButtonElement>(`#start-${id}`)?.focus();
   }
 }
@@ -431,18 +398,30 @@ window.addEventListener('popstate', () => {
   const target = hashGame();
   if (target && !activeGame) { void launch(target, true); return; }
   // 게임 화면에서 뒤로가기를 누르면 게임 목록으로. 게임이 만든 화면·루프를 확실히 치우도록 페이지를 다시 엽니다.
-  if (!target && activeGame) { pushedEntry = false; try { sessionStorage.setItem('waldo.hubScroll', String(hubScrollY)); } catch { /* 선택 사항 */ } location.reload(); }
+  if (!target && activeGame) {
+    returningToHubViaHistory = true;
+    try { sessionStorage.setItem('waldo.hubScroll', String(hubScrollY)); } catch { /* 선택 사항 */ }
+    location.reload();
+  } else if (!target && location.hash.startsWith('#/')) {
+    leaveGameEntry();
+  }
 });
 // 게임 중 새로고침·탭 닫기: 진행이 사라진다고 먼저 알립니다.
 window.addEventListener('beforeunload', e => {
+  if (returningToHubViaHistory) {
+    // 뒤로가기로 허브에 돌아갈 때는 게임에서 등록한 종료 경고도 건너뜁니다.
+    e.stopImmediatePropagation();
+    return;
+  }
   if (!activeGame) return;
   e.preventDefault();
   e.returnValue = '';
-});
+}, { capture: true });
 
 try { history.scrollRestoration = 'manual'; } catch { /* 선택 사항 */ }
 try { hubScrollY = Number(sessionStorage.getItem('waldo.hubScroll')) || 0; sessionStorage.removeItem('waldo.hubScroll'); } catch { /* 선택 사항 */ }
 const startGame = hashGame();
+if (!startGame && location.hash.startsWith('#/')) leaveGameEntry();
 renderMenu();
 handleAuthRedirect();
 if (startGame) void launch(startGame, true);

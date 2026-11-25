@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { backoffMs, retry, showLoading } from '../../src/loading';
+import { backoffMs, isFetchError, loadModule, retry, showLoading } from '../../src/loading';
 
 afterEach(() => { vi.useRealTimers(); document.body.innerHTML = ''; });
 
@@ -43,5 +43,45 @@ describe('retry', () => {
   });
   it('대기 시간은 늘어나다 8초에서 멈춘다', () => {
     expect(backoffMs(0)).toBeLessThan(backoffMs(2)); expect(backoffMs(20)).toBe(8000);
+  });
+});
+
+describe('처음 화면으로 버튼', () => {
+  it('onEscape 가 있으면 8초 뒤 또는 재시도 안내가 뜰 때 나타나고, 눌러 빠져나간다', () => {
+    vi.useFakeTimers();
+    const out = vi.fn();
+    const ld = showLoading('A', out);
+    const btn = document.querySelector<HTMLButtonElement>('.ld-escape')!;
+    expect(btn.hidden).toBe(true);
+    vi.advanceTimersByTime(8100);
+    expect(btn.hidden).toBe(false);
+    btn.click(); expect(out).toHaveBeenCalledTimes(1);
+    ld.close();
+    const b = showLoading('B', out); b.note('연결이 느립니다');
+    expect(document.querySelector<HTMLButtonElement>('.ld-escape')!.hidden).toBe(false);
+  });
+  it('onEscape 가 없으면 버튼이 나타나지 않는다', () => {
+    vi.useFakeTimers();
+    showLoading('A').note('x'); vi.advanceTimersByTime(20000);
+    expect(document.querySelector<HTMLButtonElement>('.ld-escape')!.hidden).toBe(true);
+  });
+});
+
+describe('loadModule', () => {
+  it('네트워크 오류는 횟수 제한 없이 성공할 때까지 계속 다시 시도한다', async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    const p = loadModule(async () => { if (++n < 12) throw new TypeError('Failed to fetch dynamically imported module: /a.js'); return 'ok'; });
+    await vi.runAllTimersAsync();
+    await expect(p).resolves.toBe('ok'); expect(n).toBe(12);
+  });
+  it('코드 자체의 오류(네트워크와 무관)는 바로 던진다', async () => {
+    let n = 0;
+    await expect(loadModule(async () => { n++; throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(n).toBe(1);
+  });
+  it('연결 오류 문구를 알아본다', () => {
+    for (const m of ['Failed to fetch dynamically imported module: x', 'error loading dynamically imported module', 'Importing a module script failed.', 'HTTP 404 /a.glb']) expect(isFetchError(new TypeError(m))).toBe(true);
+    expect(isFetchError(new Error('x is not a function'))).toBe(false);
   });
 });

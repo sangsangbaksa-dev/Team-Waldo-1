@@ -16,10 +16,12 @@ const btn = (label, command, { glyph, primary = false, meta = '', disabled = fal
 const pip = '<i></i><i></i>';
 const fighter = (side, label, role) => `<section class="fighter ${side}" aria-label="${role}">
   <div class="fighter-id"><span class="fighter-icon">${icon('crest')}</span><div><span class="fighter-role">${role}</span><strong data-name>${label}</strong></div></div>
-  <div class="meter hp" role="meter" aria-label="${role} health" aria-valuemin="0" aria-valuemax="100"><i class="lag"></i><i class="value"></i></div>
-  <div class="fighter-bottom"><div class="meter stamina" role="meter" aria-label="${role} stamina" aria-valuemin="0" aria-valuemax="100"><i class="value"></i></div><div class="pips" aria-label="Round wins">${pip}</div></div>
+  <div class="meter hp" role="meter" aria-label="${role} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i class="lag"></i><i class="value"></i></div>
+  <div class="fighter-bottom"><div class="meter stamina" role="meter" aria-label="${role} stamina" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i class="value"></i></div><div class="pips" aria-label="Round wins">${pip}</div></div>
 </section>`;
 const keyboard = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
+const hubReturn = /\/parry-gladiator\/(?:index\.html)?$/.test(window.location.pathname)
+  ? '<a class="button hub-return" href="../">Return to WALDO hub</a>' : '';
 
 export class View {
   constructor(root, handlers) {
@@ -35,10 +37,11 @@ export class View {
           ${fighter('enemy', 'CHALLENGER', 'RIVAL')}
         </header>
         <div id="target" class="target" hidden><span></span></div>
-        <div id="announcer" class="announcer" role="status" hidden><span></span><strong></strong></div>
-        <div id="reaction" class="reaction" hidden><strong></strong><span></span></div>
+        <div id="announcer" class="announcer" role="status" aria-live="polite" aria-atomic="true" hidden><span></span><strong></strong></div>
+        <div id="reaction" class="reaction" aria-hidden="true" hidden><strong></strong><span></span></div>
+        <div id="combat-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
         <div id="practice-help" class="practice-help" hidden><strong></strong><p></p><div></div></div>
-        <div class="hud-bottom"><div class="hints">${keyboard('W A S D','Move')}${keyboard('J','Light')}${keyboard('K','Heavy')}${keyboard('Q','Guard / Parry')}${keyboard('Space','Dodge')}</div>
+        <div class="hud-bottom"><div class="hints">${keyboard('W A S D','Move')}${keyboard('J','Light')}${keyboard('K','Heavy')}${keyboard('F','Feint')}${keyboard('Q','Guard / Parry')}${keyboard('Space','Dodge')}</div>
           <button type="button" class="icon-button pause-button" data-command="pause" aria-label="Pause or open match menu">${icon('pause')}</button>
         </div>
         <div id="touch-controls">
@@ -63,6 +66,7 @@ export class View {
     this.gameUI = this.find('#game-ui');
     this.announce = this.find('#announcer');
     this.reaction = this.find('#reaction');
+    this.combatAnnouncement = this.find('#combat-announcement');
     this.target = this.find('#target');
     this.damage = this.find('#damage');
     this.practice = this.find('#practice-help');
@@ -112,7 +116,7 @@ export class View {
       ${btn('Solo duel', 'solo', { glyph: 'swords', primary: true, meta: 'VS AI' })}
       ${btn('Online duel', 'online', { glyph: 'link', meta: '1 VS 1' })}
       ${btn('Combat practice', 'practice', { glyph: 'shield' })}
-      <div class="menu-secondary">${btn('Controls', 'how', { glyph: 'book' })}${btn('Settings', 'settings', { glyph: 'cog' })}</div></div>`);
+      <div class="menu-secondary">${btn('Controls', 'how', { glyph: 'book' })}${btn('Settings', 'settings', { glyph: 'cog' })}</div></div>${hubReturn}`);
   }
 
   solo(settings) {
@@ -240,6 +244,7 @@ export class View {
 
   notify(title, hint = '', tone = 'gold') {
     this.reactionLeft = hint ? 1.18 : 0.85;
+    this.combatAnnouncement.textContent = hint ? `${title}. ${hint}` : title;
     this.reaction.querySelector('strong').textContent = title;
     this.reaction.querySelector('span').textContent = hint;
     this.reaction.dataset.tone = tone;

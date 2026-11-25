@@ -32,6 +32,8 @@ describe('ballistics', () => {
     const scoped = { aiming: true, steady: false, moving: false, crouched: false };
     const sway = aimSway(scoped, 1.7);
     const steady = aimSway({ ...scoped, steady: true }, 1.7);
+    expect(Math.hypot(sway.yaw, sway.pitch)).toBeGreaterThan(0);
+    expect(Math.hypot(sway.yaw, sway.pitch)).toBeLessThan(0.00025);
     expect(Math.hypot(steady.yaw, steady.pitch)).toBeLessThan(Math.hypot(sway.yaw, sway.pitch) * 0.2);
   });
 });

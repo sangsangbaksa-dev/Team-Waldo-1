@@ -5,14 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && npm run build:games",
     "build:games": "node tools/build-games.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "city-sim": "node --import tsx tools/city-sim.ts",
-    "rts-sim": "node --import tsx tools/rts-sim.ts",
     "tycoon-sim": "node --import tsx tools/tycoon-sim.ts"
   },
   "dependencies": {

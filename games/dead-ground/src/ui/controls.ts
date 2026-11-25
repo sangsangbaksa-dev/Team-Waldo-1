@@ -2,7 +2,7 @@ import { neutralInput, type Input } from '../domain/combat.js';
 import { clamp } from '../domain/math.js';
 
 const ZOOMS = [4, 8, 16];
-const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyC',
+const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyJ', 'KeyK',
   'ControlLeft', 'Space', 'KeyR', 'KeyZ', 'KeyM', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export class Controls {
@@ -17,7 +17,11 @@ export class Controls {
   private keys = new Set<string>();
   private fire = 0;
   private reload = 0;
-  private aiming = false;
+  private mouseAiming = false;
+
+  private get aiming(): boolean {
+    return this.mouseAiming || this.keys.has('KeyK');
+  }
 
   constructor(readonly canvas: HTMLCanvasElement, private readonly pause: () => void) {
     document.addEventListener('pointerlockchange', () => {
@@ -39,10 +43,10 @@ export class Controls {
       if (!this.active) return;
       event.preventDefault();
       if (event.button === 0) this.fire++;
-      if (event.button === 2) this.aiming = true;
+      if (event.button === 2) this.mouseAiming = true;
     });
     window.addEventListener('mouseup', event => {
-      if (event.button === 2) this.aiming = false;
+      if (event.button === 2) this.mouseAiming = false;
     });
     this.canvas.addEventListener('contextmenu', event => event.preventDefault());
     this.canvas.addEventListener('wheel', event => {
@@ -59,6 +63,7 @@ export class Controls {
       if (event.code === 'Tab') this.score = true;
       if (event.code === 'KeyM') this.map = !this.map;
       if (event.code === 'KeyR') this.reload++;
+      if (event.code === 'KeyJ') this.fire++;
       if (event.code === 'KeyZ') this.zoom = ZOOMS[(ZOOMS.indexOf(this.zoom) + 1) % ZOOMS.length];
     });
     document.addEventListener('keyup', event => {
@@ -82,7 +87,7 @@ export class Controls {
     this.active = false;
     this.fallback = false;
     this.keys.clear();
-    this.aiming = this.score = this.map = false;
+    this.mouseAiming = this.score = this.map = false;
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 

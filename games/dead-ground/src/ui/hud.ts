@@ -42,9 +42,11 @@ export class Hud {
   private readonly bearing = element('bearing-ticks');
   private readonly sector = element('sector-label');
   private readonly health = element('health');
+  private readonly healthMeter = element('health-meter');
   private readonly healthBar = element('health-bar');
   private readonly protection = element('protection');
   private readonly breath = element('breath-bar');
+  private readonly breathMeter = element('breath-meter');
   private readonly breathLabel = element('breath-status');
   private readonly ammo = element('ammo');
   private readonly reserve = element('reserve');
@@ -106,12 +108,15 @@ export class Hud {
     setText(this.kills, player.kills);
     setText(this.health, player.health);
     this.healthBar.style.transform = `scaleX(${player.health / 100})`;
+    this.healthMeter.setAttribute('aria-valuenow', String(player.health));
     this.healthBar.style.background = player.health < 40 ? '#d88964' : '';
     setText(this.ammo, String(player.ammo).padStart(2, '0'));
     setText(this.reserve, player.reserve);
     this.cartridges.forEach((item, index) => item.classList.toggle('empty', index >= player.ammo));
     this.protection.hidden = !player.alive || player.protectedUntil <= snapshot.time;
     this.breath.style.transform = `scaleX(${player.breath})`;
+    this.breathMeter.setAttribute('aria-valuenow', String(Math.round(player.breath * 100)));
+    this.breathMeter.setAttribute('aria-valuetext', `${Math.round(player.breath * 100)} percent${player.breathExhausted ? ', recovering' : ''}`);
     this.breathLabel.style.opacity = player.aiming ? '1' : '0.65';
     setText(this.breathLabel.firstElementChild as HTMLElement, player.steady ? 'STEADY' : player.breathExhausted && player.aiming ? 'RECOVER' : 'BREATH');
 
@@ -134,6 +139,9 @@ export class Hud {
     else if (player.reloadUntil > snapshot.time) status = 'RELOADING';
     else if (player.boltUntil > snapshot.time && snapshot.time + RIFLE.cycle * 0.64 > player.boltUntil) status = 'CYCLING BOLT';
     else if (player.ammo === 0) status = player.reserve ? 'R · RELOAD' : 'OUT OF AMMO';
+    else if (player.aiming && player.breath < 0.18 && (player.steady || player.breathExhausted)) {
+      status = player.breathExhausted ? 'BREATH EMPTY · RELEASE SPACE TO RECOVER' : 'BREATH LOW · RELEASE SPACE TO RECOVER';
+    }
     else if (flags.fallback) status = 'ARROW KEYS ALSO LOOK · ESC MENU';
     notice(this.combatStatus, status);
 

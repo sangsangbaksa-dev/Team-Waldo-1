@@ -69,7 +69,7 @@ export const eye = (player: Pick<Player, 'position' | 'height'>) =>
   vec(player.position.x, player.position.y + player.height - 0.15, player.position.z);
 
 export function aimSway(state: Pick<Player, 'aiming' | 'steady' | 'moving' | 'crouched'>, time: number) {
-  const amplitude = (state.aiming ? 0.0035 : 0.008) * (state.steady ? 0.12 : state.crouched ? 0.72 : 1)
+  const amplitude = (state.aiming ? 0.000175 : 0.008) * (state.steady ? 0.12 : state.crouched ? 0.72 : 1)
     * (state.moving ? 2 : 1);
   return {
     yaw: amplitude * (Math.sin(time * 2.1) + 0.34 * Math.sin(time * 3.7)),

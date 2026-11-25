@@ -52,6 +52,7 @@ p,h1,h2,ol,ul{margin:0}
   padding: clamp(1.1rem,3.15vw,2.6rem) clamp(1.2rem,5.5vw,6.5rem);
 }
 .masthead{align-self: start}
+.masthead-actions{display:flex;align-items:center;gap:.55rem}
 .wordmark {
   display:flex;
   align-items:center;
@@ -200,7 +201,7 @@ h1 span{color:#dcb782}
 .cartridges{display:flex;justify-content:end;gap:.31rem;margin-top:.17rem}
 .cartridges i{display:block;width:.28rem;height:.65rem;background:#d5ba85;clip-path:polygon(50% 0,100% 35%,100% 100%,0 100%,0 35%)}
 .cartridges i.empty{opacity:.24}
-.field-keys{display:flex;gap:.64rem;white-space:nowrap;color:#e6ddc8;font-size:.67rem}
+.field-keys{display:flex;flex-wrap:wrap;justify-content:center;gap:.34rem .64rem;max-width:min(38vw,35rem);color:#e6ddc8;font-size:.67rem}
 kbd{color:var(--paper);display:inline-block;border:1px solid #d6c4a550;padding:.12rem .32rem;background:#1719139c;font:500 .72rem/1.15 var(--mono);text-shadow:none}
 .field-keys kbd{font-size:.6rem}
 .reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:25px;height:25px;color:#fff9e9bd}

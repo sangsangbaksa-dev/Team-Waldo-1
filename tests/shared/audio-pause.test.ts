@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AudioEngine, tone } from '../../src/audio-core';
-import { OutlawAudio } from '../../src/outlaw/audio';
 import { ShooterAudio } from '../../src/shooter/audio';
 import { installAudioMock, setHidden } from '../helpers/audio-mock';
 
@@ -53,17 +52,5 @@ describe('shared audio pause', () => {
     shooter.enabled = false;
     expect(master.gain.value).toBe(0);
     shooter.dispose();
-  });
-
-  it('OUTLAW CITY builds world loops only after play starts', () => {
-    const audio = new OutlawAudio();
-    audio.unlock();
-    const ctx = mock.context()!;
-    expect(ctx.oscillators.length).toBe(0);
-    expect(ctx.sources.length).toBe(0);
-    audio.world(true);
-    expect(ctx.oscillators.length).toBeGreaterThan(0);
-    expect(ctx.sources.length).toBeGreaterThan(0);
-    audio.dispose();
   });
 });

@@ -3,6 +3,7 @@
 //   chat.set({ ... });  // 대화방 바꾸기        chat.close();  // 치우기
 // 여러 곳에서 겹쳐 부르면 마지막에 부른 것이 보이고, 그것을 치우면 그 전 것이 다시 보입니다.
 // 게임 중(mode 'game')에는 Enter 로 입력창을 열고, Esc 로 닫습니다. 입력하는 동안의 키는 게임으로 가지 않습니다.
+import { loadModule } from '../loading';
 import './chat.css';
 import { currentAccount, getBackend, onAccount } from './backend';
 import { CHAT_MAX, QUICK_CHAT, mergeChat, readBlocked, setBlocked, type ChatKey, type ChatMessage } from './chat';
@@ -179,7 +180,7 @@ class Dock {
     if (act === 'blocked') { this.showBlocked = !this.showBlocked; this.paint(); return; }
     if (act === 'unblock') { setBlocked(arg, null); this.paint(); return; }
     if (act === 'login') {
-      void import('./lobby').then(({ openLobby }) => openLobby({ onClose: () => undefined })).catch(() => undefined);
+      void loadModule(() => import('./lobby')).then(({ openLobby }) => openLobby({ onClose: () => undefined })).catch(() => undefined);
     }
   }
   private find(id: number): ChatMessage | undefined { for (const list of this.msgs.values()) { const m = list.find(x => x.id === id); if (m) return m; } return undefined; }

@@ -3,7 +3,8 @@ import { attacks } from '../domain/combat.js';
 import { createArena } from './render/arena.js';
 import { createFighter } from './render/fighter.js';
 import { BladeTrail, ImpactRing, Sparks } from './render/effects.js';
-import { clamp, mix } from './render/palette.js';
+import { mix } from './render/palette.js';
+import { duelFraming, impactMotion } from './render/motion.js';
 
 const vec = () => new THREE.Vector3();
 const damp = (dt, speed) => 1 - Math.exp(-dt * speed);
@@ -22,7 +23,7 @@ function makeContactShadow() {
   return new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, toneMapped: false });
 }
 
-const SHOCKS = { hit: 0.16, riposte: 0.28, block: 0.085, parry: 0.26, break: 0.27, clash: 0.19 };
+const SHOCKS = { hit: 0.09, riposte: 0.17, block: 0.035, parry: 0.13, break: 0.16, clash: 0.11 };
 
 export class Scene {
   constructor(container) {
@@ -134,19 +135,21 @@ export class Scene {
     this.isReset = true;
     this.shake = 0;
     this.latched = 0;
+    this.sparks.reset();
+    this.impactRing.reset();
     for (const f of this.fighters) f.trail.reset();
   }
 
   impact(event, index, reduced) {
     const a = this.fighters[index], b = this.fighters[1 - index];
     if (!a || !b) return;
-    const location = event === 'dodge' ? 0 : event === 'hit' || event === 'riposte' || event === 'break' ? 0.73 : 0.52;
+    const location = event === 'dodge' || event === 'evade' ? 0 : event === 'hit' || event === 'riposte' || event === 'break' ? 0.73 : 0.52;
     const x = mix(a.root.position.x, b.root.position.x, location);
     const z = mix(a.root.position.z, b.root.position.z, location);
-    this.sparks.emit(event, x, z, this.low, reduced);
+    this.sparks.emit(event, x, z, this.low, reduced, b.root.position.x - a.root.position.x, b.root.position.z - a.root.position.z);
     if (!reduced && !this.low && ['parry', 'break', 'riposte'].includes(event)) this.impactRing.emit(x, z, event);
     if (!reduced) this.shake = Math.max(this.shake, SHOCKS[event] || 0);
-    if (SHOCKS[event]) this.latched = Math.max(this.latched, event === 'parry' ? 0.081 : 0.04);
+    if (!reduced && SHOCKS[event]) this.latched = Math.max(this.latched, event === 'parry' ? 0.081 : 0.04);
   }
 
   updateRig(rig, state, player, i, dt, menu, online, reset, paused, reduced) {
@@ -183,11 +186,7 @@ export class Scene {
     } else {
       const dx = rival.x - me.x, dz = rival.z - me.z, distance = Math.hypot(dx, dz) || 1;
       const x = dx / distance, z = dz / distance;
-      const tight = this.camera.aspect < 0.92;
-      const depth = (tight ? 5.6 : 5.15) + Math.min(1.6, distance * 0.16);
-      const close = clamp((3.2 - distance) / 1.9, 0, 1);
-      const shoulder = tight ? 0.90 + close * 0.65 : 1.6 + close * 1.05;
-      const height = 3.75 + distance * 0.085 + close * 0.42;
+      const { depth, shoulder, height } = duelFraming(distance, this.camera.aspect);
       this.desired.set(me.x - x * depth - z * shoulder, height, me.z - z * depth + x * shoulder);
       const limit = Math.hypot(this.desired.x, this.desired.z);
       if (limit > 13.4) {
@@ -200,9 +199,10 @@ export class Scene {
     this.look.lerp(this.lookAt, reset ? 1 : damp(dt, 9.8));
     this.camera.position.copy(this.cameraBase);
     if (this.shake > 0.002 && !reduced) {
-      this.camera.position.x += Math.sin(this.time * 94) * this.shake;
-      this.camera.position.y += Math.cos(this.time * 124) * this.shake * 0.47;
-      this.camera.position.z += Math.cos(this.time * 89) * this.shake * 0.46;
+      const offset = impactMotion(this.time, this.shake);
+      this.camera.position.x += offset.x;
+      this.camera.position.y += offset.y;
+      this.camera.position.z += offset.z;
     }
     this.camera.lookAt(this.look);
   }
@@ -219,6 +219,7 @@ export class Scene {
     this.wasMenu = menu;
     this.portraitLight.visible = menu;
     this.lastRound = state.round;
+    if (reset) { this.shake = 0; this.latched = 0; this.sparks.reset(); this.impactRing.reset(); for (const f of this.fighters) f.trail.reset(); }
     const footsteps = this.fighters.map((rig, i) => this.updateRig(rig, state, state.players[i], i, dt, menu, online, reset, paused, reduced));
     this.setupCamera(local, dt, menu, reduced, reset);
     this.renderer.render(this.scene, this.camera);

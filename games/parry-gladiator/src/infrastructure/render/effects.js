@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { color, clamp } from './palette.js';
+import { color } from './palette.js';
+import { TRAIL_LIFETIME, TRAIL_INTERVAL, trailOpacity, impactAngle } from './motion.js';
 
 const particleVertex = `
   attribute float intensity;
@@ -43,8 +44,8 @@ export class Sparks {
     scene.add(this.points);
   }
 
-  emit(event, x, z, low, reduced) {
-    const counts = { hit: 17, riposte: 30, parry: 45, block: 20, break: 35, clash: 35, dodge: 13, evade: 8 };
+  emit(event, x, z, low, reduced, dx = 0, dz = 0) {
+    const counts = { hit: 12, riposte: 25, parry: 32, block: 10, break: 25, clash: 27, dodge: 10, evade: 7 };
     let count = counts[event] || 0;
     if (low) count = Math.floor(count * 0.55);
     if (reduced) count = Math.floor(count * 0.28);
@@ -57,8 +58,8 @@ export class Sparks {
     for (let i = 0; i < count; i++) {
       const index = this.cursor++ % this.particles.length;
       const particle = this.particles[index];
-      const angle = Math.random() * Math.PI * 2;
-      const velocity = (dust ? 0.58 : 1.9) + Math.random() * (dust ? 1.2 : 6.5);
+      const angle = dust ? Math.random() * Math.PI * 2 : impactAngle(dx, dz, Math.random(), Math.random());
+      const velocity = (dust ? 0.58 : 2.1) + Math.random() * (dust ? 1.2 : 4.2);
       const origin = Math.random() * (dust ? 0.48 : 0.12);
       particle.x = x + Math.cos(angle) * origin;
       particle.y = dust ? 0.045 : 1.03 + Math.random() * 0.47;
@@ -69,13 +70,21 @@ export class Sparks {
       particle.gravity = dust ? 1.0 : 11.4;
       particle.age = 0;
       particle.life = (dust ? 0.25 : 0.14) + Math.random() * 0.32;
-      particle.fade = dust ? 0.42 : 0.89;
+      particle.fade = dust ? 0.24 : 0.78;
       pos.setXYZ(index, particle.x, particle.y, particle.z);
       colors.setXYZ(index, tint.r, tint.g, tint.b);
-      size.setX(index, dust ? 0.11 : 0.041 + Math.random() * 0.13);
+      size.setX(index, dust ? 0.09 : 0.035 + Math.random() * 0.075);
     }
     for (const attribute of [pos, colors, size]) attribute.needsUpdate = true;
     if (count) this.points.visible = true;
+  }
+
+  reset() {
+    for (const p of this.particles) p.age = p.life;
+    const intensity = this.geometry.attributes.intensity;
+    intensity.array.fill(0);
+    intensity.needsUpdate = true;
+    this.points.visible = false;
   }
 
   update(dt) {
@@ -104,8 +113,9 @@ export class Sparks {
 
 export class BladeTrail {
   constructor(scene, tint) {
-    this.limit = 9;
+    this.limit = 12;
     this.samples = [];
+    this.sampleClock = TRAIL_INTERVAL;
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.limit * 6), 3).setUsage(THREE.DynamicDrawUsage));
     this.geometry.setAttribute('fade', new THREE.BufferAttribute(new Float32Array(this.limit * 2), 1).setUsage(THREE.DynamicDrawUsage));
@@ -138,13 +148,17 @@ export class BladeTrail {
 
   reset() {
     this.samples.length = 0;
+    this.sampleClock = TRAIL_INTERVAL;
     this.mesh.visible = false;
   }
 
   update(dt, rig, active) {
     for (const sample of this.samples) sample.age += dt;
-    while (this.samples[0]?.age > 0.115) this.samples.shift();
-    if (active) {
+    while (this.samples[0]?.age > TRAIL_LIFETIME) this.samples.shift();
+    this.sampleClock += Math.max(0, dt);
+    if (!active) this.sampleClock = TRAIL_INTERVAL;
+    if (active && this.sampleClock >= TRAIL_INTERVAL) {
+      this.sampleClock %= TRAIL_INTERVAL;
       const sample = this.samples.length === this.limit ? this.samples.shift() : { a: new THREE.Vector3(), b: new THREE.Vector3(), age: 0 };
       rig.bladeBase.getWorldPosition(sample.a);
       rig.bladeTip.getWorldPosition(sample.b);
@@ -156,11 +170,11 @@ export class BladeTrail {
     const { position, fade } = this.geometry.attributes;
     for (let i = 0; i < this.samples.length; i++) {
       const { a, b, age } = this.samples[i];
-      const opacity = clamp(1 - age / 0.115, 0, 1) * (0.15 + 0.85 * i / this.limit);
+      const opacity = trailOpacity(age, i, this.samples.length);
       position.setXYZ(2 * i, a.x, a.y, a.z);
       position.setXYZ(2 * i + 1, b.x, b.y, b.z);
       fade.setX(2 * i, opacity * 0.03);
-      fade.setX(2 * i + 1, opacity * 0.61);
+      fade.setX(2 * i + 1, opacity * 0.36);
     }
     position.needsUpdate = fade.needsUpdate = true;
     this.geometry.setDrawRange(0, (this.samples.length - 1) * 6);
@@ -169,7 +183,7 @@ export class BladeTrail {
 
 export class ImpactRing {
   constructor(scene) {
-    const shape = new THREE.RingGeometry(0.93, 1, 36);
+    const shape = new THREE.RingGeometry(0.965, 1, 48);
     this.material = new THREE.MeshBasicMaterial({
       color: '#ffcb8a', transparent: true, opacity: 0,
       side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -187,13 +201,15 @@ export class ImpactRing {
     this.age = 0;
   }
 
+  reset() { this.age = 1; this.mesh.visible = false; }
+
   update(dt) {
     this.age += dt;
-    const t = this.age / 0.38;
+    const t = this.age / 0.28;
     this.mesh.visible = t < 1;
     if (this.mesh.visible) {
-      this.material.opacity = 0.50 * (1 - t) ** 2;
-      this.mesh.scale.setScalar(0.38 + 2.16 * (1 - (1 - t) ** 2));
+      this.material.opacity = 0.27 * (1 - t) ** 2;
+      this.mesh.scale.setScalar(0.28 + 1.12 * (1 - (1 - t) ** 2));
     }
   }
 }

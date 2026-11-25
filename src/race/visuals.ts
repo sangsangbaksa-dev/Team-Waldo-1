@@ -8,7 +8,7 @@ export function addRaceScenery(scene: THREE.Scene, track: Track, quality: 'high'
   const panels: Placement[] = [], posts: Placement[] = [], lamps: Placement[] = [];
   const stands: Placement[] = [], seats: Placement[] = [], rails: Placement[] = [];
   const gatePosts: Placement[] = [], gateCaps: Placement[] = [], gateLights: Placement[] = [];
-  const spacing = quality === 'low' ? 32 : 20;
+  const spacing = quality === 'low' ? 64 : 42;
   const at = (i: number, lateral: number, height: number): Placement => ({
     x: track.x[i] - track.tz[i] * lateral, y: track.y[i] + height,
     z: track.z[i] + track.tx[i] * lateral, angle: -Math.atan2(track.tz[i], track.tx[i]),
@@ -52,26 +52,25 @@ export function addRaceScenery(scene: THREE.Scene, track: Track, quality: 'high'
   };
   const dark = (): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: 0x202c39, roughness: 0.7, metalness: 0.35 });
   const trim = (): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: 0x8b9da5, roughness: 0.45, metalness: 0.65 });
-  const glow = (): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: 0x69e7ff, toneMapped: false });
+  const glow = (): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: 0xc1d5de });
   const signCanvas = document.createElement('canvas'); signCanvas.width = 512; signCanvas.height = 192;
   const ctx = signCanvas.getContext('2d');
   if (ctx) {
-    const bg = ctx.createLinearGradient(0, 0, 512, 192);
-    bg.addColorStop(0, '#101d30'); bg.addColorStop(0.58, '#183b51'); bg.addColorStop(1, '#121927');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, 512, 192);
-    ctx.strokeStyle = '#58d8ee'; ctx.lineWidth = 5; ctx.strokeRect(8, 8, 496, 176);
-    ctx.fillStyle = '#ef694e'; ctx.fillRect(22, 25, 9, 142);
-    ctx.fillStyle = '#f2f7f7'; ctx.font = 'italic 900 62px sans-serif'; ctx.fillText('SPEED', 48, 88);
-    ctx.fillStyle = '#78e7f5'; ctx.font = 'italic 900 62px sans-serif'; ctx.fillText('RUSH', 48, 151);
-    ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 3;
-    for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(350 + i * 26, 30); ctx.lineTo(310 + i * 26, 160); ctx.stroke(); }
+    ctx.fillStyle = '#27313a'; ctx.fillRect(0, 0, 512, 192);
+    ctx.strokeStyle = '#82909a'; ctx.lineWidth = 3; ctx.strokeRect(8, 8, 496, 176);
+    ctx.fillStyle = '#ce9f62'; ctx.fillRect(24, 28, 7, 136);
+    ctx.fillStyle = '#e5e6e2'; ctx.font = '700 48px sans-serif'; ctx.fillText('SPEED RUSH', 52, 94);
+    ctx.fillStyle = '#c1c8cb'; ctx.font = '500 23px sans-serif'; ctx.fillText('CIRCUIT', 54, 140);
+    ctx.strokeStyle = '#a7b1b5'; ctx.lineWidth = 4;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(440 + i * 14, 118); ctx.lineTo(418 + i * 14, 154); ctx.stroke(); }
   }
   const signTexture = new THREE.CanvasTexture(signCanvas); signTexture.colorSpace = THREE.SRGBColorSpace;
-  const signMaterial = new THREE.MeshBasicMaterial({ map: signTexture, side: THREE.DoubleSide });
+  const signMaterial = new THREE.MeshStandardMaterial({ map: signTexture, roughness: 0.78, metalness: 0.08 });
   const signFaces: Placement[] = [];
   for (let i = 12; i < track.n; i += spacing) for (const side of [-1, 1]) {
-    const p = at(i, side * (track.halfWidth + 3.32), 2.05);
-    p.angle += Math.PI / 2; signFaces.push(p);
+    const p = at(i, side * (track.halfWidth + 3.5), 2.05);
+    p.x -= track.tx[i] * 0.16; p.z -= track.tz[i] * 0.16;
+    p.angle -= Math.PI / 2; signFaces.push(p);
   }
   add(new THREE.BoxGeometry(0.18, 2.1, 0.18), dark(), posts);
   add(new THREE.BoxGeometry(0.3, 1.35, 3.8), new THREE.MeshStandardMaterial({ color: 0x142b3a, roughness: 0.45, metalness: 0.35 }), panels);

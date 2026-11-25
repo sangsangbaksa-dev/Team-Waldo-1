@@ -114,7 +114,6 @@ export class View {
       <p class="lede">Read the blade. Break their guard. Win two rounds.</p>
       <div class="menu-actions">
       ${btn('Solo duel', 'solo', { glyph: 'swords', primary: true, meta: 'VS AI' })}
-      ${btn('Online duel', 'online', { glyph: 'link', meta: '1 VS 1' })}
       ${btn('Combat practice', 'practice', { glyph: 'shield' })}
       <div class="menu-secondary">${btn('Controls', 'how', { glyph: 'book' })}${btn('Settings', 'settings', { glyph: 'cog' })}</div></div>${hubReturn}`);
   }

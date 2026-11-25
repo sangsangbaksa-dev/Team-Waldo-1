@@ -83,11 +83,6 @@ class Game {
     this.name.addEventListener('change', () => this.playerName());
     this.code.addEventListener('input', () => { this.code.value = roomCode(this.code.value); });
     element('solo').addEventListener('click', () => this.deploySolo());
-    element('multiplayer').addEventListener('click', () => {
-      notice(element('menu-status'));
-      notice(element('online-status'));
-      this.show('online');
-    });
     this.createRoom.addEventListener('click', () => this.connect({ type: 'create', name: this.playerName() }));
     element('join-form').addEventListener('submit', event => {
       event.preventDefault();

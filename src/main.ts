@@ -112,7 +112,7 @@ const ENTRIES: Entry[] = [
     name: 'PARRY GLADIATOR',
     genre: '1대1 패링 결투',
     summary: '검투장에서 상대의 공격을 읽고 막고 받아치세요. 패링에 성공하면 반격 기회가 열리고, 먼저 두 라운드를 따내면 승리합니다.',
-    facts: ['AI · 연습 · 온라인 1 VS 1', '친구와 방 코드로 대결', '키보드 · 마우스 · 터치'],
+    facts: ['AI 대전 · 연습', '검과 방패로 펼치는 결투', '키보드 · 마우스 · 터치'],
     image: `${base}assets/home/parry-gladiator.svg`,
     imageAlt: '노을 진 검투장에서 검과 방패를 든 두 검투사가 마주 선 모습',
   },
@@ -121,7 +121,7 @@ const ENTRIES: Entry[] = [
     name: 'DEAD GROUND',
     genre: '저격 서바이벌 아레나',
     summary: '무너진 공업 계곡에서 볼트액션 저격총 한 자루로 싸우세요. 탄도 낙차를 읽고 엄폐물 사이를 움직여 12킬을 먼저 채웁니다.',
-    facts: ['AI 5명 · 온라인 2~6명', '방 코드로 친구와 대결', '키보드 · 마우스 (PC)'],
+    facts: ['AI 5명과 생존 대결', '폐허 속 저격 아레나', '키보드 · 마우스 (PC)'],
     image: `${base}assets/home/dead-ground.webp`,
     imageAlt: '폐허가 된 공업 계곡 위로 저격 조준경이 겨눠진 Dead Ground 타이틀 이미지',
   },
@@ -374,24 +374,12 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
   }
 }
 
-/**
- * 가입 확인 메일의 링크로 돌아왔을 때의 처리. 성공이면 Supabase 가 주소의 토큰으로 로그인 상태를 만들어 주고,
- * 실패(링크 만료·이미 사용)면 `#error=...` 가 붙어 오므로 알아듣기 쉬운 안내와 재전송 버튼을 보여 줍니다.
- */
+// 이전 인증 링크에 포함된 토큰을 처리하지 않고 주소에서 제거합니다.
 function handleAuthRedirect(): void {
   const params = new URLSearchParams(location.hash.replace(/^#/, ''));
-  const failed = params.has('error') || params.has('error_code'), signedIn = params.has('access_token');
-  if (!failed && !signedIn) return;
-  const clean = (): void => { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } };
-  const open = (notice: string): void => {
-    void import('./net/lobby').then(({ openLobby }) => { openLobby({ notice, onClose: () => undefined }); }).catch(() => undefined);
-  };
-  if (failed) { clean(); open('인증 링크가 만료되었거나 이미 사용됐습니다. 이메일을 입력하고 "인증 메일 다시 받기"를 눌러 새 링크를 받아 주세요.'); return; }
-  // 성공: 클라이언트가 만들어지면서 주소의 토큰을 읽어 로그인합니다(주소 정리는 그 뒤에).
-  void import('./net/backend').then(async ({ currentAccount, setAccount }) => {
-    const account = await currentAccount(); clean();
-    if (account) { setAccount(account); open('이메일 인증이 끝났습니다. 로그인되었습니다.'); } else open('로그인 상태를 확인하지 못했습니다. 이메일과 비밀번호로 로그인해 주세요.');
-  }).catch(() => clean());
+  if (params.has('access_token') || params.has('error') || params.has('error_code')) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ }
+  }
 }
 
 window.addEventListener('popstate', () => {

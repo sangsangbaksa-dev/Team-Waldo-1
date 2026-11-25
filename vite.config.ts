@@ -4,7 +4,9 @@ export default defineConfig({
   base: './',
   build: {
     chunkSizeWarningLimit: 2000,
-    rollupOptions: { input: { arcade: 'index.html', roomTone: 'room-tone/index.html' } },
+    rollupOptions: {
+      input: { arcade: 'index.html', roomTone: 'room-tone/index.html', projectHarbor: 'project-harbor/index.html' },
+    },
   },
   test: { include: ['tests/**/*.test.ts'] },
 });

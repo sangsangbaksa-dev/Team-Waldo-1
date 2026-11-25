@@ -11,10 +11,10 @@ import { readTycoonSummary, STAGE_NAMES } from './tycoon/core/summary';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 import { setRails } from './shared/rails';
 
-type GameId = 'city' | 'race' | 'shooter' | 'tycoon' | 'sky' | 'room-tone' | 'slack' | 'parry-gladiator' | 'dead-ground';
+type GameId = 'city' | 'race' | 'shooter' | 'tycoon' | 'sky' | 'room-tone' | 'slack' | 'parry-gladiator' | 'dead-ground' | 'project-harbor';
 
-/** 허브와 따로 빌드되어 자기 주소(/<id>/)에서 열리는 게임. */
-const STANDALONE: ReadonlySet<GameId> = new Set<GameId>(['room-tone', 'parry-gladiator', 'dead-ground']);
+/** 자기 주소(/<id>/)에서 열리는 게임 또는 다운로드 페이지. */
+const STANDALONE: ReadonlySet<GameId> = new Set<GameId>(['room-tone', 'parry-gladiator', 'dead-ground', 'project-harbor']);
 
 interface Entry {
   id: GameId;
@@ -24,12 +24,21 @@ interface Entry {
   facts: string[];
   image: string;
   imageAlt: string;
+  badge?: 'New';
+  desktop?: boolean;
   status?: () => string;
 }
 
 const base = import.meta.env.BASE_URL;
 
 const ENTRIES: Entry[] = [
+  {
+    id: 'project-harbor', name: 'Project Harbor', genre: '3D 오픈월드 액션',
+    summary: '항구 도시 포트 캘러웨이를 차로 누비세요. 시장 골목부터 등대까지, 배달과 시간 제한 주행 등 여섯 가지 의뢰에 도전할 수 있습니다.',
+    facts: ['1인 플레이', 'Windows · Linux'],
+    image: `${base}assets/home/project-harbor-lighthouse.webp`, imageAlt: '포트 캘러웨이 부두의 청록색 등대와 방파제',
+    badge: 'New', desktop: true,
+  },
   {
     id: 'slack', name: 'SLACK OFF', genre: '딴짓 시뮬레이션',
     summary: '자습시간 교실과 심야 기숙사 컴퓨터실에서 선생님과 사감 몰래 진짜 딴짓을 즐기세요. 발소리가 다가오면 공부하는 척!',
@@ -145,15 +154,18 @@ let hubChat: { close(): void } | undefined;
 
 function tile(entry: Entry, index: number): string {
   return `
-    <li class="tile-item" style="--tile-index: ${index}">
+    <li class="tile-item${entry.badge ? ' tile-item--featured' : ''}" style="--tile-index: ${index}">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
         <span class="tile-media${entry.id === 'room-tone' ? ' is-scary' : ''}"><img ${index === 0 ? `src="${entry.image}" fetchpriority="high"` : `data-deferred-src="${entry.image}" loading="lazy" fetchpriority="low"`} alt="${entry.imageAlt}" width="1280" height="800" decoding="async">${entry.id === 'room-tone' ? '<span class="tile-warn" aria-hidden="true">⚠ 공포 이미지 · 올려 보면 보여요</span>' : ''}</span>
         <span class="tile-body">
-          <span class="tile-genre">${entry.genre}${entry.id === 'room-tone' ? ' · 공포 주의' : ''}</span>
+          <span class="tile-tags">
+            ${entry.badge ? `<span class="tile-new">${entry.badge}</span>` : ''}
+            <span class="tile-genre">${entry.genre}${entry.id === 'room-tone' ? ' · 공포 주의' : ''}</span>
+          </span>
           <span class="tile-name">${entry.name}</span>
           <span class="tile-summary" id="summary-${entry.id}">${entry.summary}</span>
           <span class="tile-facts">${entry.facts.map(f => `<span>${f}</span>`).join('')}</span>
-          <span class="tile-foot"><span class="tile-status"></span><span class="tile-cta">플레이<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9m-3.5-4L12.5 8 8.5 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
+          <span class="tile-foot"><span class="tile-status"></span><span class="tile-cta">${entry.desktop ? '다운로드' : '플레이'}<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9m-3.5-4L12.5 8 8.5 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
         </span>
       </button>
     </li>`;
@@ -161,7 +173,7 @@ function tile(entry: Entry, index: number): string {
 
 let hubScrollY = 0;
 let stopTileImages: (() => void) | undefined;
-const HUB_TITLE = `WALDO · ${ENTRIES.length}편의 브라우저 게임`;
+const HUB_TITLE = `WALDO · ${ENTRIES.length}편의 게임`;
 /** 지금 열려 있는 게임. 뒤로가기·새로고침 경고가 이 값을 봅니다. */
 let activeGame: GameId | null = null;
 /** 게임을 열면서 우리가 기록(history)을 하나 쌓았는지. 목록으로 돌아올 때 한 칸 되돌릴지 정합니다. */
@@ -204,12 +216,12 @@ function renderMenu(): void {
       </header>
       <section class="home-intro">
         <h1>${ENTRIES.length}편의 게임, 한곳에서.</h1>
-        <p>설치 없이 이 페이지에서 바로 시작합니다.</p>
+        <p>브라우저 게임은 바로 시작하고, 데스크톱 게임은 내려받아 플레이하세요.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>
       <footer class="home-foot">
-        <span>WebGL을 지원하는 최신 브라우저에서 가장 잘 동작합니다.</span>
+        <span>브라우저 게임은 WebGL을 지원하는 최신 브라우저에서 가장 잘 동작합니다.</span>
         <span>Team Waldo</span>
       </footer>
     </main>`;

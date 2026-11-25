@@ -42,11 +42,14 @@ a { color: inherit; text-decoration: none; }
 
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 2vw, 28px); }
 .tile-item { display: flex; }
+.tile-item--featured { grid-column: 1 / -1; }
 @media (min-width: 861px) {
-  .tile-item:last-child:nth-child(odd) { grid-column: 1 / -1; }
-  .tile-item:last-child:nth-child(odd) .tile { flex-direction: row; }
-  .tile-item:last-child:nth-child(odd) .tile-media { flex: 1.15; aspect-ratio: auto; min-height: 320px; }
-  .tile-item:last-child:nth-child(odd) .tile-body { flex: 1; justify-content: center; }
+  .tile-item:is(.tile-item--featured, :last-child:nth-child(odd of :not(.tile-item--featured))) {
+    grid-column: 1 / -1;
+    .tile { flex-direction: row; }
+    .tile-media { flex: 1.15; aspect-ratio: auto; min-height: 320px; }
+    .tile-body { flex: 1; justify-content: center; }
+  }
 }
 .tile {
   appearance: none; width: 100%; padding: 0; text-align: left; cursor: pointer;
@@ -129,7 +132,9 @@ body::before {
 .tile-media.is-loaded img { opacity: 1; }
 .tile:hover:not(:disabled) .tile-media img, .tile:focus-visible .tile-media img { transform: scale(1.045); }
 .tile-body { gap: 12px; }
-.tile-genre { align-self: flex-start; padding: 5px 9px; border: 1px solid rgba(197,223,182,.25); border-radius: 5px; background: rgba(197,223,182,.08); color: #c5dfb6; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+.tile-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; }
+.tile-genre, .tile-new { padding: 5px 9px; border: 1px solid rgba(197,223,182,.25); border-radius: 5px; background: rgba(197,223,182,.08); color: #c5dfb6; font-size: 11px; font-weight: 700; letter-spacing: .04em; line-height: 1.4; }
+.tile-new { background: #c5dfb6; color: #172219; }
 .tile-name { letter-spacing: -.025em; }
 .tile-summary { color: #bfc4be; }
 .tile-facts { gap: 7px 14px; margin-top: 4px; }
@@ -159,7 +164,6 @@ body::before {
   .tile, .tile-media img { transition: none; }
   .tile:hover:not(:disabled), .tile:focus-visible, .tile:focus-visible .tile-media img { transform: none; }
 }
-.home .tile-genre { line-height: 1.4; }
 @media (max-width: 390px) { .home { padding-bottom: 100px; } .tile-media { aspect-ratio: 16 / 8; } .tile-body { padding: 14px; } }
 
 /* 공포 이미지는 올리거나 선택하기 전까지 흐리게 가립니다. */
@@ -177,7 +181,7 @@ body::before {
   .tile-media { flex: 0 0 36%; aspect-ratio: auto; min-height: 150px; }
   .tile-media .tile-warn { inset: auto 6px 6px 6px; padding: 5px 6px; font-size: 11px; }
   .tile-body { padding: 14px 14px 12px; gap: 5px; min-width: 0; }
-  .tile-genre { font-size: 11px; padding: 3px 7px; }
+  .tile-genre, .tile-new { padding: 3px 7px; }
   .tile-name { font-size: 20px; }
   .tile-summary { font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .tile-facts { display: none; }

@@ -1,9 +1,10 @@
 # WALDO
 
-브라우저에서 바로 즐기는 아홉 편의 게임입니다. 허브에서 게임을 선택하면 로그인 없이 혼자 플레이할 수 있습니다. 일부 온라인 모드에는 이메일 계정이 필요합니다.
+WALDO에서 브라우저 게임 9편을 바로 시작하거나 Project Harbor를 Windows·Linux용으로 내려받을 수 있습니다.
 
 | 게임 | 소개 | 코드 |
 | --- | --- | --- |
+| **Project Harbor** | 항구 도시 탐험과 차량 의뢰를 즐기는 1인용 3D 오픈월드 | [`project-harbor`](project-harbor) · [게임 소스](https://github.com/sangsangbaksa-dev/GTA-) |
 | **LAST CITY** | 도시 점령 서바이벌 | `src/city` |
 | **SPEED RUSH** | 스포츠카 레이싱(코스 7곳·차량 8종·타임어택과 고스트) | `src/race` |
 | **ZERO ZONE** | 줄어드는 자기장 속 총격전. 솔로(나 + AI 99명, 비행기 낙하산 강하, 난이도 4단계), 온라인 1대1과 멀티플레이 방 | `src/shooter` |

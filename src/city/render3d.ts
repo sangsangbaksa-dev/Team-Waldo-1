@@ -21,6 +21,8 @@ import { BuildGhost } from './buildghost';
 import { lootArt, lootTexture, disposeLootTextures } from './loottex';
 import { BUILD_REACH_MAX, buildDistance, buildMinDistance, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 
+import { cameraBlend, cityCameraShake, ringProgress } from './visual-motion';
+
 export type ViewMode = 'fp' | 'tp';
 /** 이 탭에서 이미 느리다고 판정된 적응형 화질 단계: 다음 판도 같은 단계로 시작해 첫 몇 초 끊김을 반복하지 않는다. */
 
@@ -67,7 +69,7 @@ export class Renderer3D {
   /** 시각·날씨에서 나온 분위기(날씨가 바뀌면 부드럽게 따라갑니다)와 그 하위 연출들 */
   atm: Atmosphere; private flash = 0; private moodT = 0; private skyDome!: SkyDome; private skyline!: Skyline; private wetStreet!: WetStreet; private streetFx!: StreetFx; private bfx!: BuildingFx;
   private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
-  yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
+  yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0; private chaseActive = false;
   private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
@@ -163,7 +165,7 @@ export class Renderer3D {
     this.muzzle = new THREE.Mesh(new THREE.PlaneGeometry(11, 11), new THREE.MeshBasicMaterial({ map: this.glow, color: 0xffd98a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false })); this.muzzle.position.set(0, 0.3, -14);
     this.gun.add(g1, g2, g3, this.muzzle); this.gun.position.set(6.5, -6.2, -15); this.camera.add(this.gun);
     this.resize();
-    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.45, radius: 0.6, threshold: 0.88, vignette: 0.3, saturation: 1.05, contrast: 1.06 });
+    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.22, radius: 0.45, threshold: 1.05, vignette: 0.18, saturation: 1.0, contrast: 1.03 });
     this.applyAtmosphere(0);
   }
   private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); this.mats.set(c, m); } return m; }
@@ -338,7 +340,7 @@ export class Renderer3D {
   /** 보스가 사업체 안에 있을 때: 도시 대신 내부 장면만 그립니다. */
   private drawInside(dt: number, kind: string, lay: NonNullable<ReturnType<World['insideLayout']>>, s: NonNullable<World['inside']>): void {
     if (!this.ins || this.insKind !== kind) { this.ins?.dispose(); this.ins = new Interior3D(lay, this.quality, this.models); this.insKind = kind; }
-    this.t += dt; this.ins.update(this.t, s.x, s.y, this.yaw, this.pitch, Math.sin(s.walk * 0.09) * 1.4, this.w / Math.max(1, this.h));
+    this.t += dt; this.ins.update(this.t, s.x, s.y, this.yaw, this.pitch, this.reduced ? 0 : Math.sin(s.walk * 0.09) * 0.85, this.w / Math.max(1, this.h));
     this.renderer.render(this.ins.scene, this.ins.camera);
     for (const f of this.floaters) f.el.remove(); this.floaters = [];
   }
@@ -365,7 +367,7 @@ export class Renderer3D {
     this.probeHidden[0] = this.gun;
     if (this.rain) this.probeHidden.push(this.rain);
     this.wetStreet.update(dt, a, cam, this.renderer, this.scene, this.probeHidden);
-    if (this.post) this.post.set({ strength: 0.36 + a.night * 0.2 + a.rain * 0.08, threshold: 0.9 - a.night * 0.1 });
+    if (this.post) this.post.set({ strength: 0.22 + a.night * 0.12 + a.rain * 0.04, threshold: 1.05 - a.night * 0.08 });
   }
   /** 사진 촬영·테스트용: 시각·날씨가 막 바뀐 직후 분위기를 서서히 따라가지 않고 한 번에 맞춥니다. */
   snapAtmosphere(): void { this.applyAtmosphere(0, true); }
@@ -406,7 +408,7 @@ export class Renderer3D {
   draw(dt: number, ghost: Ghost | null): void {
     this.adaptResolution(dt);
     const inside = this.world.inside, ib = inside ? this.world.insideBiz() : null;
-    if (inside && ib) { this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
+    if (inside && ib) { this.chaseActive = false; this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
     if (this.ins) { this.ins.dispose(); this.ins = null; this.insKind = ''; this.camera.aspect = this.w / Math.max(1, this.h); this.camera.updateProjectionMatrix(); }
     this.govern(); if (this.renderer.shadowMap.enabled && ++this.shadowTick >= (this.perfLevel === 0 ? (this.quality === 'high' ? 2 : 3) : 6)) { this.shadowTick = 0; this.renderer.shadowMap.needsUpdate = true; }
     const w = this.world, d = this.dummy, col = this.color, pb = w.boss(0), f0 = w.factions[0]; this.t += dt;
@@ -416,19 +418,24 @@ export class Renderer3D {
     const veh = pb && pb.inVeh ? w.vehicles.find(v => v.id === pb.inVeh) : undefined, cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), cp = Math.cos(this.pitch), spt = Math.sin(this.pitch);
     if (pb) { this.focus.set(pb.x, pb.y); this.deadT = 0; } else { this.deadT += dt; this.yaw += dt * 0.25; }
     const fx = this.focus.x, fz = this.focus.y, third = this.mode === 'tp' || !!veh || !pb;
-    if (!third) { const bob = pb ? Math.sin(pb.walk * 0.09) * Math.min(1.6, Math.hypot(pb.vx, pb.vy) / 120) : 0; const cs = fpCameraSpot(w.map, fx, fz); this.camPos.set(cs.x, EYE + bob, cs.y); this.camera.position.copy(this.camPos); this.camera.lookAt(cs.x + cy * cp * 100, EYE + bob + spt * 100, cs.y + sy * cp * 100); }
+    if (!third) { this.chaseActive = false; const bob = pb && !this.reduced ? Math.sin(pb.walk * 0.09) * Math.min(0.9, Math.hypot(pb.vx, pb.vy) / 180) : 0; const cs = fpCameraSpot(w.map, fx, fz); this.camPos.set(cs.x, EYE + bob, cs.y); this.camera.position.copy(this.camPos); this.camera.lookAt(cs.x + cy * cp * 100, EYE + bob + spt * 100, cs.y + sy * cp * 100); }
     else {
       const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 150, hgt = veh ? 95 : 56, pivotY = veh ? 30 : 50; let k = 1;
-      for (let s = 0.15; s <= 1; s += 0.085) { if (solidAt(w.map, fx - cy * dist * s, fz - sy * dist * s)) { k = Math.max(0.3, s - 0.12); break; } }
+      for (let s = 0.08; s <= 1.001; s += 0.04) { if (solidAt(w.map, fx - cy * dist * s * cp, fz - sy * dist * s * cp)) { k = Math.max(0, s - 0.12); break; } }
       const tx = fx - cy * dist * k * cp, ty = pivotY + hgt * k + (1 - k) * 130 - spt * dist * k * 0.9, tz = fz - sy * dist * k * cp;
-      this.camPos.lerp(this.camGoal.set(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 70, pivotY + 4 + spt * 140, fz + sy * 70);
+      this.camGoal.set(tx, Math.max(12, ty), tz);
+      if (!this.chaseActive || k < 1 || this.camPos.distanceTo(this.camGoal) > 340) this.camPos.copy(this.camGoal);
+      else this.camPos.lerp(this.camGoal, cameraBlend(dt, 11));
+      this.chaseActive = true;
+      const safe = fpCameraSpot(w.map, this.camPos.x, this.camPos.z, 12); this.camPos.x = safe.x; this.camPos.z = safe.y;
+      this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 70, pivotY + 4 + spt * 140, fz + sy * 70);
     }
     { const m = 14, cp2 = this.camera.position; cp2.x = Math.max(m, Math.min(SIZE - m, cp2.x)); cp2.z = Math.max(m, Math.min(SIZE - m, cp2.z)); this.camPos.x = cp2.x; this.camPos.z = cp2.z; }
-    if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
-    const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
+    if (this.shake > 0 && !this.reduced) { const offset = cityCameraShake(this.t, this.shake); this.camera.position.x += offset.x; this.camera.position.y += offset.y; }
+    const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + (this.reduced ? 0 : Math.min(9, spd / 65)); if (Math.abs(fov - this.camera.fov) > 0.02) { this.camera.fov += (fov - this.camera.fov) * cameraBlend(dt, 6.3); this.camera.updateProjectionMatrix(); }
     this.bfx.updateLOD(this.camPos.x, this.camPos.z);
     this.updateRain(dt); this.updateBolt(dt); this.bfx.blink(this.t); this.applyAtmosphere(dt);
-    if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
+    if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb && !this.reduced ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터
     let nb = 0, nh = 0, ng = 0, nm = 0;
     for (const m of this.bossRings) m.visible = false;
@@ -473,14 +480,15 @@ export class Renderer3D {
     let nr = 0, liveRings = 0;
     for (const r of this.ringList) {
       r.life -= dt;
-      const k = 1 - Math.max(0, r.life) / r.max, rad = r.r0 + (r.r1 - r.r0) * k;
+      if (r.life <= 0) continue;
+      const k = ringProgress(r.life, r.max), rad = r.r0 + (r.r1 - r.r0) * k;
       d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix();
       this.rings.setMatrixAt(nr, d.matrix); this.rings.setColorAt(nr++, col.set(r.color));
-      if (r.life > 0) this.ringList[liveRings++] = r;
+      this.ringList[liveRings++] = r;
     }
     this.ringList.length = liveRings; upd(this.rings, nr);
     for (const b of this.booms) { if (b.life <= 0) { b.m.visible = false; continue; } b.life -= dt; const k = 1 - b.life / 0.32; b.m.scale.setScalar(b.r * (0.3 + k * 0.8)); (b.m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k) * 0.85; }
-    this.lightT -= dt; this.light.intensity = Math.max(0, this.lightT * 22);
+    this.lightT -= dt; this.light.intensity = this.reduced ? 0 : Math.max(0, this.lightT * 14);
     this.sparks.update(dt); this.fire.update(dt); this.smoke.update(dt);
     // 자기장
     const z = w.zone; this.zoneWall.visible = false; this.nextRing.visible = false; this.zoneWall.position.set(z.x, 450, z.y); this.zoneWall.scale.set(Math.max(1, z.r), 900, Math.max(1, z.r)); this.zoneTex.repeat.set(Math.max(8, z.r / 30), 14); this.zoneTex.offset.y = -this.t * 0.25;

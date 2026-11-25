@@ -7,7 +7,7 @@ import { World, type Actor } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
 import { loadModels, type Models } from './models';
-import { showLoading, type LoadingScreen } from '../loading';
+import { showLoading, loadModule, type LoadingScreen } from '../loading';
 import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type TutState } from './tutorial';
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
@@ -416,8 +416,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const roomNames = (r: Room): string[] => roomOrder(r).map(id => r.names.get(id) ?? '참가자');
   function openRoomLobby(): void {
     if (!PVP_ENABLED) { toast('멀티플레이는 잠시 꺼 두었습니다'); return; }
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'city', maxPlayers: 6, config: () => ({ seed: (Math.random() * 2 ** 31) | 0 }), onMatch: startDuel, onRoom: startRoom, inGameChat: false, onClose: () => undefined }))
-      .catch(() => toast('대전 기능을 불러오지 못했습니다'));
+    void loadModule(() => import('../net/lobby'), { cancelled: () => closed, onNote: text => toast(text) }).then(({ openLobby }) => openLobby({ game: 'city', maxPlayers: 6, config: () => ({ seed: (Math.random() * 2 ** 31) | 0 }), onMatch: startDuel, onRoom: startRoom, inGameChat: false, onClose: () => undefined }))
+      .catch(() => toast('대전 기능을 여는 중 문제가 생겼습니다. 페이지를 새로고침해 주세요'));
   }
   const roomCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">멀티 방 · 영웅 난투전</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };
   function startRoom(s: RoomSession): void {

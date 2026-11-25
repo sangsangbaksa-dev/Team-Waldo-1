@@ -23,9 +23,12 @@ let cache: Promise<ShooterAssets> | null = null;
 export function loadShooterAssets(base: string, onProgress?: (fraction: number) => void, onNote?: (note: string) => void): Promise<ShooterAssets> {
   cache ??= (async () => {
     const loader = new GLTFLoader(), dir = `${base}assets/models/`, prog = new Map<string, number>(), total = Object.values(FILES).reduce((a, b) => a + b, 0);
+    const fetchOne = (name: string): Promise<ArrayBuffer> => retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { onRetry: n => onNote?.(n < 2 ? '' : `연결이 느립니다. 계속 시도하는 중입니다 (${n}회)`) });
+    // 받은 파일이 깨져 해석에 실패하면(전송 중 잘림 등) 새로 받아 다시 시도합니다.
     const get = async (name: string): Promise<THREE.Object3D> => {
-      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { onRetry: n => onNote?.(n < 2 ? '' : `연결이 느립니다. 계속 시도하는 중입니다 (${n}회)`) });
-      return (await loader.parseAsync(buf, dir)).scene;
+      for (let attempt = 0; ; attempt++) {
+        try { return (await loader.parseAsync(await fetchOne(name), dir)).scene; } catch (e) { if (attempt >= 2) throw e; }
+      }
     };
     const [c, w, p] = await Promise.all(['characters', 'weapons', 'props'].map(get));
     const cn = nodeMap(c), wn = nodeMap(w), pn = nodeMap(p), soldiers: Record<string, Soldier> = {};

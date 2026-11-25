@@ -1,7 +1,7 @@
 import './style.css';
 import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
-import { showLoading, retry, retryNote } from './loading';
+import { showLoading, loadModule, clearReloadGuard } from './loading';
 import { deferTileImages } from './shared/lazy-images';
 import { readCityCareer, readRaceRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
@@ -259,7 +259,7 @@ function wireChat(): void {
   const gen = generation;
   window.setTimeout(() => {
     if (gen !== generation || hubChat) return;
-    void import('./net/chat-dock').then(({ openChat }) => {
+    void loadModule(() => import('./net/chat-dock'), { cancelled: () => gen !== generation }).then(({ openChat }) => {
       if (gen !== generation || hubChat || app.hidden) return;
       hubChat = openChat({ mode: 'hub', tabs: [{ key: 'lobby', label: '전체 채팅' }] });
     }).catch(() => undefined);
@@ -274,8 +274,11 @@ function wireAccount(): void {
   const label = (nickname: string | null): void => { button.textContent = nickname ? `${nickname} · 랭킹` : '로그인 · 랭킹'; };
   button.onclick = () => {
     button.disabled = true;
-    void import('./net/lobby').then(({ openLobby }) => { openLobby({ onClose: () => { button.disabled = false; } }); })
-      .catch(() => { button.disabled = false; });
+    const before = button.textContent;
+    const restore = (): void => { if (button.textContent === '다시 연결하는 중…') button.textContent = before; };
+    void loadModule(() => import('./net/lobby'), { onNote: text => { if (text) button.textContent = '다시 연결하는 중…'; } })
+      .then(({ openLobby }) => { restore(); openLobby({ onClose: () => { button.disabled = false; } }); })
+      .catch(() => { restore(); button.disabled = false; });
   };
   const gen = generation;
   window.setTimeout(() => {
@@ -287,6 +290,13 @@ function wireAccount(): void {
       unsubscribeAccount = onAccount(a => { if (button.isConnected) label(a?.nickname ?? null); });
     }).catch(() => undefined);
   }, 1200);
+}
+
+/** 로딩이 길어질 때의 출구: 주소의 #/게임 을 지우고 허브를 새로 엽니다(게임이 만든 화면·루프도 함께 정리됩니다). */
+function backToHub(): void {
+  returningToHubViaHistory = true;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ }
+  location.reload();
 }
 
 async function launch(id: GameId, fromHistory = false): Promise<void> {
@@ -315,11 +325,11 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
   closeHubChat();
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
-  // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
-  const loading = showLoading(entry.name);
+  // 느리거나 끊겨도 포기하지 않고 계속 다시 시도합니다. 오래 걸리면 "처음 화면으로" 버튼이 나타납니다.
+  const loading = showLoading(entry.name, backToHub);
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
-  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
+  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => loadModule(load, { cancelled, onNote: text => loading.note(text) }).then(m => { clearReloadGuard(); return m; });
   try {
     setRails({ name: entry.name, genre: entry.genre, summary: entry.summary, facts: entry.facts, image: entry.image, imageAlt: entry.imageAlt, status: entry.status?.() ?? '' });
     if (id === 'city') {
@@ -358,7 +368,8 @@ async function launch(id: GameId, fromHistory = false): Promise<void> {
     loading.close();
     if (cancelled()) return;
     renderMenu();
-    app.querySelector<HTMLElement>('#home-notice')!.textContent = '게임을 불러오지 못했습니다. 연결을 확인한 뒤 다시 선택해 주세요.';
+    // 여기까지 오는 건 네트워크가 아니라 게임 코드 자체의 오류뿐입니다(연결 문제는 위에서 계속 다시 시도).
+    app.querySelector<HTMLElement>('#home-notice')!.textContent = '게임을 여는 중 문제가 생겼습니다. 페이지를 새로고침한 뒤 다시 선택해 주세요.';
     app.querySelector<HTMLButtonElement>(`#start-${id}`)?.focus();
   }
 }

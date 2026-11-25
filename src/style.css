@@ -185,3 +185,6 @@ body::before {
   .tile-status { font-size: 11px; }
   .tile-cta { padding: 7px 12px; font-size: 13px; }
 }
+.ld-escape { margin-top: 18px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+.ld-escape:hover, .ld-escape:focus-visible { border-color: var(--accent); }
+.ld-escape[hidden] { display: none; }

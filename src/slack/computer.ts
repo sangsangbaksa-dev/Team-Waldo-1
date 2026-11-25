@@ -1,4 +1,6 @@
-﻿import './computer.css';
+import { CoverInput } from './cover-input';
+import { capturePointer, releasePointer } from './pointer-capture';
+import './computer.css';
 import type { CreateView, DormActivity, SlackEvent } from './types';
 
 const apps: { id: DormActivity; icon: string; label: string }[] = [
@@ -56,7 +58,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const taskBtn = (id: DormActivity) => $<HTMLButtonElement>(`[data-app="${id}"]`);
 
   let shown: DormActivity | null = null;
-  let elapsed = 0; let coverKey = false; let coverPointer: number | null = null; let coverMiddle: number | null = null; let disposed = false;
+  let elapsed = 0; const coverInput = new CoverInput(); let disposed = false;
   let warningUntil = 0; let strikeUntil = 0; let quietUntil = 0; let toastUntil = 0; let bubbleUntil = 0; let stepUntil = 0; let tickAcc = 0;
   const cache: Record<string, unknown> = {};
   const setCls = (k: string, on: boolean, t: HTMLElement = el) => { if (cache[k] !== on) { cache[k] = on; t.classList.toggle(k, on); } };
@@ -75,7 +77,7 @@ export const createComputerView: CreateView = (sim, audio) => {
       host.inert = on;
     }
   };
-  const updateCover = () => { sim.setCover(coverKey || coverPointer !== null || coverMiddle !== null); applyCover(); };
+  const updateCover = () => { sim.setCover(coverInput.active); applyCover(); };
   const select = (id: DormActivity | null) => { audio.resume(); audio.play('click'); if (id && sim.state.cover) updateCover(); sim.doActivity(id && sim.state.activity === id ? null : id); };
 
   /* ---------- 게임: 별빛 던전(반응속도) ---------- */
@@ -272,31 +274,32 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (event.code === 'Space') {
       if (event.target instanceof HTMLButtonElement && event.target !== coverButton) return;
       event.preventDefault();
-      if (!event.repeat) { audio.resume(); audio.play('key'); coverKey = true; updateCover(); }
+      if (!event.repeat) { audio.resume(); audio.play('key'); coverInput.pressKey(); updateCover(); }
     } else if (!event.repeat && /^[1-6]$/.test(event.key)) {
       event.preventDefault(); select(apps[Number(event.key) - 1].id);
     } else if (!event.repeat && event.key.toLowerCase() === 'f') {
       audio.resume(); audio.play('key'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6);
     }
   };
-  const keyup = (event: KeyboardEvent) => { if (coverKey && event.code === 'Space') { event.preventDefault(); coverKey = false; updateCover(); } };
+  const keyup = (event: KeyboardEvent) => { if (event.code === 'Space' && coverInput.releaseKey()) { event.preventDefault(); updateCover(); } };
   const pointerdown = (event: PointerEvent) => {
-    if (event.button !== 1 || coverMiddle !== null) return;
-    event.preventDefault(); el.focus({ preventScroll: true }); audio.resume(); audio.play('click'); coverMiddle = event.pointerId; updateCover();
+    if (event.button !== 1 || !coverInput.claimMiddle(event.pointerId)) return;
+    event.preventDefault(); el.focus({ preventScroll: true }); audio.resume(); audio.play('click'); updateCover();
   };
   const pointerup = (event: PointerEvent) => {
-    if (coverMiddle === event.pointerId && (event.button === 1 || event.type === 'pointercancel')) { coverMiddle = null; updateCover(); }
+    if ((event.button === 1 || event.type === 'pointercancel' || (event.buttons & 4) === 0) && coverInput.releaseMiddle(event.pointerId)) updateCover();
+    if (coverInput.releasePrimary(event.pointerId)) updateCover();
   };
   const buttonDown = (event: PointerEvent) => {
-    if (event.button !== 0 || coverPointer !== null) return;
-    event.preventDefault(); coverButton.focus({ preventScroll: true }); coverButton.setPointerCapture(event.pointerId);
-    audio.resume(); audio.play('click'); coverPointer = event.pointerId; updateCover();
+    if (event.button !== 0 || !coverInput.claimPrimary(event.pointerId)) return;
+    event.preventDefault(); coverButton.focus({ preventScroll: true }); capturePointer(coverButton, event.pointerId);
+    audio.resume(); audio.play('click'); updateCover();
   };
-  const buttonUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); } };
+  const buttonUp = (event: PointerEvent) => { if (coverInput.releasePrimary(event.pointerId)) updateCover(); };
   const blur = () => {
-    if (!coverKey && coverPointer === null && coverMiddle === null) return;
-    const pointer = coverPointer; coverKey = false; coverPointer = null; coverMiddle = null; updateCover();
-    if (pointer !== null && coverButton.hasPointerCapture(pointer)) coverButton.releasePointerCapture(pointer);
+    if (!coverInput.active) return;
+    const pointer = coverInput.clear(); updateCover();
+    releasePointer(coverButton, pointer);
   };
   const focusout = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !el.contains(event.relatedTarget)) blur(); };
   const scroll = (event: Event) => { if ((event.target as Element).classList?.contains('sc-wt-scroll')) toonProgress(); };
@@ -347,5 +350,5 @@ export const createComputerView: CreateView = (sim, audio) => {
     }
     if (elapsed > 45 && !cache.newEp) { cache.newEp = true; wins.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
     const min = 24 + Math.floor(elapsed / 20); setTxt(clockEl, `오전 ${1 + Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
-  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); queue.length = 0; } };
+  }, onEvent, releaseInput: blur, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); queue.length = 0; } };
 };

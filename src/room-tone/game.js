@@ -26,6 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
+import { isFreshGameKey, canSaveOnInterruption, resolveHubUrl } from "./session.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -198,7 +199,7 @@ function clearInputs() {
 }
 function leaveLook() {
   clearInputs();
-  if (document.pointerLockElement) document.exitPointerLock();
+  if (renderer && document.pointerLockElement === renderer.domElement) document.exitPointerLock();
 }
 function lockLook() {
   if (state !== "play" || lastPointerType !== "mouse" || !renderer || document.pointerLockElement) return;
@@ -233,6 +234,8 @@ function modal(title, description, body, actions, type = "panel") {
   showSceneOnce();
 }
 function resume() {
+  if (document.hidden) return;
+  clearInputs();
   state = "play";
   $("dialog").hidden = true;
   sound.pause(false);
@@ -269,7 +272,7 @@ $("confirmReset").onclick = () => {
   start(false);
 };
 $("continue").onclick = () => start(true);
-const hubUrl = () => new URL("../", location.href).href;
+const hubUrl = () => resolveHubUrl(document.baseURI);
 function showPauseMenu() {
   modal(
     "녹음 일시정지",
@@ -316,7 +319,8 @@ async function setup() {
     $("viewWrap").prepend(renderer.domElement);
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
-      save();
+      if (canSaveOnInterruption(Boolean(level), state)) save();
+      if (state === "home" || state === "won") return;
       modal(
         "그래픽 연결이 끊겼습니다",
         "브라우저를 새로고침하면 저장한 구역에서 이어갈 수 있습니다.",
@@ -713,7 +717,7 @@ function loadScene() {
   showSceneOnce();
 }
 async function start(cont) {
-  if (opening) return;
+  if (opening || state !== "home") return;
   opening = true;
   screens("game");
   state = "load";
@@ -728,6 +732,7 @@ async function start(cont) {
     const setupPromise = setup();
     void sound.start();
     await setupPromise;
+    if (state !== "load") return;
     const s = cont ? saved() : null;
     ch = s?.ch ?? 0;
     found = s?.found ?? [false, false, false];
@@ -1463,7 +1468,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.isComposing) return;
+  if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.target instanceof HTMLButtonElement && ["Space", "Enter"].includes(e.code)) return;
   if (
     e.target instanceof HTMLInputElement ||
@@ -1481,7 +1486,8 @@ document.addEventListener("keydown", (e) => {
       ].includes(e.code)
     )
       e.preventDefault();
-    if (!e.repeat) {
+    if (!isFreshGameKey(e) || keys.has(e.code)) return;
+    {
       if (e.code === "KeyE") interact();
       else if (e.code === "KeyF") toggleLamp();
       else if (e.code === "KeyC") toggleCrouch();
@@ -1489,10 +1495,10 @@ document.addEventListener("keydown", (e) => {
       else if (e.code === "KeyM") mapPanel();
       else if (e.code === "Escape" || e.code === "KeyP") pauseGame();
     }
-    keys.add(e.code);
+    if (state === "play") keys.add(e.code);
   } else if (
     ["pause", "map", "help", "station", "puzzle"].includes(state) &&
-    e.code === "Escape"
+    e.code === "Escape" && isFreshGameKey(e)
   ) {
     e.preventDefault();
     if (state === "map") returnFromMap();
@@ -1504,7 +1510,7 @@ document.addEventListener("keyup", (e) => keys.delete(e.code));
 function backgroundSession() {
   if (state === "play") pauseGame();
   else if (state === "puzzle" || state === "capture") sound.pause(true);
-  if (level && !["home", "won", "load", "error"].includes(state)) save();
+  if (canSaveOnInterruption(Boolean(level), state)) save();
 }
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
@@ -1524,9 +1530,11 @@ window.addEventListener("focus", () => {
 window.addEventListener("pagehide", (e) => {
   if (e.persisted) {
     backgroundSession();
+    if (frameId !== null) cancelAnimationFrame(frameId);
+    frameId = null;
     return;
   }
-  if (level && !["home", "won", "load", "error"].includes(state)) save();
+  if (canSaveOnInterruption(Boolean(level), state)) save();
   sound.pause(true);
   if (frameId !== null) cancelAnimationFrame(frameId);
   frameId = null;
@@ -1622,7 +1630,8 @@ for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   });
 document.addEventListener("pointerlockchange", () => {
   const locked = Boolean(renderer && document.pointerLockElement === renderer.domElement);
-  if (wasPointerLocked && !locked && state === "play") pauseGame();
+  if (locked && state !== "play") document.exitPointerLock();
+  else if (wasPointerLocked && !locked && state === "play") pauseGame();
   wasPointerLocked = locked;
 });
 document.body.classList.toggle("touch", touch);

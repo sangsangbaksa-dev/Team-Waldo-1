@@ -1,6 +1,7 @@
 ﻿import './classroom.css';
 import type { CreateView, SlackEvent } from './types';
 import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
+import { watcherPose } from './watcher-visual';
 
 // 교실 딴짓은 노트북 하나: video = 다리 점령전 하이라이트 영상, game = 같은 전술 게임 직접 플레이. 수업 자료는 보스키(cover) 화면.
 type Pick = 'video' | 'game';
@@ -20,10 +21,10 @@ export const createClassroomView: CreateView = (sim, audio) => {
     <div class="sl-room" aria-label="저녁 자습 교실" data-view="doc">
       <div class="sl-world">
         <div class="sl-ceiling"><div class="sl-light"></div><div class="sl-light"></div></div>
-        <div class="sl-wall"><div class="sl-clock">10:24</div><div class="sl-board"><small>오늘의 자습</small><span>조용히, 끝까지.</span><i>수고했어, 오늘도.</i></div>
-          <div class="sl-door"><div class="sl-window"><div class="sl-shadow"></div><div class="sl-face"><i></i><i></i></div></div><div class="sl-handle"></div><div class="sl-gap"><i></i><i></i></div></div></div>
+        <div class="sl-wall"><div class="sl-clock">10:24</div><div class="sl-board"><small>저녁 자율학습</small><span>22:00 — 23:00</span><i>개인 학습</i></div>
+          <div class="sl-door"><div class="sl-door-leaf"><div class="sl-window"><div class="sl-shadow"></div><div class="sl-face"><i></i><i></i></div></div><div class="sl-handle"></div></div><div class="sl-gap"><i></i><i></i></div></div></div>
         <div class="sl-rows">${KIDS}</div>
-        <div class="sl-teacher"><div class="sl-teacher-head"></div><div class="sl-teacher-body"></div></div>
+        <div class="sl-teacher"><div class="sl-teacher-head"></div><div class="sl-teacher-body"></div><div class="sl-teacher-legs"><i></i><i></i></div></div>
         <div class="sl-desk"></div>
         <div class="sl-laptop">
           <div class="sl-lid"><div class="sl-screen">
@@ -156,6 +157,11 @@ export const createClassroomView: CreateView = (sim, audio) => {
       room.classList.toggle('is-relief', relief > 0);
       room.classList.toggle('is-lowbat', s.battery < 20);
       css('--near', Math.max(0, Math.min(1, s.watcher.near)).toFixed(2));
+      const pose = watcherPose(s.watcher.mode, s.watcher.prog, s.watcher.near);
+      css('--door-open', pose.door.toFixed(3));
+      css('--watcher-visible', pose.presence.toFixed(3));
+      css('--watcher-near', pose.distance.toFixed(3));
+      css('--watcher-gait', pose.gait.toFixed(3));
       for (let i = 0; i < actions.length; i++) { const b = actions[i], on = b.dataset.activity === s.activity; if (b.classList.contains('is-active') !== on) { b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', String(on)); } }
       cover.classList.toggle('is-active', s.cover);
       txt(batEl, `${Math.round(s.battery)}%`);

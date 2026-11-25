@@ -4,6 +4,7 @@ import { readPreferences } from '../prefs';
 import { terrainY, forward, WORLD_R, type SkySim, type Jet, type Kind } from './sim';
 import { makeEnvironment } from '../shared/gfx';
 import { addAtmosphere, detailJet } from './visuals';
+import { dampingAlpha, emissionChance, flightCameraFov, impactOffset } from './flight-motion';
 import { cloudSprite, disposeArt, fireSprite, glowSprite, jetSkin, missileSkin, pickupIcon, seaNormal, smokeSprite, terrainDetail } from './art';
 
 function glowTex(inner: string, outer: string): THREE.CanvasTexture {
@@ -22,19 +23,29 @@ export function buildJet(kind: Kind, team: 'player' | 'enemy'): THREE.Group {
   const s = kind === 'boss' ? 2.8 : kind === 'bomber' ? 1.7 : 1;
   const fus = new THREE.Mesh(new THREE.CylinderGeometry(1.0 * s, 1.3 * s, 11 * s, 10), mBody); fus.rotation.x = Math.PI / 2; g.add(fus);
   const nose = new THREE.Mesh(new THREE.ConeGeometry(1.0 * s, 4.5 * s, 10), mBody); nose.rotation.x = -Math.PI / 2; nose.position.z = -7.8 * s; g.add(nose);
-  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.9 * s, 10, 8), new THREE.MeshStandardMaterial({ color: 0x142a44, metalness: 0.9, roughness: 0.1 })); cockpit.scale.set(0.8, 0.7, 2); cockpit.position.set(0, 0.9 * s, -2.2 * s); g.add(cockpit);
   const dark = new THREE.MeshStandardMaterial({ color: 0x273340, metalness: 0.7, roughness: 0.38 });
   const nozzleGeo = new THREE.CylinderGeometry(0.72 * s, 0.9 * s, 1.5 * s, 12, 1, true);
   const nozzle = new THREE.Mesh(nozzleGeo, dark); nozzle.rotation.x = Math.PI / 2; nozzle.position.z = 5.6 * s; g.add(nozzle);
   const intakeGeo = new THREE.BoxGeometry(0.55 * s, 0.7 * s, 3.2 * s);
   for (const side of [-1, 1]) { const intake = new THREE.Mesh(intakeGeo, dark); intake.position.set(side * 1.1 * s, -0.25 * s, -0.2 * s); g.add(intake); }
-  // 델타 날개
-  const w = kind === 'boss' ? 11 : kind === 'bomber' ? 9.5 : kind === 'ace' ? 8.2 : 7.2, wl = kind === 'bomber' ? 5.5 : 6;
-  const wing = new THREE.BufferGeometry(); const sg = new Float32Array([0, 0, -2.5 * s, w * s, 0, 2.2 * s, 0, 0, 3 * s, 0, 0, -2.5 * s, 0, 0, 3 * s, -w * s, 0, 2.2 * s]);
-  wing.setAttribute('position', new THREE.BufferAttribute(sg, 3)); wing.computeVertexNormals(); void wl;
-  const wuv = new Float32Array(18); for (let i = 0; i < 6; i++) { wuv[i * 2] = sg[i * 3]! / (w * s) * 0.5 + 0.5; wuv[i * 2 + 1] = (sg[i * 3 + 2]! / s + 2.5) / 5.5; }
-  wing.setAttribute('uv', new THREE.BufferAttribute(wuv, 2));
-  const wm = new THREE.Mesh(wing, new THREE.MeshStandardMaterial({ map: skin, metalness: 0.4, roughness: 0.5, side: THREE.DoubleSide })); g.add(wm);
+  const w = kind === 'boss' ? 11 : kind === 'bomber' ? 9.5 : kind === 'ace' ? 8.2 : 7.2;
+  // A solid swept planform keeps the wing readable edge-on.
+  const outline = new THREE.Shape();
+  outline.moveTo(0, -2.5 * s);
+  outline.lineTo(w * 0.92 * s, 1.55 * s);
+  outline.lineTo(w * s, 2.2 * s);
+  outline.lineTo(w * 0.54 * s, 2.72 * s);
+  outline.lineTo(0, 3.25 * s);
+  outline.lineTo(-w * 0.54 * s, 2.72 * s);
+  outline.lineTo(-w * s, 2.2 * s);
+  outline.lineTo(-w * 0.92 * s, 1.55 * s);
+  outline.closePath();
+  const wing = new THREE.ExtrudeGeometry(outline, { depth: 0.14 * s, bevelEnabled: false, steps: 1 });
+  const wp = wing.getAttribute('position'), uv = wing.getAttribute('uv');
+  for (let i = 0; i < wp.count; i++) uv.setXY(i, wp.getX(i) / (2 * w * s) + 0.5, (wp.getY(i) / s + 2.5) / 5.75);
+  uv.needsUpdate = true;
+  const wm = new THREE.Mesh(wing, new THREE.MeshStandardMaterial({ map: skin, metalness: 0.4, roughness: 0.52 }));
+  wm.rotation.x = Math.PI / 2; wm.position.y = 0.07 * s; g.add(wm);
   for (const sx of [-1, 1]) { const tip = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 2.2 * s), mAcc); tip.position.set(sx * w * s * 0.92, 0, 2 * s); g.add(tip); }
   // 꼬리날개
   for (const sx of [-1, 1]) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.6 * s, 2.4 * s), mAcc); fin.position.set(sx * 0.9 * s, 1.4 * s, 4.3 * s); fin.rotation.z = sx * 0.2; g.add(fin); const hs = new THREE.Mesh(new THREE.BoxGeometry(3.4 * s, 0.15, 1.8 * s), mBody); hs.position.set(sx * 1.8 * s, 0, 4.7 * s); g.add(hs); }
@@ -88,6 +99,7 @@ export class SkyView {
   scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(65, 1, 1, 9000);
   cockpit = false;
   setCockpit(on: boolean): void {
+    if (this.cockpit !== on) this.cameraReady = false;
     this.cockpit = on;
     for (const mesh of this.meshes.values()) if (mesh.userData.team === 'player') mesh.visible = !on;
   }
@@ -98,6 +110,9 @@ export class SkyView {
   private tracerHeads: THREE.Points; private tracerHeadPos = new Float32Array(400 * 3); private shadowSun = new THREE.Vector3(2000, 3000, 1200).normalize(); private seaNormalMap = seaNormal();
   private clouds: THREE.Sprite[] = []; private sun: THREE.DirectionalLight; private sunGlow: THREE.Sprite;
   private shake = 0;
+  private motionTime = 0;
+  private cameraReady = false;
+  private readonly cameraBase = new THREE.Vector3();
   private rings: { mesh: THREE.Mesh; life: number; max: number }[] = [];
   private cloudTex: THREE.CanvasTexture; private sunTex: THREE.CanvasTexture;
   private readonly quality = readPreferences().quality; private readonly reducedMotion = readPreferences().reducedMotion;
@@ -108,7 +123,7 @@ export class SkyView {
   private readonly up = new THREE.Vector3(0, 1, 0); private readonly matrix = new THREE.Matrix4(); private readonly rotation = new THREE.Quaternion();
   private readonly jetIds = new Set<number>(); private readonly pickupIds = new Set<number>(); private readonly missileIds = new Set<number>();
   constructor(renderer?: THREE.WebGLRenderer) {
-    const sc = this.scene; sc.fog = new THREE.Fog(0xb9b8b2, 1800, 7400); sc.background = new THREE.Color(0xd8b6a2);
+    const sc = this.scene; sc.fog = new THREE.Fog(0xb4bcbf, 1500, 7200); sc.background = new THREE.Color(0xc8c3b9);
     if (renderer && this.quality !== 'low') {
       this.environment = makeEnvironment(renderer, { top: 0x537ea9, horizon: 0xf2c7a4, ground: 0x234854, sun: 0xffe1b4, sunDir: [0.5, 0.75, 0.3] });
       sc.environment = this.environment;
@@ -123,7 +138,7 @@ export class SkyView {
     }
     const rim = new THREE.DirectionalLight(0x82b9ed, 0.7); rim.position.set(-1800, 800, -2000); sc.add(rim);
     this.sunTex = glowTex('rgba(255,248,220,.95)', 'rgba(255,180,100,0)');
-    this.sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.sunTex, color: 0xfff0d0, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.sunTex, color: 0xfff0d0, transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     this.sunGlow.scale.setScalar(900); sc.add(this.sunGlow);
     // 하늘 돔
     const dome = new THREE.Mesh(new THREE.SphereGeometry(8000, 24, 16), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
@@ -142,10 +157,10 @@ export class SkyView {
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; sc.add(sea); this.sea = sea;
     // 섬 지형
     const N = 200, size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
-    const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), c = new THREE.Color(), grass = new THREE.Color(0x2c6a2c), rock = new THREE.Color(0x77695a);
+    const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), c = new THREE.Color(), grass = new THREE.Color(0x49654a), rock = new THREE.Color(0x82776a);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), h = terrainY(x, z); pos.setY(i, h - (h < 1 ? 6 : 0));
-      if (h < 6) c.set(0x2a6f9c); else if (h < 22) c.set(0xe2cf94); else if (h < 160) c.setHex(0x3f8a3a).lerp(grass, h / 160); else if (h < 280) c.set(0x7a6f62); else c.set(0xf2f4f8);
+      if (h < 6) c.set(0x2a6f9c); else if (h < 22) c.set(0xe2cf94); else if (h < 160) c.setHex(0x658154).lerp(grass, h / 160); else if (h < 280) c.set(0x7a6f62); else c.set(0xf2f4f8);
       if (h >= 22 && h < 280) { // 완만한 곳은 풀빛이 번갈아 변하고, 가파른 곳은 바위가 드러남
         const slope = (Math.abs(terrainY(x + 20, z) - h) + Math.abs(terrainY(x, z + 20) - h)) / 20, patch = Math.sin(x * 0.011 + Math.cos(z * 0.007) * 2) * Math.cos(z * 0.013 - x * 0.004);
         if (h < 160) c.offsetHSL(patch * 0.025, patch * 0.05, patch * 0.045); c.lerp(rock, Math.min(0.75, Math.max(0, (slope - 0.55) * 1.2)));
@@ -153,7 +168,7 @@ export class SkyView {
       col.set([c.r, c.g, c.b], i * 3);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
-    const detail = terrainDetail(); detail.repeat.set(110, 110); const land = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, map: detail, roughness: 0.95, flatShading: true })); land.receiveShadow = true; sc.add(land);
+    const detail = terrainDetail(); detail.repeat.set(110, 110); const land = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, map: detail, roughness: 0.95, flatShading: false })); land.receiveShadow = true; sc.add(land);
     // 경계 링(월드 끝 표시)
     const ring = new THREE.Mesh(new THREE.TorusGeometry(WORLD_R, 4, 6, 120), new THREE.MeshBasicMaterial({ color: 0xff5a3a, transparent: true, opacity: 0.35 })); ring.rotation.x = Math.PI / 2; ring.position.y = 40; sc.add(ring);
     // 구름
@@ -163,16 +178,16 @@ export class SkyView {
     this.firePool = new BillboardPool(this.fire, true, 160); this.smokePool = new BillboardPool(this.smoke, false, 120); sc.add(this.firePool.mesh, this.smokePool.mesh);
     // 예광탄
     const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(this.tracerPos, 3)); tg.setDrawRange(0, 0);
-    this.tracers = new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); this.tracers.frustumCulled = false; sc.add(this.tracers);
+    this.tracers = new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: 0xffe3ad, transparent: true, opacity: 0.82, blending: THREE.AdditiveBlending, depthWrite: false })); this.tracers.frustumCulled = false; sc.add(this.tracers);
     const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.BufferAttribute(this.tracerHeadPos, 3)); hg.setDrawRange(0, 0); // 탄두 빛망울
-    this.tracerHeads = new THREE.Points(hg, new THREE.PointsMaterial({ map: glowSprite('rgba(255,250,210,1)', 'rgba(255,170,60,0)'), size: 26, sizeAttenuation: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); this.tracerHeads.frustumCulled = false; sc.add(this.tracerHeads);
+    this.tracerHeads = new THREE.Points(hg, new THREE.PointsMaterial({ map: glowSprite('rgba(255,250,210,1)', 'rgba(255,170,60,0)'), size: 10, sizeAttenuation: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); this.tracerHeads.frustumCulled = false; sc.add(this.tracerHeads);
   }
   private dome: THREE.Mesh; private sea: THREE.Mesh;
 
   /** 적응형 화질: 1 그림자 끔 · 2 구름 절반 · 3 구름 전부 숨김 + 파티클 절반 */
   setLevel(l: number): void {
     this.level = l;
-    if (l >= 1) this.sun.castShadow = false;
+    this.sun.castShadow = l < 1 && this.quality !== 'low' && this.environment !== undefined;
     this.clouds.forEach((c, i) => { c.visible = l < 3 && (l < 2 || i % 2 === 0); });
   }
   resize(w: number, h: number): void { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
@@ -183,10 +198,10 @@ export class SkyView {
   }
   boom(pos: THREE.Vector3, big: boolean): void {
     if (this.rings.length >= 32) { const old = this.rings.shift()!; this.scene.remove(old.mesh); this.disposeObject(old.mesh); }
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color: 0xffd8a0, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
-    ring.position.copy(pos); ring.quaternion.copy(this.camera.quaternion); this.scene.add(ring); this.rings.push({ mesh: ring, life: 0.45, max: big ? 160 : 75 });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color: 0xffd8a0, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    ring.position.copy(pos); ring.quaternion.copy(this.camera.quaternion); this.scene.add(ring); this.rings.push({ mesh: ring, life: 0.45, max: big ? 108 : 44 });
     const n = big ? 18 : 8, sz = big ? 60 : 28;
-    this.emit(pos, this.v1.set(0, 0, 0), 0.22, big ? 150 : 70, 0.6, 'fire', 0xfff2d0); // 순간 섬광
+    this.emit(pos, this.v1.set(0, 0, 0), 0.22, big ? 90 : 36, 0.6, 'fire', 0xfff2d0); // 순간 섬광
     for (let i = 0; i < n; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 90, (Math.random() - 0.3) * 80, (Math.random() - 0.5) * 90), 0.6 + Math.random() * 0.6, sz * (0.6 + Math.random() * 0.8), 2.2, 'fire', i % 3 ? 0xffb040 : 0xff5a20);
     for (let i = 0; i < n / 2; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 40, 10 + Math.random() * 30, (Math.random() - 0.5) * 40), 2 + Math.random(), sz, 1.6, 'smoke');
     for (let i = 0; i < (big ? 10 : 5); i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 180, Math.random() * 120, (Math.random() - 0.5) * 180), 0.45 + Math.random() * 0.4, 3, -0.3, 'fire', 0xffd07a);
@@ -207,20 +222,20 @@ export class SkyView {
       m.position.copy(j.pos); m.quaternion.copy(j.q);
       const throttle = THREE.MathUtils.clamp(j.throttle + (j.boosting ? 0.6 : 0), 0, 1.6);
       const fl = m.getObjectByName('flame') as THREE.Mesh | undefined; if (fl) {
-        fl.scale.set(0.65 + throttle * 0.55, 0.45 + throttle * 1.4 + Math.sin(time * 40 + j.id) * 0.1, 0.65 + throttle * 0.55);
+        fl.scale.set(0.65 + throttle * 0.55, 0.45 + throttle * 1.4 + (this.reducedMotion ? 0 : Math.sin(time * 22 + j.id) * 0.045), 0.65 + throttle * 0.55);
         (fl.material as THREE.MeshBasicMaterial).opacity = 0.4 + throttle * 0.55;
       }
       const core = m.getObjectByName('flameCore') as THREE.Mesh | undefined;
       if (core) { core.scale.set(0.7 + throttle * 0.3, 0.55 + throttle * 0.8, 0.7 + throttle * 0.3); (core.material as THREE.MeshBasicMaterial).opacity = 0.35 + throttle * 0.32; }
-      if ((j.speed > 170 || (j.speed > 120 && Math.abs(j.roll) > 0.8)) && Math.random() < Math.min(1, dt * 24)) {
+      if ((j.speed > 170 || (j.speed > 120 && Math.abs(j.roll) > 0.8)) && Math.random() < emissionChance(24, dt)) {
         const tip = this.v1;
         for (const side of [-1, 1]) {
           tip.set(side * (j.kind === 'boss' ? 11 : j.kind === 'bomber' ? 9.5 : j.kind === 'ace' ? 8.2 : 7.2), 0, 2.2).multiplyScalar(j.kind === 'boss' ? 2.8 : j.kind === 'bomber' ? 1.7 : 1).applyQuaternion(j.q).add(j.pos);
           this.emit(tip, this.v2.set(0, 0, 0), 0.8, 5, 0.9, 'smoke', 0xe0eaf0);
         }
       }
-      if (j.hp < j.maxHp * 0.45 && Math.random() < dt * 14) this.emit(j.pos, this.v2.set(0, 6, 0), 1.2, 16, 2, 'smoke'); // 피격 연기
-      if (j.hp < j.maxHp * 0.2 && Math.random() < dt * 20) this.emit(j.pos, this.v2.set(0, 4, 0), 0.4, 14, 1, 'fire', 0xff6a20);
+      if (j.hp < j.maxHp * 0.45 && Math.random() < emissionChance(14, dt)) this.emit(j.pos, this.v2.set(0, 6, 0), 1.2, 16, 2, 'smoke'); // 피격 연기
+      if (j.hp < j.maxHp * 0.2 && Math.random() < emissionChance(20, dt)) this.emit(j.pos, this.v2.set(0, 4, 0), 0.4, 14, 1, 'fire', 0xff6a20);
     }
     for (const [id, m] of this.meshes) if (!this.jetIds.has(id)) { this.scene.remove(m); this.disposeObject(m); this.meshes.delete(id); }
     // 픽업(수리/탄약 링)
@@ -232,7 +247,7 @@ export class SkyView {
         m = new THREE.Mesh(new THREE.TorusGeometry(9, 1.6, 8, 24), new THREE.MeshBasicMaterial({ color: tint }));
         const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: pickupIcon(k.kind), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); icon.scale.setScalar(20); m.add(icon); // 링 안에 그린 아이콘
         this.scene.add(m); this.pickMeshes.set(k.id, m); }
-      m.position.copy(k.pos); m.rotation.y = time * 3; m.rotation.x = Math.PI / 2 * 0.5; m.scale.setScalar(1 + 0.15 * Math.sin(time * 6));
+      m.position.copy(k.pos); m.rotation.y = this.reducedMotion ? 0 : time * 1.2; m.rotation.x = Math.PI / 4; m.scale.setScalar(this.reducedMotion ? 1 : 1 + 0.06 * Math.sin(time * 2.8));
     }
     for (const [id, m] of this.pickMeshes) if (!pk.has(id)) { this.scene.remove(m); this.disposeObject(m); this.pickMeshes.delete(id); }
     // 미사일
@@ -246,8 +261,8 @@ export class SkyView {
         for (let f = 0; f < 4; f++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.3, 1.2), steel); fin.position.y = -1.9; fin.rotation.y = f * Math.PI / 2; fin.translateZ(0.8); m.add(fin); }
         this.scene.add(m); this.missileMeshes.set(ms.id, m); }
       m.position.copy(ms.pos); m.lookAt(this.v1.copy(ms.pos).add(ms.vel)); m.rotateX(Math.PI / 2);
-      if (Math.random() < Math.min(1, dt * 30)) this.emit(ms.pos, this.v1.set(0, 3, 0), 1.1, 9, 1.8, 'smoke', 0xc8ccd0);
-      if (Math.random() < Math.min(1, dt * 24)) this.emit(ms.pos, this.v1.set(0, 0, 0), 0.18, 10, 0.5, 'fire', 0xffa040);
+      if (Math.random() < emissionChance(30, dt)) this.emit(this.v2.copy(ms.vel).normalize().multiplyScalar(-3).add(ms.pos), this.v1.copy(ms.vel).multiplyScalar(-0.018).add(this.v3.set(0, 3, 0)), 1.5, 5, 1.5, 'smoke', 0xc8ccd0);
+      if (Math.random() < emissionChance(24, dt)) this.emit(ms.pos, this.v1.set(0, 0, 0), 0.16, 5, 0.5, 'fire', 0xffa040);
     }
     for (const [id, m] of this.missileMeshes) if (!seen.has(id)) { this.scene.remove(m); this.disposeObject(m); this.missileMeshes.delete(id); }
     // 예광탄
@@ -258,34 +273,57 @@ export class SkyView {
     // 파티클
     this.firePool.update(dt); this.smokePool.update(dt);
     // 하늘·바다가 카메라를 따라감(무한한 느낌)
-    for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.life -= dt; const k = Math.max(0, r.life / 0.45); r.mesh.scale.setScalar(r.max * (1 - k) + 1); (r.mesh.material as THREE.MeshBasicMaterial).opacity = k * 0.7; if (r.life <= 0) { this.scene.remove(r.mesh); this.disposeObject(r.mesh); this.rings.splice(i, 1); } }
+    for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.life -= dt; const k = Math.max(0, r.life / 0.45); r.mesh.scale.setScalar(r.max * (1 - k * k) + 1); (r.mesh.material as THREE.MeshBasicMaterial).opacity = k * k * 0.35; if (r.life <= 0) { this.scene.remove(r.mesh); this.disposeObject(r.mesh); this.rings.splice(i, 1); } }
     this.seaTime.value = this.reducedMotion ? 0 : time;
     if (this.sun.castShadow) { const pp = sim.player.pos; this.sun.target.position.set(pp.x, 0, pp.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this.shadowSun, 2200); }
     if (!this.reducedMotion) for (const cloud of this.clouds) { cloud.position.x += 6 * dt; if (cloud.position.x > 3600) cloud.position.x -= 7200; }
-    this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.v1.copy(this.sun.position).normalize(), 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z; this.seaOrigin.value.set(this.camera.position.x, this.camera.position.z); // 바다 무늬를 월드에 고정(카메라를 따라다니면 정지한 듯 보임)
-    this.seaNormalMap.offset.set((this.reducedMotion ? 0 : time * 0.004) + this.camera.position.x / 125, (this.reducedMotion ? 0 : time * 0.0027) - this.camera.position.z / 125);
+    this.alignBackdrop();
   }
 
-  /** 추적 카메라(부드러운 지연 + 속도감 FOV + 폭발 흔들림). boost: 0~1 */
+  private alignBackdrop(): void {
+    const p = this.camera.position;
+    this.dome.position.copy(p);
+    this.sunGlow.position.copy(p).addScaledVector(this.shadowSun, 7000);
+    this.sea.position.x = p.x;
+    this.sea.position.z = p.z;
+    this.seaOrigin.value.set(p.x, p.z);
+    const time = this.seaTime.value;
+    this.seaNormalMap.offset.set(time * 0.004 + p.x / 125, time * 0.0027 - p.z / 125);
+  }
+
   follow(p: Jet, dt: number, look: THREE.Vector2, boost: number): void {
+    this.motionTime += Math.max(0, dt);
+    const offset = impactOffset(this.motionTime, this.shake, this.reducedMotion);
     if (this.cockpit) {
-      const offset = this.v1.set(0, 1.2, -2.5).applyQuaternion(p.q);
-      this.camera.position.copy(p.pos).add(offset);
+      this.camera.position.copy(p.pos).add(this.v1.set(offset.x * 0.16, 1.2 + offset.y * 0.16, -2.5).applyQuaternion(p.q));
       this.camera.quaternion.copy(p.q);
-      const vibration = 0.025 + Math.max(0, p.speed - 120) * 0.0008 + boost * 0.12 + this.shake * 0.5;
-      this.camera.position.add(this.v1.set((Math.random() - 0.5) * vibration, (Math.random() - 0.5) * vibration, 0).applyQuaternion(p.q));
     } else {
       const fwd = forward(p, this.v1), up = this.v2.copy(this.up).applyQuaternion(p.q);
-      const want = this.v3.copy(p.pos).addScaledVector(fwd, -34 - boost * 10).addScaledVector(up, 9 + p.pitch * -4);
-      this.camera.position.lerp(want, Math.min(1, dt * 7));
+      const thrust = this.reducedMotion ? 0 : boost;
+      const want = this.v3.copy(p.pos).addScaledVector(fwd, -34 - thrust * 7).addScaledVector(up, 9 - p.pitch * 3);
+      want.y = Math.max(want.y, Math.max(0, terrainY(want.x, want.z)) + 3);
+      const reset = !this.cameraReady || this.cameraBase.distanceToSquared(want) > 250 * 250;
+      if (reset) this.cameraBase.copy(want);
+      else this.cameraBase.lerp(want, dampingAlpha(7, dt));
+      this.cameraBase.y = Math.max(this.cameraBase.y, Math.max(0, terrainY(this.cameraBase.x, this.cameraBase.z)) + 3);
+      this.camera.position.copy(this.cameraBase);
       const target = this.v4.copy(p.pos).addScaledVector(fwd, 120);
-      const q = this.matrix.lookAt(this.camera.position, target, up.lerp(this.up, 0.5)); const tq = this.rotation.setFromRotationMatrix(q);
-      this.camera.quaternion.slerp(tq, Math.min(1, dt * 6));
-      if (this.shake > 0) { this.camera.position.x += (Math.random() - 0.5) * this.shake * 5; this.camera.position.y += (Math.random() - 0.5) * this.shake * 5; }
+      const q = this.matrix.lookAt(this.cameraBase, target, up.lerp(this.up, 0.65));
+      const tq = this.rotation.setFromRotationMatrix(q);
+      if (reset) this.camera.quaternion.copy(tq);
+      else this.camera.quaternion.slerp(tq, dampingAlpha(6, dt));
+      this.camera.position.add(this.v3.set(offset.x * 1.25, offset.y * 1.25, 0).applyQuaternion(this.camera.quaternion));
+      this.camera.position.y = Math.max(this.camera.position.y, Math.max(0, terrainY(this.camera.position.x, this.camera.position.z)) + 3);
     }
-    this.shake = Math.max(0, this.shake - dt * 2);
-    const fov = this.cockpit ? 70 + boost * 5 : 62 + boost * 14 + (p.speed - 140) * 0.06;
-    this.camera.fov += (fov - this.camera.fov) * Math.min(1, dt * 3); this.camera.updateProjectionMatrix(); void look;
+    this.cameraReady = true;
+    this.shake *= Math.exp(-5 * Math.max(0, dt));
+    if (this.shake < 0.001) this.shake = 0;
+    const fov = flightCameraFov(this.cockpit, p.speed, boost, this.reducedMotion);
+    this.camera.fov += (fov - this.camera.fov) * dampingAlpha(4, dt);
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld(true);
+    this.alignBackdrop();
+    void look;
   }
 
   /** 월드 좌표→화면(0~1). 화면 밖/뒤면 null */

@@ -26,6 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
+import { damp, dampAngle, walkingMotion, lampDip } from "./visual-motion.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -108,6 +109,7 @@ let returnFromHelp = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
+let walkPhase = 0, walkAmplitude = 0, gaitWeight = 0;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -408,9 +410,12 @@ function pointPlayer() {
   winded = false;
   crouched = false;
   eyeHeight = 1.58;
+  walkPhase = walkAmplitude = gaitWeight = stride = 0;
+  flickerUntil = 0;
   lightOn = true;
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
+  entity.rotation.y = 0;
   path = [];
   nextPath = 0;
   lastKnown = -1;
@@ -1275,7 +1280,7 @@ function enemyUpdate(dt, running) {
       e.x += (x / d) * v;
       e.z += (z / d) * v;
     }
-    if (d > 0.03) entity.rotation.y = Math.atan2(x, z);
+    if (d > 0.03) entity.rotation.y = dampAngle(entity.rotation.y, Math.atan2(x, z), enemyPhase ? 15 : 9, dt);
   }
   const travel = Math.hypot(e.x - startX, e.z - startZ);
   enemySteps += travel;
@@ -1283,14 +1288,15 @@ function enemyUpdate(dt, running) {
     sound.monsterStep(dist);
     enemySteps = 0;
   }
-  stride += travel * 5.5;
-  model.position.y = 0.009 + 0.009 * Math.abs(Math.sin(stride));
-  model.rotation.z = 0.025 * Math.sin(now * 2.1);
+  stride = (stride + travel * 5.5) % (Math.PI * 2);
+  gaitWeight = damp(gaitWeight, Math.min(1, dt > 0 ? travel / (dt * 0.9) : 0), 9, dt);
+  model.position.y = 0.009 + gaitWeight * 0.009 * Math.abs(Math.sin(stride));
+  model.rotation.z = 0.012 * Math.sin(now * 2.1) + gaitWeight * 0.012 * Math.sin(stride);
   mixer.update(dt * (enemyPhase ? 1.25 : 0.75));
   for (const joint of gait) {
     const swing = Math.sin(stride + joint.offset);
     joint.bone.quaternion.copy(joint.rest);
-    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * (joint.knee ? Math.max(0, swing) : swing));
+    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * gaitWeight * (joint.knee ? Math.max(0, swing) : swing));
   }
   const threat = grace
     ? 0
@@ -1350,12 +1356,10 @@ function update(dt) {
     if (hideBreath === 0) leaveHiding(true);
   }
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
-  camera.position.set(
-    player.x,
-    eyeHeight +
-      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
-    player.z,
-  );
+  const walk = walkingMotion(walkPhase, walkAmplitude, hiddenSpot ? 0 : moved, dt, running, crouched, reducedMotion.matches);
+  walkPhase = walk.phase;
+  walkAmplitude = walk.amplitude;
+  camera.position.set(player.x, eyeHeight + (hiddenSpot ? 0 : walk.height), player.z);
   const proximity = Math.max(0, 1 - Math.hypot(player.x - entity.position.x, player.z - entity.position.z) / 12);
   const sway = reducedMotion.matches ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
   camera.rotation.set(pitch + sway * 0.4, yaw, sway, "YXZ");
@@ -1363,8 +1367,10 @@ function update(dt) {
     flickerUntil = now + 0.18;
     nextFlicker = now + 24 + Math.random() * 35;
   }
-  const flickering = !reducedMotion.matches && now < flickerUntil && Math.sin(now * 55) > 0;
-  lamp.visible = beam.visible = lightOn && !hiddenSpot && !flickering;
+  const intensity = lampDip(now - (flickerUntil - 0.18), 0.18, reducedMotion.matches);
+  lamp.visible = beam.visible = lightOn && !hiddenSpot;
+  lamp.intensity = 28 * intensity;
+  beam.intensity = 2 * intensity;
   enemyUpdate(dt, running);
   if (state !== "play") return;
   const cell = cellOf(player);
@@ -1383,8 +1389,8 @@ function update(dt) {
     const q = o.root.position,
       d = Math.hypot(q.x - player.x, q.z - player.z);
     if (o.root.userData.unit && d < 12) {
-      o.root.userData.unit.rotation.y = now * 0.64;
-      o.root.userData.unit.position.y = 0.83 + 0.035 * Math.sin(now * 2 + o.i);
+      o.root.userData.unit.rotation.y = reducedMotion.matches ? 0 : now * 0.32;
+      o.root.userData.unit.position.y = 0.83 + (reducedMotion.matches ? 0 : 0.018 * Math.sin(now * 1.6 + o.i));
     }
     if (d < reach && clearLine(player, q)) {
       nearest = o;

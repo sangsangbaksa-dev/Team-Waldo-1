@@ -20,7 +20,7 @@ function car(v){
   const g=new T.Group(),s=v.spec,l=s.length,w=s.width,bike=v.type==='bike',truck=v.type==='truck',jeep=v.type==='jeep',sport=v.type==='sport';
   const r=bike?.35:truck?.52:jeep?.45:.34;
   const paint=new T.MeshLambertMaterial({color:s.color});
-  const panels=[];
+  const panels=[],doors=[];
   function panel(a,b,c,x,y,z){const m=box(a,b,c,s.color,x,y,z);m.material=paint;panels.push(m);g.add(m);return m;}
   if(bike){
     panel(.55,.32,1.3,0,.65,0);panel(.52,.32,.62,0,.85,.25);
@@ -32,6 +32,11 @@ function car(v){
     const roofZ=truck?l*.26:0,roofH=truck?1.55:jeep?1.12:sport?.61:.83,roofW=w*.84,roofL=truck?l*.37:l*.49;
     g.add(box(roofW,roofH,roofL,0x253a42,0,bodyY+.28+roofH/2,roofZ));
     panel(roofW*1.03,.13,roofL,0,bodyY+.3+roofH,roofZ);
+    for(const sign of [-1,1]){
+      const hinge=new T.Group();hinge.position.set(sign*w*.505,bodyY+.22,l*.15);
+      const door=box(.09,.45,l*.30,s.color,0,0,-l*.15);door.material=paint;
+      hinge.add(door);g.add(hinge);doors.push({hinge,sign});
+    }
     if(truck){panel(w,.95,l*.5,0,1.52,-l*.23);g.add(box(w*.93,.07,l*.46,0x494b4a,0,2.02,-l*.23));}
     if(jeep)g.add(wheel(.42,.26,0,-l*.5));
     g.add(box(w*.87,.16,.15,0x292e2e,0,bodyY-.08,l*.51),box(w*.87,.16,.15,0x292e2e,0,bodyY-.08,-l*.51));
@@ -47,7 +52,7 @@ function car(v){
   const smoke=new T.Group();
   for(let i=0;i<3;i++){const m=new T.Mesh(new T.SphereGeometry(.25+i*.1,7,5),new T.MeshBasicMaterial({color:0x4b4e50,transparent:true,opacity:.38-i*.08,depthWrite:false}));m.position.set(0,1.5+i*.5,l*.29);smoke.add(m);}
   smoke.visible=false;g.add(smoke);
-  g.userData={paint,panels,tires,occupant,smoke};return g;
+  g.userData={paint,panels,tires,occupant,smoke,doors};return g;
 }
 export function createRenderer(host,world){
   const renderer=new T.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -91,6 +96,21 @@ export function createRenderer(host,world){
     }
   }
   for(const d of world.decor){scene.add(cylinder(.14,5,0x575d60,d.x,2.5,d.z),box(1.2,.17,.45,0xe5ddbc,d.x,5,d.z));}
+  // Batch repeated static geometry into instanced draws; signals remain independently colored.
+  const groups=new Map();
+  const dynamicMaterials=new Set(signals.map(s=>s.m));
+  for(const mesh of [...scene.children]){
+    if(!mesh.isMesh||dynamicMaterials.has(mesh.material))continue;
+    const key=mesh.geometry.uuid+':'+mesh.material.uuid;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(mesh);
+  }
+  for(const meshes of groups.values()){
+    if(meshes.length<3)continue;
+    const batch=new T.InstancedMesh(meshes[0].geometry,meshes[0].material,meshes.length);
+    meshes.forEach((mesh,i)=>{mesh.updateMatrix();batch.setMatrixAt(i,mesh.matrix);scene.remove(mesh);});
+    batch.instanceMatrix.needsUpdate=true;batch.computeBoundingSphere();scene.add(batch);
+  }
   const vehicles=new Map(world.vehicles.map(v=>{const m=car(v);scene.add(m);return [v.id,m];}));
   const player=human(0x415d74);scene.add(player);const people=new Map();
   const look=new T.Vector3(),goal=new T.Vector3(),target=new T.Vector3(),baseColor=new T.Color(),dirty=new T.Color(0x494844);
@@ -104,6 +124,9 @@ export function createRenderer(host,world){
       m.rotation.z=v.type==='bike'?-v.steer*Math.min(Math.hypot(v.vx,v.vz)*.018,.37):v.steer*Math.min(Math.hypot(v.vx,v.vz)*.002,.065);
       u.paint.color.copy(baseColor.setHex(v.spec.color)).lerp(dirty,1-v.health/100);
       u.panels.forEach((p,i)=>{if(i===1)p.rotation.x=(1-v.health/100)*.16;});
+      const elapsed=world.time-(v.doorAt??-100);
+      const open=elapsed<.25?Math.max(0,elapsed/.25):elapsed<.8?1:elapsed<1.25?1-(elapsed-.8)/.45:0;
+      for(const d of u.doors)d.hinge.rotation.y=-d.sign*open*.85;
       u.occupant.visible=v.type==='bike'&&(v.driver||world.player.vehicle===v);
       u.smoke.visible=v.health<32;u.smoke.rotation.y=world.time*.6;
       for(const tire of u.tires)tire.rotation.y+=Math.hypot(v.vx,v.vz)*dt*2.3;

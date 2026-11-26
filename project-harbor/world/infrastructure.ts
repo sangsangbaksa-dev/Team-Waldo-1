@@ -38,7 +38,7 @@ export class ThreeChunks implements ChunkView {
     const {cx,cz,props,lod}=data,key=chunkKey(cx,cz);
     this.unload(key);
     const group=new T.Group(), x=cx*CHUNK,z=cz*CHUNK;
-    const geometry=new T.PlaneGeometry(CHUNK,CHUNK,lod===0?16:8,lod===0?16:8);
+    const geometry=new T.PlaneGeometry(CHUNK,CHUNK,16,16);
     geometry.rotateX(-Math.PI/2);
     const positions=geometry.attributes.position!;
     for(let i=0;i<positions.count;i++){
@@ -53,13 +53,13 @@ export class ThreeChunks implements ChunkView {
     if(vx){
       add(x+64,.04,z+64,vx*2,.12,CHUNK,0x363b3e);
       for(let n=8;n<128;n+=16)if(!hz||Math.abs(n-64)>hz+4)add(x+64,.115,z+n,.18,.018,7,0xd6cba7);
-      if(lod===0)for(const side of [-1,1])add(x+64+side*(vx+.6),.045,z+64,1.2,.1,CHUNK,0x95948a);
+      if(lod===0)for(const side of [-1,1]){ const px=x+64+side*(vx+.6); if(hz){const span=64-hz-1;add(px,.045,z+span/2,1.2,.1,span,0x95948a);add(px,.045,z+128-span/2,1.2,.1,span,0x95948a);}else add(px,.045,z+64,1.2,.1,CHUNK,0x95948a); }
     }
     if(hz){
       // Slight vertical offset prevents intersection z-fighting.
       add(x+64,.052,z+64,CHUNK,.12,hz*2,0x363b3e);
       for(let n=8;n<128;n+=16)if(!vx||Math.abs(n-64)>vx+4)add(x+n,.13,z+64,7,.018,.18,0xd6cba7);
-      if(lod===0)for(const side of [-1,1])add(x+64,.05,z+64+side*(hz+.6),CHUNK,.1,1.2,0x95948a);
+      if(lod===0)for(const side of [-1,1]){ const pz=z+64+side*(hz+.6); if(vx){const span=64-vx-1;add(x+span/2,.05,pz,span,.1,1.2,0x95948a);add(x+128-span/2,.05,pz,span,.1,1.2,0x95948a);}else add(x+64,.05,pz,CHUNK,.1,1.2,0x95948a); }
     }
     for(const p of props)parts.push(...this.part(p,lod));
     const buckets=new Map<T.BufferGeometry,Part[]>();

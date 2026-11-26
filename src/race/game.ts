@@ -10,7 +10,7 @@ import type { PvpSession, RoomSession } from '../net/lobby';
 import { RaceMulti } from './multi';
 import { RaceAudio, gearFor } from './audio';
 import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './config';
-import { aiInput, boosting, kmh, type CarInput } from './physics';
+import { aiInput, boosting, groundKmh, type CarInput } from './physics';
 import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
 import { activeRacers, createRace, currentLap, knockoutsLeft, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
@@ -21,6 +21,7 @@ import { buildMapTrack, type Track } from './track';
 import { RaceView, setDriverKit } from './view';
 import { loadCharacterKit } from '../shared/character';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
+import { clearHolds, createHolds, driveInput, pressHold, releaseHold } from './controls';
 import { PVP_ENABLED } from '../net/config';
 
 const STEP = 1 / 90;
@@ -83,8 +84,8 @@ export function openRace(onExit: () => void): void {
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
-  const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
-  function clearControls(): void { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
+  const keys = new Set<string>(), holds = createHolds();
+  function clearControls(): void { keys.clear(); clearHolds(holds); root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
   let doneKmh: number | null = null, driftBests = readDriftBests(), nitroWas = false, driftWas = false;
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
@@ -95,11 +96,11 @@ export function openRace(onExit: () => void): void {
   if (import.meta.env.DEV) (window as unknown as { __race: unknown }).__race = { get race() { return race; }, get view() { return view; }, dbg, skip(sec: number) { for (let t = 0; t < sec; t += STEP) handle(updateRace(race, STEP, readInput())); } }; // 개발 중 화면 캡처용: 시뮬레이션을 앞으로 감습니다.
   function readInput(): CarInput {
     if (dbg.auto) { const c = race.player.car, ai = aiInput(c, track, { lane: 0, top: race.player.params.top * 0.97, grip: 38, skill: 1, line: 1 }); return { ...ai, nitro: c.nitro > 0.5 && Math.abs(track.k[c.idx]) < 0.002, }; }
-    const k = (n: string): boolean => keys.has(n), left = k('ArrowLeft') || k('KeyA') || hold.left, right = k('ArrowRight') || k('KeyD') || hold.right;
-    const brake = k('ArrowDown') || k('KeyS') || hold.brake;
+    const k = (n: string): boolean => keys.has(n), left = k('ArrowLeft') || k('KeyA') || holds.down.left, right = k('ArrowRight') || k('KeyD') || holds.down.right;
+    const brake = k('ArrowDown') || k('KeyS') || holds.down.brake;
     // 터치 자동 가속은 출발 후에만. 카운트다운 중에는 가속 버튼을 눌러야 출발 부스트가 납니다.
-    const gas = k('ArrowUp') || k('KeyW') || hold.gas || (touch && race.phase === 'racing' && !brake);
-    return { throttle: gas ? 1 : 0, brake: brake ? 1 : 0, steer: (right ? 1 : 0) - (left ? 1 : 0), drift: k('Space') || hold.drift, nitro: k('ShiftLeft') || k('ShiftRight') || hold.nitro };
+    const gas = k('ArrowUp') || k('KeyW') || holds.down.gas || (touch && race.phase === 'racing' && !brake);
+    return driveInput({ throttle: gas, brake, left, right, drift: k('Space') || holds.down.drift, nitro: k('ShiftLeft') || k('ShiftRight') || holds.down.nitro });
   }
 
   function handle(ev: RaceEvent[]): void {
@@ -328,8 +329,8 @@ export function openRace(onExit: () => void): void {
   function hud(dt: number): void {
     const p = race.player, c = p.car, gone = p.out !== undefined, place = gone ? p.out! : placeOf(race);
     // 결승선을 지나거나 탈락한 뒤에는 속도계도 시계처럼 멈춥니다(탈락하면 0).
-    if (race.phase !== 'done') doneKmh = null; else if (doneKmh === null) doneKmh = gone ? 0 : kmh(c);
-    const sp = doneKmh ?? kmh(c);
+    if (race.phase !== 'done') doneKmh = null; else if (doneKmh === null) doneKmh = gone ? 0 : groundKmh(c);
+    const sp = doneKmh ?? groundKmh(c);
     setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
     setText('#rc-time', race.phase === 'countdown' ? `출발 ${Math.max(0, -race.clock).toFixed(1)}` : fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
     setText('#rc-best', race.trial ? (race.ghost ? (gd === null ? `고스트 ${fmtTime(race.ghost.time)}` : `고스트 ${fmtDelta(gd)}`) : '첫 기록 — 이 주행이 고스트가 됩니다') : Number.isFinite(race.bestLap) ? `최고 랩 ${fmtTime(race.bestLap)}` : '');
@@ -422,16 +423,16 @@ export function openRace(onExit: () => void): void {
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });
   root.querySelectorAll<HTMLElement>('[data-hold]').forEach(b => {
-    const k = b.dataset.hold as keyof typeof hold;
-    const release = (): void => { hold[k] = false; b.classList.remove('down'); };
+    const k = b.dataset.hold as 'left' | 'right' | 'brake' | 'drift' | 'nitro' | 'gas';
+    const release = (e: PointerEvent): void => { if (releaseHold(holds, e.pointerId) === false) b.classList.remove('down'); };
     b.addEventListener('pointerdown', e => {
       if (e.button !== 0 || paused || setupUi || race.phase === 'done') return;
       e.preventDefault(); audio.unlock();
-      try { b.setPointerCapture(e.pointerId); } catch { /* 캡처를 거절해도 누르고 있는 동안은 조향이 유지됩니다. */ }
-      hold[k] = true; b.classList.add('down');
+      try { b.setPointerCapture(e.pointerId); } catch { /* 캡처를 거절해도 창 단위 해제로 조향이 남습니다. */ }
+      pressHold(holds, e.pointerId, k); b.classList.add('down');
     });
-    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release);
-    b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(); });
+    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('lostpointercapture', release);
+    b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(e); });
     b.addEventListener('contextmenu', e => e.preventDefault());
   });
 

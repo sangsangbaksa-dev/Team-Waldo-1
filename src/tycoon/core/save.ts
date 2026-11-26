@@ -1,7 +1,7 @@
 // 저장/불러오기. 저장 데이터는 신뢰하지 않고 기본값 위에 검증해서 얹는다.
-import { ENERGY_MAX, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
-import { LOT_IDS, SPOT_BY_ID, newGame, type GameData, type LotData, type ShopData, type StaffData } from './model';
-import type { ShopKind, Stage, TycoonCore, TycoonSave } from './types';
+import { ENERGY_MAX, EVENTS, REGIONS, RIVALS, SHOP_KINDS, STAGES, DISTRICTS } from './data';
+import { LOT_IDS, SPOT_BY_ID, newGame, type ActivityData, type GameData, type LotData, type ShopData, type StaffData } from './model';
+import type { DayReport, District, ShopKind, Stage, TycoonCore, TycoonSave } from './types';
 
 import { TYCOON_SAVE_KEY } from './summary';
 export { TYCOON_SAVE_KEY, readTycoonSummary } from './summary';
@@ -33,6 +33,28 @@ function shop(v: unknown): ShopData | null {
     today: { revenue: num(t.revenue, 0, 0), customers: num(t.customers, 0, 0), lost: num(t.lost, 0, 0), cost: num(t.cost, 0, 0) },
     lastProfit: num(v.lastProfit, 0), busy: num(v.busy, 0, 0, 1),
   };
+}
+
+function activity(v: unknown): ActivityData | null {
+  if (!isObj(v) || !SPOT_BY_ID.has(String(v.spotId ?? '')) || typeof v.actionId !== 'string' || !v.actionId) return null;
+  const duration = num(v.duration, 0, 0.2, 30);
+  if (duration <= 0) return null;
+  return {
+    spotId: String(v.spotId), actionId: v.actionId.slice(0, 40), label: String(v.label ?? '일').slice(0, 40),
+    elapsed: num(v.elapsed, 0, 0, duration), duration, lockMovement: bool(v.lockMovement, true),
+  };
+}
+
+const REPORT_KEYS = ['revenue', 'costOfGoods', 'wages', 'upkeep', 'interest', 'tax', 'worldIncome', 'jobIncome', 'profit', 'customers', 'lost'] as const;
+function report(v: unknown): DayReport | null {
+  if (!isObj(v) || typeof v.day !== 'number' || !Number.isFinite(v.day)) return null;
+  const out = { day: Math.max(1, Math.round(v.day)) } as DayReport;
+  for (const key of REPORT_KEYS) out[key] = num(v[key], 0);
+  return out;
+}
+
+function knownDistrict(v: unknown): v is District {
+  return typeof v === 'string' && v in DISTRICTS;
 }
 
 function lot(id: string, v: unknown, fallback: LotData): LotData {
@@ -70,7 +92,7 @@ export function restoreGame(raw: unknown): GameData | null {
   if (isObj(raw.rivals)) for (const r of RIVALS) g.rivals[r.id] = { acquired: isObj(raw.rivals[r.id]) && raw.rivals[r.id] !== null && bool((raw.rivals[r.id] as Obj).acquired, false) };
   for (const r of RIVALS) if (g.rivals[r.id].acquired) for (const id of LOT_IDS) if (g.lots[id].rivalId === r.id) g.lots[id] = { owner: 'none' };
   if (isObj(raw.regions)) for (const r of REGIONS) g.regions[r.id] = num(raw.regions[r.id], 0, 0, 1);
-  g.events = Array.isArray(raw.events) ? raw.events.filter(isObj).map(e => ({ id: String(e.id), daysLeft: Math.round(num(e.daysLeft, 0, 0, 5)), district: typeof e.district === 'string' ? e.district as GameData['events'][number]['district'] : undefined })).filter(e => e.daysLeft > 0) : [];
+  g.events = Array.isArray(raw.events) ? raw.events.filter(isObj).map(e => ({ id: String(e.id), daysLeft: Math.round(num(e.daysLeft, 0, 0, 5)), district: knownDistrict(e.district) ? e.district : undefined })).filter(e => e.daysLeft > 0 && EVENTS.some(def => def.id === e.id)) : [];
   g.incorporated = bool(raw.incorporated, false);
   g.listed = bool(raw.listed, false) && g.incorporated;
   g.won = bool(raw.won, false);
@@ -78,10 +100,11 @@ export function restoreGame(raw: unknown): GameData | null {
   g.task = isObj(t) && SPOT_BY_ID.has(String(t.target)) && SPOT_BY_ID.has(String(t.from))
     ? { id: String(t.id), jobId: String(t.jobId), from: String(t.from), target: String(t.target), reward: num(t.reward, 0, 0, 1000), deadline: num(t.deadline, 0) }
     : null;
-  g.lastReport = isObj(raw.lastReport) ? raw.lastReport as unknown as GameData['lastReport'] : null;
+  g.lastReport = report(raw.lastReport);
   if (isObj(raw.ledger)) for (const k of Object.keys(g.ledger) as Array<keyof GameData['ledger']>) g.ledger[k] = num(raw.ledger[k], 0);
   g.nextId = Math.floor(num(raw.nextId, 1, 1));
   g.shopsOpened = Math.floor(num(raw.shopsOpened, 0, 0));
+  g.activity = activity(raw.activity);
   return g;
 }
 

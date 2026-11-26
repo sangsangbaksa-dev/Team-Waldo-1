@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Rooms } from '../src/application/rooms.js';
 import { RelayNetwork } from '../src/infrastructure/relay-network.js';
 import { validRoom, validSnapshot } from '../src/application/room-protocol.js';
 
@@ -10,7 +11,7 @@ function client(t) {
   const network = new RelayNetwork(message => {
     received.push(message);
     for (const waiter of waiters) waiter();
-  }, status => statuses.push(status), { kind: 'local' });
+  }, status => statuses.push(status), { kind: 'local', createRooms: options => new Rooms(options) });
   t.after(() => network.close());
   return {
     network, received, statuses,

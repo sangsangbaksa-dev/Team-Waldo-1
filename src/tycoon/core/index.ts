@@ -24,7 +24,8 @@ const MAX_DT = 0.25;
 export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트·디버그용 내부 상태 */ readonly data: GameData } {
   const g = (opts.save !== undefined && restoreGame(opts.save)) || newGame(opts.seed);
   const sim: SimContext = { presence: null, asleep: false };
-  let activity: ActivityData | null = null;
+  let activity: ActivityData | null = g.activity;
+  const keepActivity = (next: ActivityData | null): void => { activity = g.activity = next; };
   let speed: 1 | 2 | 4 = 1;
   let carry = 0;
   let lateWarned = '';
@@ -58,7 +59,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
 
   const finishActivity = () => {
     const a = activity!;
-    activity = null;
+    keepActivity(null);
     // 완료 시점에 다시 검사(그 사이 돈이나 시간이 바뀌었을 수 있다)
     const now = buildActions(ctx, a.spotId).find(x => x.id === a.actionId);
     if (!now?.enabled) {
@@ -111,7 +112,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
       if (!a) return { ok: false, message: '여기서는 할 수 없습니다' };
       if (!a.enabled) return { ok: false, message: a.disabledReason ?? '할 수 없습니다' };
       if (a.durationSec > 0) {
-        activity = { spotId, actionId, label: a.label, elapsed: 0, duration: a.durationSec, lockMovement: a.lockMovement };
+        keepActivity({ spotId, actionId, label: a.label, elapsed: 0, duration: a.durationSec, lockMovement: a.lockMovement });
         dirty = true;
         notify();
         return { ok: true, message: `${a.label}...` };
@@ -124,7 +125,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
     },
     cancelActivity() {
       if (!activity) return;
-      activity = null;
+      keepActivity(null);
       dirty = true;
       notify();
     },
@@ -132,7 +133,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
       const id = spotId && SPOT_BY_ID.has(spotId) ? spotId : null;
       if (id === sim.presence) return;
       sim.presence = id;
-      if (activity && activity.spotId !== id) { activity = null; }
+      if (activity && activity.spotId !== id) keepActivity(null);
       dirty = true;
       notify();
     },

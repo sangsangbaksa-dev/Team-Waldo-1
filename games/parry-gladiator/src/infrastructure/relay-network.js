@@ -1,5 +1,4 @@
-import { PROTOCOL_VERSION, ROOM_ALPHABET, ROOM_LENGTH, validRoom } from '../application/room-protocol.js';
-import { Rooms } from '../application/rooms.js';
+import { PROTOCOL_VERSION, ROOM_ALPHABET, ROOM_LENGTH, validRoom } from '../domain/protocol.js';
 import { openChannel } from './relay.js';
 
 const HOST = 'host';
@@ -13,10 +12,11 @@ const randomCode = () => Array.from(crypto.getRandomValues(new Uint8Array(ROOM_L
  * (`Rooms`) and the rival talks to it through a Realtime Broadcast channel. Same interface as `Network`.
  */
 export class RelayNetwork {
-  constructor(onMessage, onStatus, { kind = 'supabase' } = {}) {
+  constructor(onMessage, onStatus, { kind = 'supabase', createRooms } = {}) {
     this.onMessage = onMessage;
     this.onStatus = onStatus;
     this.kind = kind;
+    this.createRooms = createRooms;
     this.channel = null;
     this.timers = [];
     this.id = randomId();
@@ -42,7 +42,8 @@ export class RelayNetwork {
   every(ms, callback) { this.timers.push(setInterval(callback, ms)); }
 
   host(code, channel, live) {
-    const rooms = this.rooms = new Rooms({ makeCode: () => code, maxRooms: 1 });
+    if (!this.createRooms) throw new Error('Relay host needs a room simulator.');
+    const rooms = this.rooms = this.createRooms({ makeCode: () => code, maxRooms: 1 });
     const local = this.local = { send: message => queueMicrotask(() => { if (live()) this.onMessage(message); }) };
     const guests = new Map();
     const guestPeer = id => {

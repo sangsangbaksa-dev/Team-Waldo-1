@@ -47,7 +47,7 @@ export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean,
   const minStage = STAGE_NAMES[spot.minStage];
   return `<div class="ty-panel" role="dialog" aria-label="${esc(spot.name)}">
     <header><span class="ico">${esc(spot.icon)}</span><div><h2>${esc(spot.name)}</h2><p>${esc(d.name)} · ${spot.id === 'casino' ? '가상 카지노' : status}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
-    ${locked ? `<p class="ty-locked">🔒 <b>${esc(minStage)}</b> 단계가 되면 열립니다.</p>` : ''}
+    ${locked ? `<p class="ty-locked"><b>${esc(minStage)}</b> 단계가 되면 열립니다.</p>` : ''}
     ${body}
     ${casino}
     ${acts.length ? `<ul class="ty-acts">${acts.map(actionHtml).join('')}</ul>` : locked ? '' : '<p class="ty-none">지금 여기서 할 수 있는 일이 없습니다.</p>'}

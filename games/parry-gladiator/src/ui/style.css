@@ -548,5 +548,7 @@ kbd {
   .clock { min-width: 3.85rem; }
   .clock span { font-size: 0.69rem; }
 }
+#game-ui[data-parry="true"] [data-action="block"],
+#game-ui[data-parry="true"] .player .stamina { border-color: #f0d7ad; background: #5c4630; }
 #game-ui[data-riposte="true"] [data-action="light"] { border-color: #ffd398; background: #623b22; }
 #game-ui[data-riposte="true"] .hints span:nth-child(2) kbd { color: #21150f; border-color: #ffcb96; background: #f4ba83; }

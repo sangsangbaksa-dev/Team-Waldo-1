@@ -288,6 +288,11 @@ export class View {
           light.setAttribute('aria-label', canRiposte ? 'Riposte' : 'Light attack');
           light.querySelector('span').textContent = canRiposte ? 'Riposte' : 'Light';
         }
+        const parryOpen = player.state === 'block' && player.guardStart > 0 && state.phase === 'fight';
+        if (item.memo.parry !== parryOpen) {
+          item.memo.parry = parryOpen;
+          this.gameUI.dataset.parry = String(parryOpen);
+        }
         const feint = player.state === 'attack' && player.attack === 'heavy' && player.timer < attacks.heavy.windup - 0.035;
         if (item.memo.feint !== feint) {
           item.memo.feint = feint;

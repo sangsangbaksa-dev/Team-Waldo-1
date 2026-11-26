@@ -1,7 +1,7 @@
 // HUSTLE — reusable urban fleet; no economy unlocks or permanent upgrades.
 import * as THREE from 'three';
 import { makeVehicleMesh } from '../../shared/vehicle';
-import { carBodiesOverlap, pointWithinCar, pushWalkerFromCar, stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
+import { carBodiesOverlap, DRIVE_STEP, planDriveSteps, pointWithinCar, pushWalkerFromCar, stepDrive, type DriveInput, type DriveState, type DriveTuning } from './driving';
 import type { Colliders, Layout, Zone } from './layout';
 import type { Player } from './player';
 import { PITCH } from './layout';
@@ -54,6 +54,7 @@ export class Rides {
   private scratch = { x: 0, z: 0 };
   private bodyProbe = { x: 0, z: 0, heading: 0 };
   private night = 0;
+  private driveClock = 0;
   private trafficBlocks: (x: number, z: number, radius: number) => boolean = () => false;
   private pedestrianBlocks: (x: number, z: number, radius: number) => boolean = () => false;
   private lamp = new THREE.SpotLight(0xffe9b8, 0, 46, Math.PI / 5, 0.55, 1.6);
@@ -220,8 +221,12 @@ export class Rides {
   update(dt: number, input: DriveInput, player: Player, frozen: boolean): boolean {
     const car = this.active;
     if (!car) return false;
-    if (frozen) return false; // Pause physics without discarding vehicle momentum.
-    const impact = stepDrive(car, input, dt, car.tune, (x, z, heading) => this.occupiable(x, z, heading, car));
+    if (frozen) return false;
+    const plan = planDriveSteps(dt, this.driveClock);
+    this.driveClock = plan.leftover;
+    const occupy = (x: number, z: number, heading: number): boolean => this.occupiable(x, z, heading, car);
+    let impact = false;
+    for (let i = 0; i < plan.steps; i++) if (stepDrive(car, input, DRIVE_STEP, car.tune, occupy)) impact = true;
     car.mesh.position.set(car.x, 0.18, car.z); car.mesh.rotation.y = car.heading;
     this.placeLamp(car);
     player.pos.set(car.x, 0.18, car.z);

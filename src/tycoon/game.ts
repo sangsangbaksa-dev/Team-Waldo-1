@@ -20,6 +20,8 @@ import { Rides } from './scene/rides';
 import { WayfindingMarker } from './scene/wayfinding';
 import { findTeleportLanding } from './scene/teleport';
 import { readSessionPosition, type SessionPosition } from './scene/session-position';
+import { clearTouch, createTouch, beginCanvasPointer, beginBrake, endPointer, lookDelta, stickOffset } from './scene/touch';
+import { driveCommand } from './scene/driving';
 import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, pointFromMapClick } from './ui/minimap';
@@ -42,7 +44,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ty-top">
         <div class="ty-cash"><svg class="ty-ico coin" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="tyg" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff3b0"/><stop offset=".55" stop-color="#ffcf5a"/><stop offset="1" stop-color="#b9801c"/></radialGradient></defs><circle cx="12" cy="12" r="10" fill="url(#tyg)" stroke="#7a4f10" stroke-width="1.5"/><circle cx="12" cy="12" r="6.4" fill="none" stroke="#b9801c" stroke-width="1"/><path d="M12 7v10M14.4 9.4c-.6-.9-4.8-1-4.8.9 0 2.2 4.8 1 4.8 3.3 0 1.9-4.2 1.9-4.8.9" fill="none" stroke="#7a4f10" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl">현금</span><b id="ty-cash">$0</b><small id="ty-debt"></small></div>
         <div class="ty-stagebox"><b id="ty-stage"></b><div id="ty-ladder"></div></div>
-        <div class="ty-clock"><span id="ty-sun">☀</span><b id="ty-clock">06:00</b><em id="ty-day">1일차</em>
+        <div class="ty-clock"><span id="ty-sun">낮</span><b id="ty-clock">06:00</b><em id="ty-day">1일차</em>
           <div class="ty-speed" id="ty-speed"><button type="button" data-speed="1" aria-label="1배속">1×</button><button type="button" data-speed="2" aria-label="2배속">2×</button><button type="button" data-speed="4" aria-label="4배속">4×</button></div></div>
         <div class="ty-tools"><button type="button" id="ty-b-status" aria-label="현황">현황</button><button type="button" id="ty-b-map" aria-label="지도">지도</button><button type="button" id="ty-b-menu" aria-label="메뉴">Ⅱ</button></div>
       </div>
@@ -85,7 +87,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   };
   let renderer: THREE.WebGLRenderer | null = null; const unsub: Array<() => void> = [];
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(66, 1, 0.2, 2400); let colliders!: Colliders;
-  const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false, brakeId: -1, brake: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
+  const keys = new Set<string>(); const tc = createTouch(); let drag = -1, dragX = 0, dragY = 0, locked = false;
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
   let tutorialTime = -1;
@@ -294,7 +296,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 입력 ----------
-  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; tc.run = false; tc.brake = false; tc.brakeId = -1; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
+  function resetInput(): void { keys.clear(); clearTouch(tc); q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
   function lock(): void { if (touch || !player?.firstPerson || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
   const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked) resetInput(); };
   document.addEventListener('pointerlockchange', onLock);
@@ -344,20 +346,22 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   canvas.addEventListener('pointerdown', e => {
     audio.unlock(); if (phase !== 'play' || modal) return;
     if (e.pointerType === 'touch') {
-      if (e.clientX < innerWidth * 0.45 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; const st = q('#ty-stick'); st.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
-      else if (tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
+      const claim = beginCanvasPointer(tc, e.pointerId, e.clientX, e.clientY, innerWidth);
+      if (claim === 'move') { const st = q('#ty-stick'); st.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; try { canvas.setPointerCapture(e.pointerId); } catch { /* 창 리스너가 이어 받습니다. */ } }
     } else { drag = e.pointerId; dragX = e.clientX; dragY = e.clientY; lock(); }
   });
   const onMove = (e: PointerEvent): void => {
-    if (e.pointerId === tc.moveId) { const dx = clamp((e.clientX - tc.ox) / 55, -1, 1), dy = clamp((e.clientY - tc.oy) / 55, -1, 1); tc.mx = dx; tc.my = dy; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = `translate(${dx * 38}px,${dy * 38}px)`; }
-    else if (e.pointerId === tc.lookId) { player.look((e.clientX - tc.lx) * 0.0055, (e.clientY - tc.ly) * 0.0045); tc.lx = e.clientX; tc.ly = e.clientY; }
+    const stick = stickOffset(tc, e.pointerId, e.clientX, e.clientY);
+    if (stick) { (q('#ty-stick').firstElementChild as HTMLElement).style.transform = `translate(${stick.x}px,${stick.y}px)`; return; }
+    const look = lookDelta(tc, e.pointerId, e.clientX, e.clientY);
+    if (look) player.look(look.x * 0.0055, look.y * 0.0045);
     else if (locked && phase === 'play' && !modal) player.look(e.movementX * 0.0024, e.movementY * 0.002);
     else if (e.pointerId === drag && !modal) { player.look((e.clientX - dragX) * 0.005, (e.clientY - dragY) * 0.004); dragX = e.clientX; dragY = e.clientY; }
   };
   const onUp = (e: PointerEvent): void => {
-    if (e.pointerId === tc.moveId) { tc.moveId = -1; tc.mx = tc.my = 0; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
-    if (e.pointerId === tc.lookId) tc.lookId = -1;
-    if (e.pointerId === tc.brakeId) { tc.brakeId = -1; tc.brake = false; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); }
+    const ended = endPointer(tc, e.pointerId);
+    if (ended === 'move') { q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
+    if (ended === 'brake') { q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); }
     if (e.pointerId === drag) drag = -1;
   };
   window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
@@ -366,7 +370,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
     const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') { if (rides?.driving) honk(); else interact(); } else if (t === 'run') {
-      if (rides?.driving) { tc.brakeId = e.pointerId; tc.brake = true; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
+      if (rides?.driving) { if (beginBrake(tc, e.pointerId)) { b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); try { b.setPointerCapture(e.pointerId); } catch { /* 손을 떼면 창에서 해제됩니다. */ } } }
       else { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); }
     } else if (t === 'view') { toggleView(); }
   });
@@ -476,9 +480,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       if (st.activity?.lockMovement && Math.hypot(mv.mx, mv.mz) > 0.35) { core.cancelActivity(); toast('중단했습니다'); }
     }
     if (playing) { player.update(dt, mv, colliders, frozen || !!rides?.driving, resolveParked);
-      const steer = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0) - tc.mx;
-      const throttle = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) - tc.my;
-      const impact = rides?.update(dt, { throttle, steer, brake: keys.has('Space') || tc.brake }, player, frozen);
+      const command = driveCommand({
+        left: keys.has('KeyA'), right: keys.has('KeyD'), forward: keys.has('KeyW'), back: keys.has('KeyS'),
+        brake: keys.has('Space') || tc.brake,
+      }, tc.mx, tc.my);
+      const impact = rides?.update(dt, command, player, frozen);
       if (impact && !frozen && nowS - lastCrashAt > 0.7) { lastCrashAt = nowS; audio.impact(); }
     }
     // 가까운 장소
@@ -575,10 +581,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       cashEl.animate([{ transform: 'translateY(0)', filter: 'brightness(1)' }, { transform: 'translateY(-2px)', filter: 'brightness(1.5)' }, { transform: 'translateY(0)', filter: 'brightness(1)' }], { duration: 360, easing: 'ease-out' });
     }
     set('cash', cashText); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
-    set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
+    set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '밤' : '낮');
     for (const b of q('#ty-speed').children) (b as HTMLElement).classList.toggle('on', Number((b as HTMLElement).dataset.speed) === s.speed);
     style('energy', 'width', `${s.energy}%`); set('energy-n', String(s.energy)); q('#ty-energy').parentElement!.classList.toggle('low', s.energy < 25);
-    html('carry', `${s.cargo?.units ? `<span>📦 재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>🍾 빈 병 ${s.bottles}</span>` : ''}`);
+    html('carry', `${s.cargo?.units ? `<span>재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>빈 병 ${s.bottles}</span>` : ''}`);
     html('goal', `<b>${esc(s.goal.label)}</b><div class="ty-bar gold"><i style="width:${Math.round(s.goal.progress * 100)}%"></i></div>${s.goal.steps.filter(x => !x.done).slice(0, 3).map(x => `<small>○ ${esc(x.label)}</small>`).join('')}`);
     // 활동·과제
     const a = s.activity; q('#ty-activity').hidden = !a; if (a) { set('act-label', a.label); style('act-bar', 'width', `${Math.round(a.progress * 100)}%`); }
@@ -589,7 +595,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     }
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
-    if (rides?.driving && !modal) { p.hidden = false; html('prompt', rides.speed > 1 ? '<b>정차한 뒤 하차하세요</b>' : '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
+    if (rides?.driving && !modal) { p.hidden = false; html('prompt', rides.speed > 1 ? '<b>정차한 뒤 하차하세요</b>' : '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<b>${esc(v.name)}</b>${v.locked ? `<em>${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
     const actionButton = q<HTMLButtonElement>('[data-t="use"]');
     actionButton.textContent = rides?.driving ? '경적' : '행동';
     actionButton.classList.toggle('horn', !!rides?.driving);

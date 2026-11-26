@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Electron's main process stays CommonJS. */
 const { app, BrowserWindow, shell } = require('electron');
 const http = require('http');
 const fs = require('fs');

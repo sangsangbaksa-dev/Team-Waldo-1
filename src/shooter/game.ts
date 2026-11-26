@@ -71,7 +71,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let soloRecorded = false;
-  let shotsFired = 0, shotsHit = 0, newKillRecord = false, zoneWarningPhase = -1, zoneTick = -1;
+  let shotsFired = 0, shotsHit = 0, newKillRecord = false, zoneWarningPhase = -1, zoneTick = -1, hazard = '';
   const otherSteps = new Map<number, number>();
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
@@ -132,7 +132,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {
     endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; shotsFired = shotsHit = 0; newKillRecord = false; zoneWarningPhase = zoneTick = -1; otherSteps.clear(); spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
-    keys.clear(); mouse.fire = mouse.ads = false; tc.fire = tc.ads = tc.crouch = false; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; interactHeld = reloadReq = swapReq = nadeReq = smokeReq = flashReq = jumpQueued = false; healReq = 0; slotReq = -1; hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = 0; rcIdle = 9; hitHead = hitKill = false;
+    keys.clear(); mouse.fire = mouse.ads = false; tc.fire = tc.ads = tc.crouch = false; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; interactHeld = reloadReq = swapReq = nadeReq = smokeReq = flashReq = jumpQueued = false; healReq = 0; slotReq = -1; hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = 0; rcIdle = 9; hitHead = hitKill = false; hazard = ''; lastCompassDraw = 0;
+    root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); stickEl.style.opacity = '0';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null; lastMapDraw = 0;
     // 지난 경기의 WebGL 컨텍스트는 dispose 에서 끝났으므로, 같은 캔버스를 다시 쓰면 렌더러가 죽은 컨텍스트를 받습니다(다시 시작이 안 됨). 경기마다 새 캔버스를 씁니다.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; fresh.addEventListener('contextmenu', noMenu); if (document.pointerLockElement === canvas) { swapUnlock = true; locked = false; } canvas.replaceWith(fresh); canvas = fresh;
@@ -359,7 +360,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (!locked && swapUnlock) { swapUnlock = false; return; }
     if (locked) { lockFailN = 0; lockFail = lockRejected = false; const b = q('#sz-banner'); if (b.textContent === CLICK_HINT) { b.classList.remove('show'); bannerT = 0; } }
     if (closeSmith) return;
-    if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed) setPause(true);
+    if (!locked && !paused && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed) setPause(true);
     else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
   }
   const pvpRunning = (): boolean => ((!!pvp && !pvp.done) || (!!room && !room.done)) && !!match;
@@ -394,7 +395,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: false }); canvas.addEventListener('contextmenu', noMenu);
-  const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; tc.fire = false; if (!pvpRunning() && !paused && !closeSmith) setPause(true); }; window.addEventListener('blur', blur);
+  const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; releaseTouch(); if (!pvpRunning() && !paused && !closeSmith) setPause(true); }; window.addEventListener('blur', blur);
   const onHidden = (): void => { if (document.hidden) blur(); }; document.addEventListener('visibilitychange', onHidden);
 
   // 터치: 왼쪽 절반은 이동 스틱, 오른쪽 절반 드래그는 시점
@@ -409,7 +410,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const tEnd = (e: PointerEvent): void => { if (e.pointerId === tc.move.id) { tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; } else if (e.pointerId === tc.look.id) tc.look.id = -1; };
   root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd);
   // 손가락을 창 밖·결과 창 위에서 떼도 스틱·시점 손가락이 남아 이후 터치가 먹히지 않는 일이 없게 창 전체에서도 끝을 받습니다.
-  const tReset = (): void => { tc.fire = false; interactHeld = false; root.querySelectorAll('.sz-tbuttons button.down:not([data-act=ads]):not([data-act=crouch])').forEach(b => b.classList.remove('down')); tc.look.id = -1; tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; };
+  const releaseTouch = (): void => { tc.fire = tc.ads = tc.crouch = false; interactHeld = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); tc.look.id = tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; };
+  const tReset = (): void => { releaseTouch(); };
   window.addEventListener('pointerup', tEnd); window.addEventListener('pointercancel', tEnd); window.addEventListener('blur', tReset); document.addEventListener('visibilitychange', tReset);
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
@@ -422,7 +424,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (closeSmith || !match || closed || phase !== 'play' || paused) return; const m = match, p = me();
     if (!p.alive || p.veh >= 0) { say(p.veh >= 0 ? '차에서 내려야 조립할 수 있습니다' : '조립할 수 없습니다', 1.4); return; }
     if (!p.guns.some(g => g)) { say('조립할 총이 없습니다', 1.4); return; }
-    keys.clear(); mouse.fire = mouse.ads = tc.fire = tc.ads = false; interactHeld = false;
+    keys.clear(); mouse.fire = mouse.ads = false; releaseTouch();
     const live = pvpRunning(); smithPaused = !live; if (smithPaused) paused = true;
     const done = (): void => { closeSmith = null; if (smithPaused) { smithPaused = false; paused = false; last = performance.now(); } if (!touch) lock(); };
     closeSmith = openGunsmith(root, { assets, touch, live, me, equip: (gi, slot, part) => { const ok = m.equipPart(me(), gi, slot, part); if (ok) audio.play('pickup'); return ok; }, onClose: done });
@@ -507,7 +509,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     g.fillStyle = '#ff5a3c'; g.beginPath(); g.moveTo(W / 2, 20); g.lineTo(W / 2 + 5, 14); g.lineTo(W / 2 - 5, 14); g.closePath(); g.fill();
   }
 
-  let lastMapDraw = 0;
+  let lastMapDraw = 0, lastCompassDraw = 0, lastCompassYaw = 0;
   function updateHud(dt: number): void {
     const m = match!, p = me(), z = m.zone, g = p.guns[p.cur], def = g ? WEAPONS[g.id] : null, now = performance.now();
     if (!p.alive) audio.engine(false, 0);
@@ -546,13 +548,15 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     // 자기장 밖
     const out = Math.hypot(p.x - z.cx, p.z - z.cz) > z.r && p.alive && !p.air && m.t >= m.zoneDelay; q('#sz-zonefx').classList.toggle('on', out); audio.danger(out ? 1 : 0);
     if (out && !paused && phase === 'play' && Math.floor(m.t) !== zoneTick) { zoneTick = Math.floor(m.t); const fx = q('#sz-zonefx'); fx.classList.remove('tick'); void fx.offsetWidth; fx.classList.add('tick'); }
-    if (out) say(`자기장 밖 · 초당 -${z.dps.toFixed(1)}`, 0.4);
+    const hazardNext = out ? `zone:${z.dps.toFixed(1)}` : '';
     // 차량 계기판 · 폭격 경고
     { const v = p.veh >= 0 ? m.vehicles[p.veh] : null; q('#sz-veh').classList.toggle('show', !!v && p.alive);
       if (v) { set(q('#sz-vname'), 'vname', VEHICLES[v.kind].name); set(q('#sz-vspd'), 'vspd', String(Math.round(Math.abs(v.speed) * 3.6))); q('#sz-vhp').style.width = `${clamp((v.hp / v.max) * 100, 0, 100)}%`; q('#sz-vbar').classList.toggle('low', v.hp < v.max * 0.35); set(q('#sz-vkeys'), 'vkeys', touch ? '줍기 버튼: 하차 · 웅크림 버튼: 핸드브레이크' : 'WASD 운전 · Space 핸드브레이크 · E 하차'); }
       q('.sz-br').classList.toggle('hide', !!v || (p.alive && p.air > 0)); // 비행기·낙하 중에는 무기 HUD 를 숨깁니다
       audio.engine(!!v && p.alive, v ? Math.abs(v.speed) / VEHICLES[v.kind].top : 0);
-      const red = p.alive && !p.air ? m.redAt(p.x, p.z) : null, hot = !!red && m.t >= red.call; q('#sz-redfx').classList.toggle('on', hot); if (hot) say(m.t >= red!.start ? '폭격 구역 · 지금 벗어나세요!' : '폭격 구역 · 곧 폭격이 시작됩니다', 0.4); }
+      const red = p.alive && !p.air ? m.redAt(p.x, p.z) : null, hot = !!red && m.t >= red.call; q('#sz-redfx').classList.toggle('on', hot);
+      const next = out ? hazardNext : hot ? (m.t >= red!.start ? 'red:now' : 'red:soon') : '';
+      if (next !== hazard) { hazard = next; if (out) say(`자기장 밖 · 초당 -${z.dps.toFixed(1)}`, 2.2); else if (hot) say(m.t >= red!.start ? '폭격 구역 · 지금 벗어나세요' : '폭격 구역 · 곧 폭격이 시작됩니다', 2.2); } }
     // 데미지 비네트
     q('#sz-flashfx').style.opacity = String(p.alive ? clamp(p.blind / 1.6, 0, 1) : 0);
     q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + Math.sin(now / 160) * 0.12 : 0), 0, 0.9));
@@ -566,7 +570,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}"><span>${esc(f.text)}</span><b>⌖ ${esc(f.weapon)}</b></li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
     html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>J / 좌클릭</b> 사격</span><span><b>K / 우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
-    if (now - lastMapDraw >= 150) { drawMap(m, p); lastMapDraw = now; } drawCompass(m, p);
+    if (now - lastMapDraw >= 150) { drawMap(m, p); lastMapDraw = now; }
+    if (now - lastCompassDraw >= 90 || Math.abs(yaw - lastCompassYaw) > 0.08) { drawCompass(m, p); lastCompassDraw = now; lastCompassYaw = yaw; }
   }
 
   // ---------- 이벤트 처리 ----------

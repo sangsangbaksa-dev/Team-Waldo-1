@@ -1,6 +1,6 @@
 import type { ClientMessage, ServerMessage } from '../application/protocol.js';
 import type { RoomInfo, Session } from '../application/session.js';
-import type { Input } from '../domain/combat.js';
+import { neutralInput, type Input } from '../domain/combat.js';
 import type { Snapshot } from '../domain/match.js';
 import type { World } from '../domain/world.js';
 import { guestLink, hostLink, socketLink, transportChoice, type Link, type LinkEvents } from './link.js';
@@ -70,6 +70,10 @@ export class OnlineSession implements Session {
     this.outgoingTime %= interval;
     const player = this.snapshot.players.find(player => player.id === this.playerId);
     if (player) this.send({ type: 'input', seq: ++this.sequence, generation: player.generation, input });
+  }
+
+  hold(input: Input): void {
+    this.update({ ...neutralInput(input.yaw, input.pitch), fire: input.fire, reload: input.reload }, 1);
   }
 
   restart(): void { this.send({ type: 'start' }); }

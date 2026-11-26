@@ -41,6 +41,7 @@ class Game {
   private readonly controls = new Controls(this.canvas, () => this.pause());
 
   private session?: Session;
+  private scheduled = false;
   private world?: World;
   private renderer?: FieldRenderer;
   private hud?: Hud;
@@ -122,7 +123,6 @@ class Game {
       if (this.panel === 'controls') this.show(this.panelBeforeGuide);
       else if (this.panel === 'online') this.leave();
     });
-    requestAnimationFrame(this.frame);
   }
 
   private playerName(): string {
@@ -146,6 +146,7 @@ class Game {
     notice(element('menu-status'));
     const world = this.world ??= createWorld();
     this.session = new SoloSession(world, this.playerName());
+    this.arm();
     const snapshot = this.session.snapshot;
     if (snapshot && this.openField(snapshot)) this.resume();
   }
@@ -153,6 +154,7 @@ class Game {
   private connect(request: Extract<ClientMessage, { type: 'create' | 'join' }>): void {
     this.session?.close();
     this.session = new OnlineSession(request, this.world ??= createWorld());
+    this.arm();
     this.onlineBusy(true);
     notice(element('online-status'), 'Connecting…');
   }
@@ -173,6 +175,7 @@ class Game {
 
   private pause(): void {
     if (!this.onField || this.panel === 'result') return;
+    this.session?.hold(this.controls.sample(0));
     this.controls.disable();
     this.audio.ambiance(false);
     const online = !!this.session?.room;
@@ -193,7 +196,8 @@ class Game {
     this.session = undefined;
     this.controls.disable();
     this.audio.ambiance(false);
-    this.renderer?.reset();
+    this.renderer?.dispose();
+    this.renderer = undefined;
     this.hud?.reset();
     this.field.hidden = true;
     this.landing.hidden = false;
@@ -304,12 +308,19 @@ class Game {
       aiming: input.aim, steady: input.aim && input.breath && !player.breathExhausted };
   }
 
-  private frame = (now: number): void => {
+  private arm(): void {
+    if (this.scheduled) return;
+    this.scheduled = true;
     requestAnimationFrame(this.frame);
-    const dt = Math.min(0.065, Math.max(0, (now - (this.lastFrame || now)) / 1000));
-    this.lastFrame = now;
+  }
+
+  private frame = (now: number): void => {
+    this.scheduled = false;
     const session = this.session;
     if (!session) return;
+    this.arm();
+    const dt = Math.min(0.065, Math.max(0, (now - (this.lastFrame || now)) / 1000));
+    this.lastFrame = now;
     if (session.error) {
       if (this.panel === 'online') {
         const error = session.error;
@@ -320,16 +331,19 @@ class Game {
       } else this.leave(session.error);
       return;
     }
-    const received = session.snapshot;
-    const current = received?.players.find(player => player.id === session.playerId);
-    if (this.onField && current && current.generation !== this.generation) {
-      this.generation = current.generation;
-      this.controls.orient(current.yaw, current.pitch);
-      this.prediction = undefined;
-    }
     const input = this.controls.sample(dt);
+    if (session.room) {
+      const pending = session.snapshot?.players.find(player => player.id === session.playerId);
+      if (this.onField && pending && pending.generation !== this.generation) {
+        this.generation = pending.generation;
+        this.controls.orient(pending.yaw, pending.pitch);
+        input.yaw = pending.yaw;
+        input.pitch = pending.pitch;
+        this.prediction = undefined;
+      }
+    }
     if (session.room || this.controls.active) session.update(input, dt);
-    const snapshot = session.room || !this.controls.active ? received : session.snapshot;
+    const snapshot = session.snapshot;
     if (!snapshot) return;
     if (snapshot.phase === 'lobby') {
       this.lobby(snapshot);

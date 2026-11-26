@@ -28,6 +28,10 @@ export class FieldRenderer {
   private readonly landscape: ReturnType<typeof buildLandscape>;
   private readonly incoming: Incoming[] = [];
   private shadowPosition = new THREE.Vector3(Infinity, 0, 0);
+  private readonly rangeFrom = new THREE.Vector3();
+  private readonly rangeTo = new THREE.Vector3();
+  private readonly impactPool: THREE.Mesh[] = [];
+  private resizeObserver: ResizeObserver;
   private renderTime = 0;
   private aim = 0;
   private lastFrame = 0;
@@ -78,14 +82,17 @@ export class FieldRenderer {
       this.camera.updateProjectionMatrix();
       this.rifleCamera.updateProjectionMatrix();
     };
-    new ResizeObserver(resize).observe(canvas);
+    this.resizeObserver = new ResizeObserver(resize);
+    this.resizeObserver.observe(canvas);
     resize();
   }
 
   get aimFraction(): number { return this.aim; }
 
   get rangeLine(): { from: THREE.Vector3; to: THREE.Vector3 } {
-    return { from: this.camera.position, to: this.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(600).add(this.camera.position) };
+    this.rangeFrom.copy(this.camera.position);
+    this.camera.getWorldDirection(this.rangeTo).multiplyScalar(600).add(this.camera.position);
+    return { from: this.rangeFrom, to: this.rangeTo };
   }
 
   reset(): void {
@@ -93,8 +100,18 @@ export class FieldRenderer {
     this.aim = 0;
     for (const view of this.tracks.values()) { this.scene.remove(view.root); view.dispose(); }
     this.tracks.clear();
-    for (const { mesh } of this.impacts) { this.scene.remove(mesh); (mesh.material as THREE.Material).dispose(); }
+    for (const { mesh } of this.impacts) this.retireImpact(mesh);
     this.impacts.length = 0;
+  }
+
+  dispose(): void {
+    this.reset();
+    this.resizeObserver.disconnect();
+    for (const mesh of this.impactPool) (mesh.material as THREE.Material).dispose();
+    this.impactPool.length = 0;
+    this.impactGeometry.dispose();
+    this.tracerGeometry.dispose();
+    this.renderer.dispose();
   }
 
   setQuality(low: boolean): void {
@@ -106,13 +123,15 @@ export class FieldRenderer {
 
   event(event: MatchEvent, self: string): void {
     if (event.type !== 'impact' && event.type !== 'hit') return;
-    const material = new THREE.MeshBasicMaterial({
-      color: event.type === 'hit' ? '#dfac69' : '#ad9c7f', transparent: true, opacity: 0.85, depthWrite: false,
-    });
-    const mesh = new THREE.Mesh(this.impactGeometry, material);
+    const mesh = this.impactPool.pop() ?? new THREE.Mesh(this.impactGeometry, new THREE.MeshBasicMaterial({
+      transparent: true, depthWrite: false,
+    }));
+    const material = mesh.material as THREE.MeshBasicMaterial;
+    material.color.set(event.type === 'hit' ? '#dfac69' : '#ad9c7f');
+    material.opacity = 0.85;
     const p = event.position;
     mesh.position.set(p.x, p.y, p.z);
-    if (event.player === self) mesh.scale.setScalar(1.4);
+    mesh.scale.setScalar(event.player === self ? 1.4 : 1);
     this.scene.add(mesh);
     this.impacts.push({ mesh, until: this.renderTime + 0.29 });
   }
@@ -161,8 +180,7 @@ export class FieldRenderer {
       const effect = this.impacts[i];
       const life = (effect.until - this.renderTime) / 0.29;
       if (life <= 0) {
-        this.scene.remove(effect.mesh);
-        (effect.mesh.material as THREE.Material).dispose();
+        this.retireImpact(effect.mesh);
         this.impacts.splice(i, 1);
       } else {
         (effect.mesh.material as THREE.MeshBasicMaterial).opacity = life * 0.65;
@@ -176,6 +194,12 @@ export class FieldRenderer {
       this.renderer.clearDepth();
       this.renderer.render(this.rifleScene, this.rifleCamera);
     }
+  }
+
+  private retireImpact(mesh: THREE.Mesh): void {
+    this.scene.remove(mesh);
+    mesh.scale.setScalar(1);
+    this.impactPool.push(mesh);
   }
 
   private updateOperators(snapshot: Snapshot, player: Player, displayTime: number, dt: number): void {

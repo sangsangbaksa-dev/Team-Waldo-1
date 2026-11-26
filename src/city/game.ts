@@ -53,7 +53,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     <aside class="c-panel" id="c-panel" hidden></aside>
     <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>OPERATIONS / LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
     <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><ul class="c-legend" aria-label="지도 범례"><li><i class="me"></i>내 위치·방향</li><li><i class="hq"></i>본부</li><li><i class="biz"></i>사업체(세력 색)</li><li><i class="cry"></i>크리스탈</li><li><i class="box"></i>보급 상자</li><li><i class="zone"></i>보라색 = 자기장 밖</li><li><i class="next"></i>흰 점선 = 다음 안전지대</li></ul><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
-    <button class="c-fire" id="c-fire">사격</button><div class="c-touch" id="c-touch"><button data-act="interact">E</button><button data-act="vehicle">차량</button><button data-act="skill">스킬</button><button data-act="dash">대시</button><button data-act="weapon">무기</button><button data-act="medkit">회복</button><button data-act="charge">돌격</button><button data-act="order:follow">집결</button><button data-act="panel">지휘</button></div>
+    <button class="c-fire" id="c-fire">사격</button><div class="c-touch" id="c-touch"><button data-act="interact">E</button><button data-act="vehicle">차량</button><button data-act="skill">스킬</button><button data-act="dash">대시</button><button data-act="weapon">무기</button><button data-act="medkit">회복</button><button data-act="charge">돌격</button><button data-act="order:follow">집결</button><button data-act="order:hold">사수</button><button data-act="panel">지휘</button></div>
   </div>
   <div class="c-modal" id="c-modal"></div>`;
   document.body.append(root);
@@ -77,7 +77,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function addChat(name: string, text: string, mine: boolean): void { pushChat(chatLog, { name, text, t: chatNow(), mine }); if (!mine) audio.play('click'); }
   function openChat(): void {
     if (!chatLive() || chatOpen || !world || world.over) return;
-    chatOpen = true; keys.clear(); mouse.down = false; touchFire = false; unlock(); chatForm().hidden = false; chatBox().value = ''; chatBox().focus();
+    chatOpen = true; clearInput(); unlock(); chatForm().hidden = false; chatBox().value = ''; chatBox().focus();
   }
   function closeChat(send: boolean): void {
     if (!chatOpen) return; chatOpen = false; const text = cleanChat(chatBox().value); chatBox().value = ''; chatForm().hidden = true; chatBox().blur();
@@ -111,7 +111,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
+    keys.clear(); mouse.down = false; touchFire = false; acc = 0; killStreak = 0; lastKillAt = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true; demolishArmed = null; placeKey = '';
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
@@ -569,7 +569,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const ref = w.demolishRefundOf(0, s.kind), now = performance.now();
     if (demolishArmed && demolishArmed.id === id && now - demolishArmed.at < 4000) {
       const e = w.demolish(0, id); demolishArmed = null;
-      if (e) toast(e); else { audio.play('poof'); toast(`${STRUCTS[s.kind].name} 철거 · ◆${ref.crystal}${ref.cash ? ` $${ref.cash}` : ''} 환급`, false); if (!panel.hidden) renderPanel(); }
+      if (e) toast(e); else { audio.play('poof'); toast(`${STRUCTS[s.kind].name} 철거 · 크리스탈 ${ref.crystal}${ref.cash ? ` · $${ref.cash}` : ''} 환급`, false); if (!panel.hidden) renderPanel(); }
       return;
     }
     demolishArmed = { id, at: now };
@@ -590,7 +590,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const looks = new Map<number, { x: number; y: number }>();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
-      audio.unlock(); if (!world || paused || world.over || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
+      audio.unlock(); if (!world || paused || world.over || chatOpen || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
         if (ghost && !three) return; // 탑뷰: 누른 곳으로 고스트가 따라옵니다. 설치는 아래 '설치' 버튼
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -713,7 +713,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3; audio.setPaused(paused || f.pending > 0);
     const veh = b && b.inVeh ? w.vehicles.find(v => v.id === b.inVeh) : undefined, spd = veh ? Math.hypot(veh.vx, veh.vy) : 0;
     if (f.pending > 0 && !modal.firstChild) { clearInput(); showPerks(); }
-    if (!paused && f.pending === 0 && !w.over) {
+    if (!paused && f.pending === 0 && !w.over && !chatOpen) {
       const inp = w.input; let mx = (keys.has('d') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('a') || keys.has('ArrowLeft') ? 1 : 0), my = (keys.has('s') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('w') || keys.has('ArrowUp') ? 1 : 0);
       if (sticks.move.id >= 0) { mx = sticks.move.x; my = sticks.move.y; }
       inp.brake = keys.has(' '); if (!touch || keys.has(' ')) inp.dash = keys.has(' ');

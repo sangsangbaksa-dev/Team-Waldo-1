@@ -500,9 +500,27 @@ export class Renderer3D {
     this.floaters.length = liveFloaters;
   }
 
+  /** 사라진 구조물·차량·전리품의 고유 재질만 놓아 줍니다. 모델이 공유하는 지오메트리와 색 캐시는 유지합니다. */
+  private releaseGroup(root: THREE.Object3D): void {
+    const cached = new Set<THREE.Material>(this.mats.values());
+    root.traverse(o => {
+      const mesh = o as THREE.Mesh;
+      const list = mesh.material == null ? [] : Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      let model = false;
+      for (const mat of list) {
+        if (mat.name || cached.has(mat)) { if (mat.name) model = true; continue; }
+        const sprite = mat as THREE.SpriteMaterial;
+        if (sprite.isSpriteMaterial && sprite.map && sprite.map !== this.glow) sprite.map.dispose();
+        mat.dispose();
+      }
+      if (!model && mesh.isMesh && mesh.geometry && mesh.geometry !== this.box) mesh.geometry.dispose();
+    });
+  }
   private removeStaleGroups(groups: Map<number, THREE.Group>): void {
     for (const id of groups.keys()) if (!this.seenIds.has(id)) {
-      this.scene.remove(groups.get(id)!);
+      const group = groups.get(id)!;
+      this.scene.remove(group);
+      this.releaseGroup(group);
       groups.delete(id);
     }
   }

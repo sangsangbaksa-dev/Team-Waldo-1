@@ -16,6 +16,7 @@ export interface Session {
   readonly error?: string;
   readonly snapshot: Snapshot | undefined;
   update(input: Input, dt: number): void;
+  hold(input: Input): void;
   restart(): void;
   close(): void;
 }
@@ -50,6 +51,8 @@ export class SoloSession implements Session {
       this.accumulator -= TICK;
     }
   }
+
+  hold(input: Input): void { this.match.freezeInput(this.playerId, input); }
 
   restart(): void {
     this.accumulator = 0;

@@ -31,3 +31,26 @@ it('fires once per J press and combines K with mouse scope', () => {
   controls.disable();
   expect(controls.sample(0).aim).toBe(false);
 });
+
+it('keeps a held move key across pause and clears it when released', () => {
+  const document = new EventTarget();
+  const window = new EventTarget();
+  const canvas = Object.assign(new EventTarget(), { requestPointerLock: () => Promise.resolve() });
+  vi.stubGlobal('document', document);
+  vi.stubGlobal('window', window);
+  const controls = new Controls(canvas as unknown as HTMLCanvasElement, vi.fn());
+  const key = (type: string, code: string) =>
+    document.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { code, repeat: false }));
+  controls.enable();
+  key('keydown', 'KeyW');
+  expect(controls.sample(0).forward).toBe(1);
+  controls.disable();
+  expect(controls.sample(0).forward).toBe(0);
+  key('keyup', 'KeyW');
+  controls.enable();
+  expect(controls.sample(0).forward).toBe(0);
+  key('keydown', 'KeyW');
+  controls.disable();
+  controls.enable();
+  expect(controls.sample(0).forward).toBe(1);
+});

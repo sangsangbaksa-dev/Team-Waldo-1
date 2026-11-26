@@ -110,6 +110,19 @@ describe('ZERO ZONE 전리품', () => {
     run(m, 0.2); expect(p.hp).toBe(30); expect(p.bandages).toBe(HEAL.bandage.pick); expect(p.armorLv).toBe(1); expect(p.armor).toBe(ARMOR_PTS[1]); expect(p.guns[1]).toBeNull();
     p.input.interact = true; run(m, 0.2); expect(p.guns[1]?.id).toBe('sniper'); expect(p.cur).toBe(1);
   });
+  it('같은 칸에 쌓인 획득 완료 전리품은 새 아이템 줍기를 막지 않는다', () => {
+    const m = field(); const p = m.players[0];
+    for (const player of m.players) { player.x = 80; player.z = 80; player.input = blankInput(); }
+    p.bandages = 0;
+    for (let i = 0; i < 40; i++) m.loot.push({ id: 1000 + i, kind: 'bandage', weapon: null, x: 0, z: 0, taken: false });
+    m.step(1 / 60);
+    for (const item of m.loot) if (item.id >= 1000) item.taken = true;
+    m.loot.push({ id: 2000, kind: 'bandage', weapon: null, x: 0.2, z: 0, taken: false });
+    p.x = 0; p.z = 0; p.bandages = 0;
+    m.step(1 / 60);
+    expect(m.loot.find(item => item.id === 2000)!.taken).toBe(true);
+    expect(p.bandages).toBe(HEAL.bandage.pick);
+  });
   it('가득 찼을 땐 구급상자를 줍지 않고 남겨 둔다', () => {
     const m = field(); const p = m.players[0]; p.kits = HEAL.kit.max; m.loot.push({ id: 903, kind: 'medkit', weapon: null, x: 0.3, z: 0, taken: false }); p.x = 0; p.z = 0; run(m, 0.2);
     expect(m.loot.find(l => l.id === 903)!.taken).toBe(false);

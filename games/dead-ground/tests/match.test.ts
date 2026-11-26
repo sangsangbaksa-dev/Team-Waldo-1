@@ -79,6 +79,18 @@ describe('match rules', () => {
     expect(a.reserve).toBe(29);
   });
 
+  it('drops a pending shot and movement when input is frozen', () => {
+    const { match, a } = arena();
+    const input = { ...neutralInput(), forward: 1, fire: 1 };
+    match.setInput(a.id, input);
+    match.freezeInput(a.id, input);
+    const z = a.position.z;
+    match.step();
+    expect(a.ammo).toBe(RIFLE.magazine);
+    expect(a.position.z).toBeCloseTo(z);
+    expect(match.bullets.size).toBe(0);
+  });
+
   it('requires release to recover full use of a depleted breath meter', () => {
     const { match, a, tick } = arena();
     match.setInput(a.id, { ...neutralInput(), aim: true, breath: true });

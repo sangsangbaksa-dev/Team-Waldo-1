@@ -34,8 +34,8 @@ const base = import.meta.env.BASE_URL;
 const ENTRIES: Entry[] = [
   {
     id: 'project-harbor', name: 'Project Harbor', genre: '3D 오픈월드 액션',
-    summary: '항구 도시 포트 캘러웨이를 차로 누비세요. 시장 골목부터 등대까지, 배달과 시간 제한 주행 등 여섯 가지 의뢰에 도전할 수 있습니다.',
-    facts: ['1인 플레이', 'Windows · Linux'],
+    summary: '포트 캘러웨이의 숲, 사막, 도시, 부촌, 빈민가, 군사기지를 자유롭게 걷습니다. 무기를 주워 사격하고 소매치기와 강도로 돈을 법니다.',
+    facts: ['브라우저에서 바로 플레이', '미션 없는 오픈월드', 'Windows · Linux'],
     image: `${base}assets/home/project-harbor-lighthouse.webp`, imageAlt: '포트 캘러웨이 부두의 청록색 등대와 방파제',
     badge: 'New', desktop: true,
   },

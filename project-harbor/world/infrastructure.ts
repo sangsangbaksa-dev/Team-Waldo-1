@@ -8,6 +8,7 @@ export class ThreeChunks implements ChunkView {
   private readonly cone=new T.ConeGeometry(.5,1,7);
   private readonly cylinder=new T.CylinderGeometry(.5,.5,1,7);
   private readonly material=new T.MeshStandardMaterial({roughness:.91});
+  private readonly grounds=new Map<number,T.MeshStandardMaterial>();
   constructor(private readonly scene:T.Scene){}
   private part(p:WorldProp,lod:0|1):Part[]{
     const y=terrainHeight(p.x,p.z);
@@ -23,7 +24,7 @@ export class ThreeChunks implements ChunkView {
       if(p.kind==='tower'){
         parts.push(b(p.h+.35,p.w*.85,.7,p.d*.85,0x444e54));
         // Distinct horizontal window bands on the street-facing facades.
-        for(let floor=3;floor<p.h-1;floor+=4){
+        for(let floor=4;floor<p.h-2;floor+=8){
           parts.push(make(this.box,p.x,p.z+p.d/2+.015,floor,p.w*.83,.9,.035,0x344955));
           parts.push(make(this.box,p.x+p.w/2+.015,p.z,floor,.035,.9,p.d*.83,0x344955));
         }
@@ -45,7 +46,10 @@ export class ThreeChunks implements ChunkView {
       positions.setY(i,terrainHeight(x+CHUNK/2+positions.getX(i),z+CHUNK/2+positions.getZ(i)));
     }
     geometry.computeVertexNormals();
-    const ground=new T.Mesh(geometry,new T.MeshStandardMaterial({color:districtAt(x+64,z+64).color,roughness:1}));
+    const tint=districtAt(x+64,z+64).color;
+    let groundMaterial=this.grounds.get(tint);
+    if(!groundMaterial){groundMaterial=new T.MeshStandardMaterial({color:tint,roughness:1});this.grounds.set(tint,groundMaterial);}
+    const ground=new T.Mesh(geometry,groundMaterial);
     ground.position.set(x+64,0,z+64);group.add(ground);
     const parts:Part[]=[];
     const add=(px:number,py:number,pz:number,w:number,h:number,d:number,color:number)=>parts.push({geometry:this.box,x:px,y:py,z:pz,sx:w,sy:h,sz:d,color});
@@ -68,7 +72,8 @@ export class ThreeChunks implements ChunkView {
     for(const [shape,list] of buckets){
       const mesh=new T.InstancedMesh(shape,this.material,list.length);
       list.forEach((p,i)=>{dummy.position.set(p.x,p.y,p.z);dummy.scale.set(p.sx,p.sy,p.sz);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,color.setHex(p.color));});
-      mesh.computeBoundingSphere();group.add(mesh);
+      if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+      mesh.matrixAutoUpdate=false;mesh.computeBoundingSphere();group.add(mesh);
     }
     this.scene.add(group);this.chunks.set(key,group);
   }
@@ -77,7 +82,7 @@ export class ThreeChunks implements ChunkView {
     this.scene.remove(group);
     for(const child of group.children){
       if(child instanceof T.InstancedMesh)child.dispose();
-      else if(child instanceof T.Mesh){child.geometry.dispose();if(child.material instanceof T.Material)child.material.dispose();}
+      else if(child instanceof T.Mesh)child.geometry.dispose();
     }
     this.chunks.delete(key);
   }

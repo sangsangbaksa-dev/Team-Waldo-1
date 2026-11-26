@@ -1,4 +1,4 @@
-import { TYPES, GRID, LIMIT, LANE, ROAD, clamp, forward, makeVehicle, stepVehicle, nearRoad, trafficInput, hitWall, collide, longitudinal } from './domain.js';
+import { TYPES, GRID, LIMIT, LANE, clamp, forward, makeVehicle, stepVehicle, nearRoad, trafficInput, hitWall, collide, longitudinal } from './domain.js';
 export const DISTRICTS=[
   {name:'숲',x:-180,z:-135,color:0x526d45},
   {name:'도시',x:0,z:-135,color:0x68736c},
@@ -49,7 +49,23 @@ export function createWorld() {
   add('bike',9,8,0);
   add('truck',-9,-13,Math.PI);
   add('jeep',9,-15,0);
-  return {vehicles,obstacles,decor,people,player:{x:0,z:11,yaw:0,vehicle:null},time:0,notice:'차량 가까이에서 E를 누르세요.',noticeUntil:6};
+  const CELL=32, cellOf=n=>Math.floor((n+LIMIT)/CELL), obstacleGrid=new Map();
+  for(const b of obstacles){
+    const x0=cellOf(b.x-b.w/2), x1=cellOf(b.x+b.w/2), z0=cellOf(b.z-b.d/2), z1=cellOf(b.z+b.d/2);
+    for(let i=x0;i<=x1;i++)for(let j=z0;j<=z1;j++){
+      const key=i+':'+j, list=obstacleGrid.get(key);
+      if(list)list.push(b);else obstacleGrid.set(key,[b]);
+    }
+  }
+  function obstaclesNear(x,z){
+    const i=cellOf(x), j=cellOf(z), found=[], seen=new Set();
+    for(let a=i-1;a<=i+1;a++)for(let b=j-1;b<=j+1;b++){
+      const list=obstacleGrid.get(a+':'+b); if(!list)continue;
+      for(const obstacle of list)if(!seen.has(obstacle)){seen.add(obstacle);found.push(obstacle);}
+    }
+    return found;
+  }
+  return {vehicles,obstacles,decor,people,obstaclesNear,player:{x:0,z:11,yaw:0,vehicle:null},time:0,notice:'차량 가까이에서 E를 누르세요.',noticeUntil:6};
 }
 export function nearestVehicle(world,range=5) {
   const p=world.player;
@@ -104,7 +120,7 @@ export function update(world,input,dt) {
   for(const v of world.vehicles){
     const control=v===p.vehicle?input:v.traffic&&v.driver?trafficInput(v,world.vehicles,world.time):{throttle:0,steer:0,handbrake:true};
     stepVehicle(v,control,dt,!nearRoad(v.x,v.z));
-    for(const b of world.obstacles){if(Math.abs(v.x-b.x)<b.w/2+5&&Math.abs(v.z-b.z)<b.d/2+5)hitWall(v,b);}
+    for(const b of world.obstaclesNear(v.x,v.z)){if(Math.abs(v.x-b.x)<b.w/2+5&&Math.abs(v.z-b.z)<b.d/2+5)hitWall(v,b);}
     for(const axis of ['x','z']){
       if(Math.abs(v[axis])>LIMIT-1){
         if(v.traffic&&v.traffic.axis===axis){

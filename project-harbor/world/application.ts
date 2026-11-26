@@ -14,12 +14,12 @@ export class World {
     if(!props){props=propsFor(cx,cz);this.cache.set(key,props);}
     return props;
   }
-  private free(x:number,z:number){
+  open(x:number,z:number,radius=.65){
     if(x<2||z<2||x>WIDTH-2||z>DEPTH-2)return false;
     const cx=Math.floor(x/CHUNK),cz=Math.floor(z/CHUNK);
     for(let i=Math.max(0,cx-1);i<=Math.min(WIDTH/CHUNK-1,cx+1);i++)
       for(let j=Math.max(0,cz-1);j<=Math.min(DEPTH/CHUNK-1,cz+1);j++)
-        if(blocked(x,z,this.props(i,j)))return false;
+        if(blocked(x,z,this.props(i,j),radius))return false;
     return true;
   }
   move(forward:number,side:number,seconds:number,sprint:boolean){
@@ -28,8 +28,8 @@ export class World {
     const speed=(sprint?27:11)*dt/length;
     const dx=(Math.sin(this.yaw)*forward+Math.cos(this.yaw)*side)*speed;
     const dz=(-Math.cos(this.yaw)*forward+Math.sin(this.yaw)*side)*speed;
-    if(this.free(this.x+dx,this.z))this.x+=dx;
-    if(this.free(this.x,this.z+dz))this.z+=dz;
+    if(this.open(this.x+dx,this.z))this.x+=dx;
+    if(this.open(this.x,this.z+dz))this.z+=dz;
     this.hours=(this.hours+dt*24/720)%24;
   }
   get y(){return terrainHeight(this.x,this.z);}

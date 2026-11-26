@@ -107,6 +107,30 @@
 #harbor-world-status, .harbor-world-controls { background: rgba(14,20,22,.86); padding: 8px 10px; font-size: 12px; border-radius: 4px; }
 #harbor-world-mini { width: 140px; height: 140px; border: 2px solid #d0d4c9; border-radius: 50%; }
 .harbor-world-hud button, .harbor-world-overlay button { background: #202a2b; color: #f2f3ee; border: 1px solid #71837b; border-radius: 4px; padding: 7px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+.harbor-vitals { display: grid; gap: 4px; min-width: 148px; }
+#harbor-world-health { height: 9px; border-radius: 99px; background: #3a2424; overflow: hidden; }
+#harbor-world-health > span { display: block; height: 100%; width: 100%; background: #d7d2c6; }
+#harbor-world-health.is-low > span { background: #d4554a; }
+#harbor-world-money { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+#harbor-world-stars { margin: 0; color: #f2cc89; letter-spacing: .12em; }
+#harbor-world-weapon { margin: 0; color: #d7e2dc; }
+#harbor-world-crosshair {
+  position: absolute; left: 50%; top: 46%; width: 16px; height: 16px; margin: -8px 0 0 -8px;
+  border: 2px solid rgba(255,255,255,.9); border-radius: 50%; pointer-events: none;
+}
+#harbor-world-crosshair::before, #harbor-world-crosshair::after {
+  content: ""; position: absolute; background: #fff;
+}
+#harbor-world-crosshair::before { left: 6px; top: -5px; width: 2px; height: 24px; }
+#harbor-world-crosshair::after { top: 6px; left: -5px; width: 24px; height: 2px; }
+#harbor-world-prompt, #harbor-world-notice {
+  position: absolute; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100% - 28px));
+  background: rgba(14,20,22,.86); color: #fff; border-radius: 4px; padding: 8px 12px; text-align: center;
+}
+#harbor-world-prompt { bottom: 58px; }
+#harbor-world-notice { bottom: 96px; color: #f2cc89; }
+#harbor-world-prompt:empty, #harbor-world-notice:empty { display: none; }
+.harbor-touch { display: none; }
 .harbor-world-controls { position: absolute; right: 12px; bottom: 12px; color: #fff; pointer-events: none; }
 .harbor-world-overlay { position: absolute; inset: 0; background: #15201e; color: #fff; padding: 16px; display: flex; flex-direction: column; align-items: center; }
 .harbor-world-overlay header { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -114,3 +138,17 @@
 
 .harbor-world-start { display:block; width:100%; margin-top:8px; }
 .harbor-world-stage { position:fixed; inset:0; height:100%; min-height:0; margin:0; border:0; border-radius:0; z-index:999; }
+.harbor-world-hud, .harbor-touch, #harbor-world-prompt, #harbor-world-notice, #harbor-world-crosshair { z-index: 2; }
+@media (pointer: coarse), (max-width: 720px) {
+  .harbor-world-controls { display: none; }
+  .harbor-touch {
+    display: flex; justify-content: space-between; gap: 8px; position: absolute; left: 10px; right: 10px; bottom: 10px;
+  }
+  .harbor-touch-move, .harbor-touch-act { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; }
+  .harbor-touch button {
+    min-width: 52px; min-height: 48px; background: #151d21e8; color: #fff; border: 1px solid #ffffff44; border-radius: 6px;
+  }
+  #harbor-world-prompt { bottom: 118px; }
+  #harbor-world-notice { bottom: 156px; }
+  #harbor-world-mini { width: 104px; height: 104px; }
+}

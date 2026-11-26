@@ -23,17 +23,32 @@ export class StreetActors {
   private readonly gun = new T.BoxGeometry(0.28, 0.16, 0.7);
   private readonly kit = new T.BoxGeometry(0.35, 0.22, 0.35);
 
-  constructor(private readonly scene: T.Scene) {}
+  constructor(private readonly scene: T.Scene) {
+    this.gfx.mount(scene);
+  }
+
+  view(x: number, z: number): void {
+    this.gfx.setCamera(x, z);
+  }
 
   sync(peds: readonly Ped[], items: readonly GroundItem[], shots: readonly ShotLine[]) {
+    const near = this.gfx.chooseNear(peds);
+    this.gfx.beginFrame();
     const live = new Set<string>();
     for (const ped of peds) {
       live.add(ped.id);
       let rig = this.rigs.get(ped.id);
+      const wantNear = near.has(ped.id);
+      if (rig?.shared && Boolean(rig.near) !== wantNear) {
+        rig.root.removeFromParent();
+        this.gfx.drop(rig);
+        this.rigs.delete(ped.id);
+        rig = undefined;
+      }
       if (!rig) {
         const locale = districtAt(ped.x, ped.z).id as Locale;
         const role = ped.kind === 'police' ? 'officer' : 'local';
-        rig = this.gfx.create(wardrobeFor(locale, saltOf(ped.id), role));
+        rig = this.gfx.create(wardrobeFor(locale, saltOf(ped.id), role), wantNear);
         this.scene.add(rig.root);
         this.rigs.set(ped.id, rig);
         this.phase.set(ped.id, (saltOf(ped.id) % 100) / 100);
@@ -51,8 +66,9 @@ export class StreetActors {
       rig.root.visible = !ped.hidden;
       rig.root.position.set(ped.x, terrainHeight(ped.x, ped.z) + (down ? 0.35 : 0), ped.z);
       rig.root.rotation.set(down ? Math.PI / 2 : 0, down ? 0 : modelYaw(ped.yaw, 'harbor'), !down && ped.mood === 'panic' ? 0.28 : 0);
-      this.gfx.apply(rig, poseAt(clip, down ? 0 : next, ped.kind === 'police' ? 0.7 : 0));
+      this.gfx.apply(rig, poseAt(clip, down ? 0 : next, ped.kind === 'police' ? 0.7 : 0), { phase: down ? 0 : next, clip });
     }
+    this.gfx.endFrame();
     for (const [id, rig] of this.rigs) {
       if (live.has(id)) continue;
       rig.root.removeFromParent();

@@ -76,7 +76,7 @@ export function interact(world) {
   if(v){
     if(Math.abs(longitudinal(v))>3){notice(world,'속도를 줄인 뒤 내리세요.');return;}
     const point=exitPoint(world,v);if(!point){notice(world,'내릴 공간이 없습니다.');return;}
-    Object.assign(p,point,{vehicle:null});notice(world,'차량에서 내렸습니다.');return;
+    v.doorAt=world.time;Object.assign(p,point,{vehicle:null});notice(world,'차량에서 내렸습니다.');return;
   }
   const target=nearestVehicle(world,3.5);
   if(!target){notice(world,'가까운 차량이 없습니다.');return;}
@@ -87,7 +87,7 @@ export function interact(world) {
     if(world.people.length>40)world.people.shift();
     target.driver=false;target.traffic=null;notice(world,'운전자를 끌어내리고 차량을 탈취했습니다.');
   } else notice(world,target.spec.name+' 탑승');
-  p.vehicle=target;p.x=target.x;p.z=target.z;
+  target.doorAt=world.time;p.vehicle=target;p.x=target.x;p.z=target.z;
 }
 export function update(world,input,dt) {
   world.time+=dt;

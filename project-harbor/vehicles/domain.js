@@ -5,7 +5,9 @@ export const TYPES = Object.freeze({
   sport: {name:'스포츠카', max:66, accel:12.8, brake:19, steer:0.7, grip:8.5, mass:1180, length:4.4, width:1.95, color:0xd34b3f},
   truck: {name:'트럭', max:30, accel:4.1, brake:8.5, steer:0.44, grip:5, mass:4200, length:7.2, width:2.5, color:0xb4a18b},
   bike: {name:'오토바이', max:54, accel:11.3, brake:15, steer:0.88, grip:9, mass:240, length:2.3, width:0.78, color:0xd3a74b},
-  jeep: {name:'군용 지프', max:38, accel:6.6, brake:12, steer:0.58, grip:6.5, mass:2300, length:4.7, width:2.15, color:0x66714e}
+  jeep: {name:'군용 지프', max:38, accel:6.6, brake:12, steer:0.58, grip:6.5, mass:2300, length:4.7, width:2.15, color:0x66714e},
+  police: {name:'순찰차', max:48, accel:9.2, brake:16, steer:0.66, grip:7.4, mass:1680, length:4.8, width:1.9, color:0x1c3d66},
+  armor: {name:'장갑차', max:34, accel:5.4, brake:10, steer:0.48, grip:6.2, mass:5400, length:6.2, width:2.55, color:0x5c6844}
 });
 export const forward = a => ({x:Math.sin(a), z:Math.cos(a)});
 export const angleDelta = (a,b) => Math.atan2(Math.sin(a-b),Math.cos(a-b));

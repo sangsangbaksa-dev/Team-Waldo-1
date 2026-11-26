@@ -189,14 +189,15 @@ describe('Harbor free-roam world',()=>{
     if(roam.vehicle){roam.vehicle.vx=0;roam.vehicle.vz=0;}
     roam.tick({...IDLE_INPUT,use:true},0.05);
     expect(roam.vehicle).toBeNull();
-    const driven=roam.rides.find(ride=>ride.driver);
+    const driven=roam.cars.find(car=>car.occupied&&car.kind==='civil');
     expect(driven).toBeTruthy();
     if(!driven)return;
+    driven.speed=0;driven.parked=true;driven.panic=0;driven.control='ai';
     roam.world.x=driven.x+1.2;roam.world.z=driven.z;
     const before=roam.vitals.wanted;
-    roam.tick({...IDLE_INPUT,use:true},0.05);
-    expect(roam.vehicle).toBe(driven);
-    expect(driven.driver).toBe(false);
+    for(let i=0;i<50&&roam.vehicle?.id!==driven.id;i++)roam.tick({...IDLE_INPUT,use:i===0},0.05);
+    expect(roam.vehicle?.id).toBe(driven.id);
+    expect(roam.vehicle?.driver).toBe(false);
     expect(roam.vitals.wanted).toBeGreaterThan(before);
   });
   it('keeps traffic in its lane',()=>{

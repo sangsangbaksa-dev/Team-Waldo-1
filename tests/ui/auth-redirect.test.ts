@@ -17,20 +17,21 @@ async function loadMenu(hash: string): Promise<void> {
 beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); document.body.innerHTML = '<div id="game"></div>'; localStorage.clear(); });
 
 describe('가입 확인 메일 링크로 돌아왔을 때', () => {
-  it('링크가 만료됐으면 안내와 함께 로비를 열고 주소의 오류 해시를 지운다', async () => {
+  it('만료된 인증 링크는 로비를 열지 않고 주소에서 지운다', async () => {
     await loadMenu('#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired');
-    await vi.waitFor(() => expect(lobby.openLobby).toHaveBeenCalledTimes(1));
-    expect(lobby.openLobby.mock.calls[0]![0].notice).toMatch(/만료|다시 받기/);
+    await new Promise(r => setTimeout(r, 20));
+    expect(lobby.openLobby).not.toHaveBeenCalled();
     expect(location.hash).toBe('');
     expect(location.pathname).toBe('/Team-Waldo-1/');
   });
 
-  it('인증에 성공하면 로그인된 상태로 안내한다', async () => {
+  it('남은 인증 토큰은 로그인으로 처리하지 않고 주소에서 지운다', async () => {
     account.currentAccount.mockResolvedValue({ id: 'u1', email: 'a@x.dev', nickname: 'Alpha' });
     await loadMenu('#access_token=abc&refresh_token=def&type=signup');
-    await vi.waitFor(() => expect(lobby.openLobby).toHaveBeenCalledTimes(1));
-    expect(account.setAccount).toHaveBeenCalledWith(expect.objectContaining({ nickname: 'Alpha' }));
-    expect(lobby.openLobby.mock.calls[0]![0].notice).toMatch(/인증이 끝났/);
+    await new Promise(r => setTimeout(r, 20));
+    expect(account.setAccount).not.toHaveBeenCalled();
+    expect(lobby.openLobby).not.toHaveBeenCalled();
+    expect(location.hash).toBe('');
   });
 
   it('해시가 없으면 아무것도 열지 않는다', async () => {

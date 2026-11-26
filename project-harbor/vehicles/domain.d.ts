@@ -25,6 +25,7 @@ export interface VehicleBody {
   steer: number;
   impact: number;
   traffic: unknown;
+  door?: number;
 }
 
 export interface VehicleInput {
@@ -32,6 +33,8 @@ export interface VehicleInput {
   steer: number;
   handbrake: boolean;
 }
+
+export const LIMIT: number;
 
 export function clamp(n: number, lo: number, hi: number): number;
 export function forward(yaw: number): { x: number; z: number };

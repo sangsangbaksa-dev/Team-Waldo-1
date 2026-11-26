@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend, MatchRow, RoomInfo, RoomRow } from '../../src/net/types';
 
+vi.mock('../../src/net/config', () => ({ CHAT_ENABLED: true, PVP_ENABLED: true }));
+
 const row = (o: Partial<MatchRow>): MatchRow => ({ id: 'm1', game: 'city', code: null, host_id: 'u1', guest_id: null, status: 'waiting', config: {}, winner_id: null, host_delta: null, guest_delta: null, ...o });
 const be = vi.hoisted(() => ({ backend: {} as Record<string, ReturnType<typeof vi.fn>> }));
 vi.mock('../../src/net/backend', () => ({

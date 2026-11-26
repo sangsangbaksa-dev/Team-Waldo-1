@@ -74,7 +74,19 @@ app.whenReady().then(async () => {
     event.preventDefault();
     shell.openExternal(url);
   });
-  await win.loadURL(`${local}project-harbor/desktop/shell.html`);
+  const shot = process.env.HARBOR_SHOT || '';
+  const query = shot ? `?shot=${encodeURIComponent(shot)}` : '';
+  if (shot) win.webContents.setBackgroundThrottling(false);
+  win.webContents.on('console-message', (_event, _level, message) => {
+    if (shot) console.log(message);
+  });
+  await win.loadURL(`${local}project-harbor/desktop/shell.html${query}`);
+  if (shot && process.env.HARBOR_SHOT_OUT) {
+    await new Promise(resolve => setTimeout(resolve, Number(process.env.HARBOR_SHOT_WAIT || 8000)));
+    const image = await win.webContents.capturePage();
+    fs.writeFileSync(process.env.HARBOR_SHOT_OUT, image.toPNG());
+    app.quit();
+  }
 });
 
 app.on('window-all-closed', () => app.quit());

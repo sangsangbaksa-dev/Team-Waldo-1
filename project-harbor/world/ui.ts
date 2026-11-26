@@ -2,6 +2,7 @@ import * as T from 'three';
 import { DISTRICTS, WIDTH, DEPTH, roadHalf, districtAt } from './domain';
 import { FreeRoam, type RoamInput } from './session';
 import { StreetActors } from './actors';
+import { CityGarage } from './garage';
 import { ThreeChunks } from './infrastructure';
 import { WEAPONS, starCount, starLabel, type GroundItem, type Ped } from './street';
 import { CharacterGfx } from '../characters/infrastructure';
@@ -34,6 +35,8 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
   ctx.restore();
   ctx.fillStyle = '#d6c27a';
   for (const item of items) if (item.kind === 'weapon') ctx.fillRect(ox + item.x * scale - 2, oz + item.z * scale - 2, 4, 4);
+  ctx.fillStyle = '#7eb6ff';
+  for (const ride of roam.rides) ctx.fillRect(ox + ride.x * scale - 2, oz + ride.z * scale - 1.5, 4, 3);
   for (const ped of peds) {
     if (ped.health <= 0) continue;
     ctx.fillStyle = ped.kind === 'police' ? '#ff5d4e' : '#101816';
@@ -113,6 +116,8 @@ function start(): () => void {
   scene.fog = new T.FogExp2(0x9daebc, 0.004);
   const roam = new FreeRoam(new ThreeChunks(scene));
   const actors = new StreetActors(scene);
+  const garage = new CityGarage(scene);
+  let orbit = 0;
   const people = new CharacterGfx();
   const playerRig = people.create(playerLook());
   const held = new T.Mesh(new T.BoxGeometry(0.12, 0.12, 0.55), new T.MeshStandardMaterial({ color: 0xd6c27a }));
@@ -149,12 +154,19 @@ function start(): () => void {
   required('harbor-world-map-button').addEventListener('click', toggleMap, { signal });
   required('harbor-world-close-map').addEventListener('click', toggleMap, { signal });
   required('harbor-world-exit').addEventListener('click', () => host.dispatchEvent(new Event('harbor-world-exit')), { signal });
-  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyJ', 'ControlLeft', 'ControlRight'];
+  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
+  const focusGame = () => {
+    if (host.hidden) return;
+    host.tabIndex = -1;
+    renderer.domElement.focus({ preventScroll: true });
+  };
+  host.addEventListener('pointerenter', focusGame, { signal });
   window.addEventListener('keydown', event => {
     if (host.hidden) return;
-    if (!codes.includes(event.code)) return;
+    const mapKey = event.code === 'KeyM' || event.key === 'm' || event.key === 'M' || event.key === 'ㅡ';
+    if (!mapKey && !codes.includes(event.code)) return;
     event.preventDefault();
-    if (event.code === 'KeyM' && !event.repeat) { toggleMap(); return; }
+    if (mapKey && !event.repeat) { toggleMap(); return; }
     if (event.code === 'Escape') {
       if (mapOpen) toggleMap();
       else host.dispatchEvent(new Event('harbor-world-exit'));
@@ -168,8 +180,8 @@ function start(): () => void {
       if (event.code === 'KeyG') pulses.add('rob');
       if (event.code === 'KeyR') pulses.add('reload');
     }
-  }, { signal });
-  window.addEventListener('keyup', event => keys.delete(event.code), { signal });
+  }, { signal, capture: true });
+  window.addEventListener('keyup', event => keys.delete(event.code), { signal, capture: true });
   window.addEventListener('blur', () => { keys.clear(); pulses.clear(); actions.clear(); drag = false; pressed = false; }, { signal });
   renderer.domElement.addEventListener('pointerdown', event => {
     renderer.domElement.focus();
@@ -182,8 +194,10 @@ function start(): () => void {
   });
   renderer.domElement.addEventListener('pointermove', event => {
     if (!drag) return;
-    roam.yaw += (event.clientX - lastX) * 0.007;
+    const delta = (event.clientX - lastX) * 0.007;
     lastX = event.clientX;
+    if (roam.vehicle) orbit += delta;
+    else roam.yaw += delta;
   });
   const release = (event: PointerEvent) => {
     if (pressed && event.button === 0 && Math.hypot(event.clientX - pressX, event.clientY - pressY) < 8) pulses.add('fireOnce');
@@ -229,16 +243,22 @@ function start(): () => void {
   camera.position.set(roam.x, roam.world.y + 6, roam.z + 10);
   try { audio = new AudioContext(); } catch (error) { void error; }
   function input(): RoamInput {
+    const driving = roam.vehicle !== null;
+    const forward = has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown');
+    const side = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
     return {
-      forward: has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown'),
-      side: (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0),
+      forward: driving ? 0 : forward,
+      side: driving ? 0 : side,
       sprint: keys.has('ShiftLeft') || keys.has('ShiftRight') || actions.has('run'),
       look: 0,
-      use: pulses.has('use'),
+      use: pulses.has('use') || pulses.has('board'),
       pickpocket: pulses.has('pickpocket'),
       rob: pulses.has('rob'),
-      fire: pulses.has('fireOnce') || actions.has('fire') || keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyJ'),
+      fire: driving ? false : pulses.has('fireOnce') || actions.has('fire') || keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyJ'),
       reload: pulses.has('reload'),
+      throttle: driving ? forward : 0,
+      steer: driving ? (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) : 0,
+      handbrake: keys.has('Space') || actions.has('brake'),
     };
   }
   function paintHud(now: number) {
@@ -252,7 +272,10 @@ function start(): () => void {
     const label = starLabel(vitals.wanted);
     if (stars.textContent !== label) stars.textContent = label;
     stars.setAttribute('aria-label', '수배 ' + starCount(vitals.wanted) + '단계');
-    const armed = vitals.reload > 0 && vitals.weapon ? WEAPONS[vitals.weapon].name + ' 재장전'
+    const drivingNow = roam.vehicle;
+    const armed = drivingNow
+      ? drivingNow.spec.name + ' · 상태 ' + Math.round(drivingNow.health) + '%'
+      : vitals.reload > 0 && vitals.weapon ? WEAPONS[vitals.weapon].name + ' 재장전'
       : vitals.weapon ? WEAPONS[vitals.weapon].name + '  ' + vitals.magazine + ' / ' + vitals.reserve : '맨손';
     if (weapon.textContent !== armed) weapon.textContent = armed;
     const hint = roam.hint();
@@ -283,18 +306,24 @@ function start(): () => void {
       }
     } else roam.world.stream();
     actors.sync(roam.peds, roam.items, roam.shots);
-    held.visible = roam.vitals.weapon !== null;
-    const moving = has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown') !== 0 || keys.has('KeyA') || keys.has('KeyD');
+    garage.sync(roam.rides);
+    held.visible = roam.vitals.weapon !== null && !roam.vehicle;
+    playerRig.root.visible = !roam.vehicle;
+    crosshair.hidden = mapOpen || roam.vehicle !== null;
+    const moving = !roam.vehicle && (has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown') !== 0 || keys.has('KeyA') || keys.has('KeyD'));
     const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight') || actions.has('run');
     const clip: Clip = moving ? (sprint ? 'run' : 'walk') : 'idle';
     gait = moving ? (gait + dt / (sprint ? 0.44 : 0.78)) % 1 : 0;
     playerRig.root.position.set(roam.x, roam.world.y, roam.z);
     playerRig.root.rotation.y = modelYaw(roam.yaw, 'harbor');
-    people.apply(playerRig, poseAt(clip, gait));
-    const aimX = Math.sin(roam.yaw);
-    const aimZ = -Math.cos(roam.yaw);
+    if (!roam.vehicle) people.apply(playerRig, poseAt(clip, gait));
+    const facing = roam.yaw + (roam.vehicle ? orbit : 0);
+    const aimX = Math.sin(facing);
+    const aimZ = -Math.cos(facing);
+    const distance = roam.vehicle ? 12 : 7.5;
+    const height = roam.vehicle ? 5.4 : 4.2;
     target.set(roam.x + aimX * 14, roam.world.y + 1.25, roam.z + aimZ * 14);
-    desired.set(roam.x - aimX * 7.5, roam.world.y + 4.2, roam.z - aimZ * 7.5);
+    desired.set(roam.x - aimX * distance, roam.world.y + height, roam.z - aimZ * distance);
     camera.position.lerp(desired, 1 - Math.exp(-dt * 13));
     camera.lookAt(target);
     const angle = (roam.world.hours - 6) * Math.PI / 12;
@@ -309,7 +338,8 @@ function start(): () => void {
     renderer.render(scene, camera);
     raf = requestAnimationFrame(frame);
   }
-  renderer.domElement.focus();
+  focusGame();
+  requestAnimationFrame(focusGame);
   paintHud(performance.now());
   raf = requestAnimationFrame(frame);
   return () => {
@@ -318,6 +348,7 @@ function start(): () => void {
     observer.disconnect();
     actors.dispose();
     people.dispose();
+    garage.dispose();
     const geometries = new Set<T.BufferGeometry>();
     const materials = new Set<T.Material>();
     scene.traverse(obj => {
@@ -346,9 +377,19 @@ function closeWorld() {
   stop = null;
   if (stageEl) stageEl.hidden = true;
   document.body.classList.remove('harbor-driving');
-  if (startButton) startButton.disabled = false;
+  if (startButton) {
+    startButton.disabled = false;
+    startButton.textContent = '브라우저에서 바로 플레이';
+    startButton.removeAttribute('aria-busy');
+  }
+  const loading = document.getElementById('harbor-world-loading');
+  if (loading) loading.hidden = true;
 }
 stageEl?.addEventListener('harbor-world-exit', () => {
+  if (document.documentElement.dataset.harbor === 'desktop') {
+    window.close();
+    return;
+  }
   closeWorld();
   startButton?.focus();
 });
@@ -357,19 +398,33 @@ window.addEventListener('harbor-mode', event => {
   closeWorld();
 });
 startButton?.addEventListener('click', () => {
-  if (!stageEl || !startButton) return;
+  if (!stageEl || !startButton || startButton.disabled) return;
   window.dispatchEvent(new CustomEvent('harbor-mode', { detail: 'world' }));
   startButton.disabled = true;
+  startButton.textContent = '월드를 불러오는 중…';
+  startButton.setAttribute('aria-busy', 'true');
   stageEl.hidden = false;
+  const loading = document.getElementById('harbor-world-loading');
+  if (loading) loading.hidden = false;
   const error = document.getElementById('harbor-world-error');
   if (error) error.textContent = '';
-  try {
-    stop = start();
-    document.body.classList.add('harbor-driving');
-  } catch (caught) {
-    stageEl.hidden = true;
-    startButton.disabled = false;
-    if (error) error.textContent = '3D 화면을 시작하지 못했습니다. WebGL 지원 브라우저인지 확인하세요.';
-    console.error(caught);
-  }
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try {
+      stop = start();
+      document.body.classList.add('harbor-driving');
+      if (loading) loading.hidden = true;
+      startButton.textContent = '플레이 중';
+    } catch (caught) {
+      stageEl.hidden = true;
+      if (loading) loading.hidden = true;
+      startButton.disabled = false;
+      startButton.textContent = '브라우저에서 바로 플레이';
+      startButton.removeAttribute('aria-busy');
+      if (error) error.textContent = '3D 화면을 시작하지 못했습니다. WebGL 지원 브라우저인지 확인하세요.';
+      console.error(caught);
+    }
+  }));
 });
+if (document.documentElement.dataset.harbor === 'desktop') {
+  queueMicrotask(() => startButton?.click());
+}

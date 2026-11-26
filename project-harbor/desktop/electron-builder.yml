@@ -1,0 +1,26 @@
+appId: app.teamwaldo.projectharbor
+productName: Project Harbor
+executableName: ProjectHarbor
+directories:
+  output: ../../release/harbor
+files:
+  - main.cjs
+  - package.json
+extraResources:
+  - from: ../../dist
+    to: dist
+asar: true
+win:
+  target:
+    - zip
+    - nsis
+  artifactName: ProjectHarbor-${version}-windows-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+    - tar.gz
+  artifactName: ProjectHarbor-${version}-linux-${arch}.${ext}
+  category: Game
+nsis:
+  oneClick: true
+  perMachine: false

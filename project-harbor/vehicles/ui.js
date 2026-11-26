@@ -43,14 +43,14 @@ export function mountHarbor(root){
     return {throttle,steer,handbrake:keys.has('Space')&&!!world.player.vehicle,moveX:steer*Math.cos(orbit)+throttle*Math.sin(orbit),moveZ:throttle*Math.cos(orbit)-steer*Math.sin(orbit),run:keys.has('ShiftLeft')||keys.has('ShiftRight')};
   }
   function drawHud(){
-    const p=world.player,v=p.vehicle,near=!v&&nearestVehicle(world,3.5);
+    const p=world.player,v=p.vehicle,near=!v&&nearestVehicle(world,6),far=!v&&!near&&nearestVehicle(world,16);
     place.textContent='PORT CALLOWAY / '+district(p.x,p.z).name;
     const pace={idle:'도보',walk:'걷기',run:'달리기',jump:'점프',punch:'주먹',enter:'탑승',talk:'대화',phone:'통화'};
     speed.textContent=v?Math.round(Math.hypot(v.vx,v.vz)*3.6)+' km/h · '+v.spec.name:(pace[motor.clip]||'도보');
     const spaceButton=root.querySelector('[data-key=Space]');
     if(spaceButton)spaceButton.textContent=v?'브레이크':'점프';
     health.textContent=v?'차량 상태 '+Math.round(v.health)+'%'+(v.health<=0?' · 운행 불가':''):'자유 탐험';
-    notice.textContent=world.time<world.noticeUntil?world.notice:near?(near.driver?'E · 운전자 끌어내리기':'E · '+near.spec.name+' 탑승'):'';
+    notice.textContent=world.time<world.noticeUntil?world.notice:near?(near.driver?'E · 운전자 끌어내리기':'E · '+near.spec.name+' 탑승'):far?far.spec.name+' 근처 · E로 다가가기':'';
     if(!map)return;
     const size=156,scale=size/(LIMIT*2),point=n=>(n+LIMIT)*scale;
     map.fillStyle='#252e30';map.fillRect(0,0,size,size);

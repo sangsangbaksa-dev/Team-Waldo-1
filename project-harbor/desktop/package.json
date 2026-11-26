@@ -1,0 +1,14 @@
+{
+  "name": "project-harbor",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Project Harbor desktop shell",
+  "main": "main.cjs",
+  "scripts": {
+    "dist": "electron-builder --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  }
+}

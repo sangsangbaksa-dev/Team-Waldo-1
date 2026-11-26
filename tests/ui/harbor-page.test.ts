@@ -13,4 +13,13 @@ describe('Project Harbor download page', () => {
     expect(html).not.toMatch(/<button[\s>]/);
     expect(html).not.toMatch(/world\/ui\.ts|vehicles\/ui\.js|harbor-world-stage|harbor-drive/);
   });
+
+  it('keeps the playable world in the desktop shell', () => {
+    const shell = readFileSync(new URL('../../project-harbor/desktop/shell.html', import.meta.url), 'utf8');
+    expect(shell).toContain('data-harbor="desktop"');
+    expect(shell).toContain('id="harbor-world-stage"');
+    expect(shell).toContain('../world/ui.ts');
+    expect(shell).toContain('포트 캘러웨이를 불러오는 중');
+    expect(shell).not.toMatch(/차량 자유주행/);
+  });
 });

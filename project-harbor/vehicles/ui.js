@@ -78,6 +78,7 @@ export function mountHarbor(root){
       residents.step(STEP,{x:p.x,z:p.z},(x,z)=>footClear(world,x,z));
       acc-=STEP;
     }
+    if(world.horn)honk(world);
     if(world.player.vehicle&&drag===null)orbit*=Math.exp(-dt*.8);
     const p=world.player;
     boardT=p.vehicle&&p.boardedAt!=null?(world.time-p.boardedAt)/ENTER_SECONDS:-1;
@@ -95,6 +96,24 @@ export function mountHarbor(root){
     root.querySelector('button').onclick=()=>root.dispatchEvent(new Event('harbor-exit'));
   },{signal});
   return ()=>{closed=true;cancelAnimationFrame(frame);abort.abort();keys.clear();try{renderer.dispose();}catch(error){console.error(error);}root.replaceChildren();};
+}
+let hornContext=null,hornAt=0;
+function honk(world){
+  if(!world.horn||performance.now()-hornAt<500)return;
+  hornAt=performance.now();
+  try{
+    hornContext=hornContext||new AudioContext();
+    const now=hornContext.currentTime,gain=hornContext.createGain(),filter=hornContext.createBiquadFilter();
+    filter.type='lowpass';filter.frequency.value=1800;
+    gain.gain.setValueAtTime(0.0001,now);
+    gain.gain.exponentialRampToValueAtTime(0.05,now+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001,now+0.42);
+    for(const frequency of [370,440]){
+      const osc=hornContext.createOscillator();osc.type='triangle';osc.frequency.value=frequency;
+      osc.connect(filter);osc.start(now);osc.stop(now+0.44);
+    }
+    filter.connect(gain).connect(hornContext.destination);
+  }catch(error){console.error(error);}
 }
 const root=document.getElementById('harbor-drive'),start=document.getElementById('harbor-start');
 let stop=null;

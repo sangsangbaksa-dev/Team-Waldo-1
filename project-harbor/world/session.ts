@@ -7,6 +7,8 @@ import {
   type CrimeResult, type GroundItem, type Ped, type ShotLine, type Vitals,
 } from './street';
 import { CityTraffic, ENTER_RANGE, SEEK_RANGE, surfaceGap, type Ride } from './traffic';
+import { surfaceAt, type Bed, type Ear } from './civic/audio';
+import { scare, seedCrowd, stepCrowd, type Stimulus } from './civic/life';
 
 export interface RoamInput {
   forward: number;
@@ -41,9 +43,15 @@ export class FreeRoam {
   private dropped = 0;
   private policeWait = 0;
   private generation = 1;
+  private crimeSeq = 1;
+  private stepMeter = 0;
+  private readonly filed = new Set<number>();
+  private alarm = 0;
+  private readonly stimuli: Stimulus[] = [];
   private readonly life = new Map<string, Bucket>();
   private readonly police: Ped[] = [];
   private readonly traffic = new CityTraffic();
+  ears: Ear[] = [];
 
   constructor(view: ChunkView) {
     this.world = new World(view);
@@ -63,11 +71,29 @@ export class FreeRoam {
   get rides(): readonly Ride[] { return this.traffic.rides; }
   get vehicle(): Ride | null { return this.traffic.occupied; }
   get activePedCount() { return this.peds.length; }
+  get siren(): Bed | null {
+    const stars = starCount(this.vitals.wanted);
+    const cop = this.police.find(ped => ped.health > 0);
+    if (stars < 2 || !cop) return null;
+    return { x: cop.x, z: cop.z, urgent: stars >= 4 };
+  }
+  engines(): Bed[] {
+    return this.traffic.rides
+      .filter(ride => Math.hypot(ride.x - this.world.x, ride.z - this.world.z) < 70 && Math.hypot(ride.vx, ride.vz) > 0.4)
+      .sort((a, b) => Math.hypot(a.x - this.world.x, a.z - this.world.z) - Math.hypot(b.x - this.world.x, b.z - this.world.z))
+      .slice(0, 2)
+      .map(ride => ({ x: ride.x, z: ride.z, rate: 0.7 + Math.hypot(ride.vx, ride.vz) / 18 }));
+  }
 
   tick(input: RoamInput, dt: number) {
     const step = Math.max(0, Math.min(0.05, dt));
     this.time += step;
     this.shots.length = 0;
+    this.ears = [];
+    this.stimuli.length = 0;
+    this.alarm = Math.max(0, this.alarm - step);
+    const fromX = this.world.x;
+    const fromZ = this.world.z;
     if (!this.traffic.occupied) {
       this.world.yaw = Math.atan2(Math.sin(this.world.yaw + input.look), Math.cos(this.world.yaw + input.look));
     }
@@ -75,7 +101,12 @@ export class FreeRoam {
     if (this.vitals.health <= 0) this.respawn();
     this.traffic.ensure(this.world.x, this.world.z);
     const propsAt = (x: number, z: number) => this.world.nearbyProps(x, z);
+    const hazards = [
+      { x: this.world.x, z: this.world.z, panic: this.alarm > 0 },
+      ...this.actorsIn(1).filter(ped => ped.health > 0 && !ped.hidden).map(ped => ({ x: ped.x, z: ped.z })),
+    ];
     let exited = false;
+    let horns: { x: number; z: number }[] = [];
     if (this.traffic.occupied) {
       if (input.use) {
         this.leaveCar();
@@ -83,9 +114,9 @@ export class FreeRoam {
       }
       const car = this.traffic.occupied;
       if (car) {
-        this.traffic.step(this.world.x, this.world.z, step, {
+        horns = this.traffic.step(this.world.x, this.world.z, step, {
           throttle: input.throttle, steer: input.steer, handbrake: input.handbrake,
-        }, propsAt);
+        }, propsAt, hazards);
         this.world.x = car.x;
         this.world.z = car.z;
         this.world.yaw = Math.atan2(Math.sin(Math.PI - car.yaw), Math.cos(Math.PI - car.yaw));
@@ -105,8 +136,9 @@ export class FreeRoam {
         this.world.move(input.forward, input.side, step, input.sprint);
         this.keepOut(previousX, previousZ);
       }
-      this.traffic.step(this.world.x, this.world.z, step, null, propsAt);
+      horns = this.traffic.step(this.world.x, this.world.z, step, null, propsAt, hazards);
     }
+    for (const horn of horns) this.ears.push({ kind: 'horn', x: horn.x, z: horn.z, gain: 0.85, pitch: 1 });
     this.world.stream();
     this.ensureAround(2);
     if (!this.traffic.occupied && !exited) this.interact(input);
@@ -117,7 +149,39 @@ export class FreeRoam {
     else if (trigger === 'empty' && input.fire && !driving) this.say('쏠 총이나 탄약이 없습니다.');
     else if (trigger === 'reload' && weapon && !driving) this.say(WEAPONS[weapon].name + ' 재장전');
     const blockedAt = (x: number, z: number) => !this.world.open(x, z, 0.45);
-    for (const ped of this.actorsIn(1)) stepActor(ped, step, this.world.x, this.world.z, blockedAt);
+    const crowd = stepCrowd(this.actorsIn(1), {
+      dt: step,
+      hours: this.world.hours,
+      playerX: this.world.x,
+      playerZ: this.world.z,
+      stimuli: this.stimuli,
+      blocked: blockedAt,
+      cars: this.traffic.rides.map(ride => ({ x: ride.x, z: ride.z, speed: Math.hypot(ride.vx, ride.vz) })),
+    });
+    this.ears.push(...crowd.ears);
+    for (const report of crowd.reports) this.fileReport(report);
+    for (const ride of this.traffic.rides) {
+      const speed = Math.hypot(ride.vx, ride.vz);
+      if (speed < 6 || ride === this.traffic.occupied) continue;
+      for (const ped of this.actorsIn(1)) {
+        if (ped.health <= 0 || Math.hypot(ped.x - ride.x, ped.z - ride.z) > 3.4) continue;
+        const ear = scare(ped, ride.x, ride.z, speed > 8);
+        if (ear) this.ears.push(ear);
+      }
+    }
+    const moved = Math.hypot(this.world.x - fromX, this.world.z - fromZ);
+    this.stepMeter += moved;
+    const stride = input.sprint ? 0.42 : 0.68;
+    if (moved > 0.01 && this.stepMeter >= stride) {
+      this.stepMeter = 0;
+      this.ears.push({
+        kind: 'step', x: this.world.x, z: this.world.z, gain: input.sprint ? 0.7 : 0.45, pitch: input.sprint ? 1.15 : 1,
+        surface: surfaceAt(this.world.x, this.world.z),
+      });
+    }
+    if (input.use || input.pickpocket || input.rob || input.reload) {
+      this.ears.push({ kind: 'ui', x: this.world.x, z: this.world.z, gain: 0.45, pitch: 1.05 });
+    }
     for (const ped of this.police) stepActor(ped, step, this.world.x, this.world.z, blockedAt);
     this.updatePolice(step, blockedAt);
     this.reap(step);
@@ -156,6 +220,7 @@ export class FreeRoam {
   placePed(x: number, z: number, extra: Partial<Ped> = {}): Ped {
     const key = Math.floor(x / CHUNK) + ':' + Math.floor(z / CHUNK);
     const ped = makePed(extra.id ?? 'placed-' + this.dropped++, x, z, { ...extra, chunk: key });
+    seedCrowd([ped], this.world.hours);
     this.bucket(key).peds.push(ped);
     return ped;
   }
@@ -194,6 +259,7 @@ export class FreeRoam {
         const key = i + ':' + j;
         if (this.life.has(key)) continue;
         const born = populationFor(i, j);
+        seedCrowd(born.peds, this.world.hours);
         this.life.set(key, { peds: born.peds, items: born.items, refill: 20 });
       }
     }
@@ -317,6 +383,16 @@ export class FreeRoam {
     const result = input.rob ? rob(this.vitals, ped) : pickpocket(this.vitals, ped, this.roll());
     if (this.vitals.invulnerable > 0) this.vitals.health = before;
     this.sayCrime(result);
+    if (result.status === 'quiet' || result.status === 'spotted' || result.status === 'robbed') {
+      const seen = result.status !== 'quiet';
+      this.stimuli.push({
+        kind: result.status === 'robbed' ? 'rob' : 'pocket',
+        x: this.world.x, z: this.world.z,
+        radius: result.status === 'robbed' ? 22 : seen ? 10 : 3,
+        seen, victim: ped.id, crime: seen ? ++this.crimeSeq : 0,
+      });
+      if (result.amount > 0) this.ears.push({ kind: 'cash', x: this.world.x, z: this.world.z, gain: 0.55, pitch: 1 });
+    }
   }
 
   private collect(item: GroundItem) {
@@ -362,12 +438,28 @@ export class FreeRoam {
     const reach = hit ? hit.distance : spec.range;
     this.shots.push({ x: this.world.x, z: this.world.z, tx: this.world.x + dx * reach, tz: this.world.z + dz * reach });
     addWanted(this.vitals, hit ? (hit.ped.kind === 'police' ? 2 : 1) : 0.35);
+    this.stimuli.push({
+      kind: 'gun', x: this.world.x, z: this.world.z, radius: 48, seen: !!hit,
+      victim: hit?.ped.id ?? '', crime: ++this.crimeSeq,
+    });
+    this.alarm = 1.4;
+    this.ears.push({ kind: 'gun', x: this.world.x, z: this.world.z, gain: 1, pitch: weapon === 'smg' ? 1.2 : 0.9 });
     if (!hit) return;
     const killed = applyHit(hit.ped, spec.damage);
-    for (const ped of this.actorsIn(1)) {
-      if (ped.kind === 'civilian' && ped.health > 0 && Math.hypot(ped.x - this.world.x, ped.z - this.world.z) < 18) ped.state = 'flee';
-    }
     if (killed && hit.ped.kind === 'police') this.say('경찰을 쓰러뜨렸습니다. 수배가 올랐습니다.');
+  }
+
+  private fileReport(report: { pedId: string; crime: number }) {
+    if (report.crime <= 0 || this.filed.has(report.crime)) return;
+    this.filed.add(report.crime);
+    if (this.filed.size > 24) {
+      const oldest = this.filed.values().next().value;
+      if (oldest !== undefined) this.filed.delete(oldest);
+    }
+    this.vitals.calm = 0;
+    if (this.vitals.wanted <= 0) addWanted(this.vitals, 1);
+    this.say('목격자가 경찰에 신고했습니다.');
+    this.ears.push({ kind: 'phone', x: this.world.x, z: this.world.z, gain: 0.4, pitch: 1 });
   }
 
   private updatePolice(step: number, blockedAt: (x: number, z: number) => boolean) {
@@ -441,6 +533,7 @@ export class FreeRoam {
         ped.id = ped.id + ':' + this.generation;
         life.peds.push(ped);
       }
+      seedCrowd(life.peds, this.world.hours);
       life.refill = 20;
     }
   }

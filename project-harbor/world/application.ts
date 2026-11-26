@@ -1,4 +1,5 @@
 import {CHUNK,WIDTH,DEPTH,blocked,propsFor,terrainHeight,type WorldProp} from './domain';
+import {detailsFor} from './civic/dressing';
 export interface ChunkData {cx:number;cz:number;props:WorldProp[];lod:0|1}
 export interface ChunkView {load(chunk:ChunkData):void;unload(key:string):void}
 export const chunkKey=(x:number,z:number)=>x+':'+z;
@@ -11,7 +12,7 @@ export class World {
   private props(cx:number,cz:number){
     const key=chunkKey(cx,cz);
     let props=this.cache.get(key);
-    if(!props){props=propsFor(cx,cz);this.cache.set(key,props);}
+    if(!props){props=[...propsFor(cx,cz),...detailsFor(cx,cz)];this.cache.set(key,props);}
     return props;
   }
   open(x:number,z:number,radius=.65){

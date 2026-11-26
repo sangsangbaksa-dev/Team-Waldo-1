@@ -39,12 +39,18 @@ export class StreetActors {
         this.phase.set(ped.id, (saltOf(ped.id) % 100) / 100);
       }
       const down = ped.health <= 0;
-      const clip: Clip = down ? 'idle' : ped.state === 'flee' || ped.state === 'chase' ? 'run' : 'walk';
-      const step = clip === 'run' ? 0.04 : clip === 'walk' ? 0.02 : 0.008;
+      const moving = Math.hypot(ped.goalX - ped.x, ped.goalZ - ped.z) > 0.7;
+      const clip: Clip = down ? 'idle'
+        : ped.mood === 'calling' ? 'phone'
+        : ped.activity === 'chat' && ped.mood !== 'panic' ? 'talk'
+        : ped.mood === 'panic' || ped.state === 'flee' || ped.state === 'chase' ? 'run'
+        : moving ? 'walk' : 'idle';
+      const step = clip === 'run' ? 0.04 : clip === 'walk' || clip === 'talk' ? 0.02 : 0.008;
       const next = ((this.phase.get(ped.id) ?? 0) + step) % 1;
       this.phase.set(ped.id, next);
+      rig.root.visible = !ped.hidden;
       rig.root.position.set(ped.x, terrainHeight(ped.x, ped.z) + (down ? 0.35 : 0), ped.z);
-      rig.root.rotation.set(down ? Math.PI / 2 : 0, down ? 0 : modelYaw(ped.yaw, 'harbor'), 0);
+      rig.root.rotation.set(down ? Math.PI / 2 : 0, down ? 0 : modelYaw(ped.yaw, 'harbor'), !down && ped.mood === 'panic' ? 0.28 : 0);
       this.gfx.apply(rig, poseAt(clip, down ? 0 : next, ped.kind === 'police' ? 0.7 : 0));
     }
     for (const [id, rig] of this.rigs) {

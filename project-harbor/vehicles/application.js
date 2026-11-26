@@ -143,8 +143,11 @@ export function update(world,input,dt) {
     if(clearPoint(world,x,p.z,null))p.x=x;
     if(clearPoint(world,p.x,z,null))p.z=z;
   }
+  const hazard={x:p.x,z:p.z,panic:!!(p.vehicle&&p.vehicle.impact>0.45)};
+  world.horn=0;
   for(const v of world.vehicles){
-    const control=v===p.vehicle?input:v.traffic&&v.driver?trafficInput(v,world.vehicles,world.time):{throttle:0,steer:0,handbrake:true};
+    const control=v===p.vehicle?input:v.traffic&&v.driver?trafficInput(v,world.vehicles,world.time,hazard):{throttle:0,steer:0,handbrake:true};
+    if(control.horn)world.horn=1;
     stepVehicle(v,control,dt,!nearRoad(v.x,v.z));
     for(const b of world.obstaclesNear(v.x,v.z)){if(Math.abs(v.x-b.x)<b.w/2+5&&Math.abs(v.z-b.z)<b.d/2+5)hitWall(v,b);}
     for(const axis of ['x','z']){
@@ -159,6 +162,13 @@ export function update(world,input,dt) {
     const a=world.vehicles[i],b=world.vehicles[j];if(Math.abs(a.x-b.x)<9&&Math.abs(a.z-b.z)<9)collide(a,b);
   }
   if(p.vehicle){p.x=p.vehicle.x;p.z=p.vehicle.z;p.yaw=p.vehicle.yaw;}
+  if(p.vehicle&&Math.hypot(p.vehicle.vx,p.vehicle.vz)>6){
+    for(const person of world.people){
+      if(Math.hypot(person.x-p.x,person.z-p.z)>12)continue;
+      const dx=person.x-p.x,dz=person.z-p.z,n=Math.max(0.2,Math.hypot(dx,dz));
+      person.toX=person.x+dx/n*6;person.toZ=person.z+dz/n*6;person.age=Math.max(person.age,0.45);
+    }
+  }
   for(const person of world.people){
     person.age+=dt;
     if(person.age<0.45){const t=person.age/0.45;person.x=person.fromX+(person.toX-person.fromX)*t;person.z=person.fromZ+(person.toZ-person.fromZ)*t;}

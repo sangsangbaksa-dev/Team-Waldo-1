@@ -79,11 +79,11 @@ export function signalGreen(axis,x,z,time) {
   const phase=((time+(Math.round(x/GRID)+Math.round(z/GRID))*2.3)%24+24)%24;
   return axis==='x'?phase<10:phase>=12&&phase<22;
 }
-export function trafficInput(v,vehicles,time) {
+export function trafficInput(v,vehicles,time,hazard=null) {
   const t=v.traffic, axis=t.axis, cross=axis==='x'?'z':'x', dir=t.dir;
   const p=v[axis], next=dir>0?Math.ceil((p+0.01)/GRID)*GRID:Math.floor((p-0.01)/GRID)*GRID;
   const stopDistance=(next-p)*dir-ROAD*0.5-2;
-  let target=Math.min(v.spec.max*0.55,t.cruise);
+  let target=Math.min(v.spec.max*0.55,t.cruise), horn=0, swerve=0;
   if(stopDistance>=-1 && stopDistance<32 && !signalGreen(axis,axis==='x'?next:t.road,axis==='z'?next:t.road,time)){
     target=Math.min(target,Math.sqrt(Math.max(0,stopDistance)*2*4.5));
   }
@@ -92,10 +92,18 @@ export function trafficInput(v,vehicles,time) {
       const free=gap-(other.spec.length+v.spec.length)*0.5-3;
       target=Math.min(target,Math.max(0,Math.sqrt(Math.max(0,free)*7)));
     }}
+  if(hazard){
+    const senseAlong=axis==='x'?hazard.x:hazard.z, senseFixed=axis==='x'?hazard.z:hazard.x;
+    const gap=(senseAlong-p)*dir, side=Math.abs(senseFixed-v[cross]);
+    if(hazard.panic && gap>-4 && gap<18 && side<8) target=Math.min(target,2);
+    else if(gap>0 && gap<16 && side<2.4){target=Math.min(target,Math.max(0,(gap-4)*0.55)); if(gap<13)horn=1;}
+    else if(gap>0 && gap<22 && side<4){target=Math.min(target,6); horn=1;}
+    else if(Math.abs(gap)<7 && side<5) swerve=Math.sign(v[cross]-senseFixed)||1;
+  }
   const heading=axis==='z'?(dir>0?0:Math.PI):(dir>0?Math.PI/2:-Math.PI/2);
   const lane=t.road+(axis==='z'?-dir:dir)*LANE;
-  const correction=clamp((lane-v[cross])*0.11,-0.35,0.35)*(axis==='x'?-dir:dir);
+  const correction=clamp((lane-v[cross])*0.11+swerve*0.18,-0.35,0.35)*(axis==='x'?-dir:dir);
   const error=angleDelta(heading+correction,v.yaw);
   const speed=longitudinal(v);
-  return {throttle:clamp((target-speed)*0.55,-1,1),steer:clamp(error*2.7,-1,1),handbrake:target<0.15&&Math.abs(speed)<0.7};
+  return {throttle:clamp((target-speed)*0.55,-1,1),steer:clamp(error*2.7,-1,1),handbrake:target<0.15&&Math.abs(speed)<0.7,horn};
 }

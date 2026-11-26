@@ -36,6 +36,8 @@ export interface Vitals {
 
 export type PedKind = 'civilian' | 'police';
 export type PedState = 'walk' | 'flee' | 'chase' | 'down';
+export type Routine = 'stroll' | 'bench' | 'shop' | 'chat' | 'cross' | 'indoor';
+export type Mood = 'calm' | 'wary' | 'startled' | 'panic' | 'calling' | 'avoid' | 'confront';
 
 export interface Ped {
   id: string;
@@ -49,6 +51,28 @@ export interface Ped {
   attack: number;
   down: number;
   chunk: string;
+  activity: Routine;
+  mood: Mood;
+  courage: number;
+  lawful: number;
+  sociable: number;
+  awareness: number;
+  fear: number;
+  anger: number;
+  phase: number;
+  hold: number;
+  goalX: number;
+  goalZ: number;
+  homeX: number;
+  homeZ: number;
+  partner: string;
+  crime: number;
+  threatX: number;
+  threatZ: number;
+  hidden: boolean;
+  band: number;
+  think: number;
+  pace: number;
 }
 
 export interface GroundItem {
@@ -109,6 +133,28 @@ export function makePed(id: string, x: number, z: number, extra: Partial<Ped> = 
     attack: extra.attack ?? 0,
     down: extra.down ?? 0,
     chunk: extra.chunk ?? Math.floor(x / CHUNK) + ':' + Math.floor(z / CHUNK),
+    activity: extra.activity ?? 'stroll',
+    mood: extra.mood ?? 'calm',
+    courage: extra.courage ?? 0.5,
+    lawful: extra.lawful ?? 0.5,
+    sociable: extra.sociable ?? 0.5,
+    awareness: extra.awareness ?? 0.6,
+    fear: extra.fear ?? 0,
+    anger: extra.anger ?? 0.3,
+    phase: extra.phase ?? 0,
+    hold: extra.hold ?? 0,
+    goalX: extra.goalX ?? x,
+    goalZ: extra.goalZ ?? z,
+    homeX: extra.homeX ?? x,
+    homeZ: extra.homeZ ?? z,
+    partner: extra.partner ?? '',
+    crime: extra.crime ?? 0,
+    threatX: extra.threatX ?? x,
+    threatZ: extra.threatZ ?? z,
+    hidden: extra.hidden ?? false,
+    band: extra.band ?? -1,
+    think: extra.think ?? 0,
+    pace: extra.pace ?? 1.3,
   };
 }
 
@@ -166,7 +212,7 @@ export function nearestPed(peds: readonly Ped[], x: number, z: number, range: nu
   let best: Ped | null = null;
   let dist = range;
   for (const ped of peds) {
-    if (ped.health <= 0) continue;
+    if (ped.health <= 0 || ped.hidden) continue;
     if (civilian && ped.kind !== 'civilian') continue;
     const gap = Math.hypot(ped.x - x, ped.z - z);
     if (gap < dist) { best = ped; dist = gap; }

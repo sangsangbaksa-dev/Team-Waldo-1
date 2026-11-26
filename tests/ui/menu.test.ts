@@ -40,6 +40,7 @@ describe('메인 페이지', () => {
     expect(tiles.map(t => t.dataset.game)).toEqual(['project-harbor', 'slack', 'city', 'race', 'shooter', 'tycoon', 'sky', 'parry-gladiator', 'dead-ground', 'room-tone']);
     expect(tiles[0]?.querySelector('.tile-new')?.textContent).toBe('New');
     expect(tiles[0]?.querySelector('.tile-cta')?.textContent).toBe('다운로드');
+    expect(tiles[0]?.textContent).not.toMatch(/브라우저에서 바로 플레이|차량 자유주행/);
     expect(document.querySelectorAll('.tile-new')).toHaveLength(1);
     expect(document.body.textContent).not.toMatch(/왕국 전쟁|KINGDOMS|군단전|FRONTLINE|SQUAD CLASH|OUTLAW CITY/);
   });

@@ -10,7 +10,8 @@
   "redirects": [
     { "source": "/parry-gladiator", "destination": "/parry-gladiator/", "permanent": false },
     { "source": "/dead-ground", "destination": "/dead-ground/", "permanent": false },
-    { "source": "/project-harbor", "destination": "/project-harbor/", "permanent": false }
+    { "source": "/project-harbor", "destination": "/project-harbor/", "permanent": false },
+    { "source": "/project-harbor/play", "destination": "/project-harbor/play/", "permanent": false }
   ],
   "headers": [
     {

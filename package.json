@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node tools/prepare-project-harbor.mjs",
     "dev": "vite",
+    "prebuild": "node tools/prepare-project-harbor.mjs",
     "build": "vite build && npm run build:games",
     "build:games": "node tools/build-games.mjs",
     "preview": "vite preview",

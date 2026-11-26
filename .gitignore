@@ -10,3 +10,4 @@ qa/
 .vercel/
 __pycache__/
 graphify-out/
+/public/project-harbor/play/

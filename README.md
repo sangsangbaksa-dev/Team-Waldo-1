@@ -1,6 +1,6 @@
 # WALDO
 
-WALDO에서 브라우저 게임 9편을 바로 시작하거나 Project Harbor를 Windows·Linux용으로 내려받을 수 있습니다.
+WALDO에서 Project Harbor를 포함해 게임 10편을 브라우저로 바로 시작할 수 있습니다. Project Harbor 페이지는 Windows·Linux용 데스크톱 다운로드도 제공합니다.
 
 | 게임 | 소개 | 코드 |
 | --- | --- | --- |

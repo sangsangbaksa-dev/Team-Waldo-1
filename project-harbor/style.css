@@ -64,6 +64,7 @@
 
 .harbor-start { display:block; width:100%; border:0; border-radius:8px; padding:16px; font:inherit; font-weight:700; color:#18211c; background:#c5dfb6; cursor:pointer; }
 .harbor-start:hover { background:#e1efd9; }
+.harbor-play-link { margin-block: 20px 24px; text-align: center; }
 .harbor-driving { overflow:hidden; }
 #harbor-drive[hidden] { display:none; }
 #harbor-drive { position:fixed; inset:0; z-index:999; overflow:hidden; background:#1d272b; color:white; font:500 14px/1.5 system-ui,sans-serif; outline:0; }

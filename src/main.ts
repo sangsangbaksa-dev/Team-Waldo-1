@@ -25,7 +25,6 @@ interface Entry {
   image: string;
   imageAlt: string;
   badge?: 'New';
-  desktop?: boolean;
   status?: () => string;
 }
 
@@ -34,10 +33,10 @@ const base = import.meta.env.BASE_URL;
 const ENTRIES: Entry[] = [
   {
     id: 'project-harbor', name: 'Project Harbor', genre: '3D 오픈월드 액션',
-    summary: '포트 캘러웨이의 숲, 사막, 도시, 부촌, 빈민가, 군사기지를 자유롭게 걷습니다. 무기를 주워 사격하고 소매치기와 강도로 돈을 법니다.',
-    facts: ['Windows · Linux 다운로드', '미션 없는 오픈월드', '6개 지역'],
+    summary: '포트 캘러웨이의 항만, 숲, 사막과 도심을 자유롭게 탐험하세요. 차량을 골라 달리고 경찰의 추격을 따돌릴 수 있습니다.',
+    facts: ['1인 플레이', '설치 없이 브라우저에서 실행', '7개 지역'],
     image: `${base}assets/home/project-harbor-lighthouse.webp`, imageAlt: '포트 캘러웨이 부두의 청록색 등대와 방파제',
-    badge: 'New', desktop: true,
+    badge: 'New',
   },
   {
     id: 'slack', name: 'SLACK OFF', genre: '딴짓 시뮬레이션',
@@ -165,7 +164,7 @@ function tile(entry: Entry, index: number): string {
           <span class="tile-name">${entry.name}</span>
           <span class="tile-summary" id="summary-${entry.id}">${entry.summary}</span>
           <span class="tile-facts">${entry.facts.map(f => `<span>${f}</span>`).join('')}</span>
-          <span class="tile-foot"><span class="tile-status"></span><span class="tile-cta">${entry.desktop ? '다운로드' : '플레이'}<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9m-3.5-4L12.5 8 8.5 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
+          <span class="tile-foot"><span class="tile-status"></span><span class="tile-cta">플레이<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9m-3.5-4L12.5 8 8.5 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
         </span>
       </button>
     </li>`;
@@ -216,7 +215,7 @@ function renderMenu(): void {
       </header>
       <section class="home-intro">
         <h1>${ENTRIES.length}편의 게임, 한곳에서.</h1>
-        <p>브라우저 게임은 바로 시작하고, 데스크톱 게임은 내려받아 플레이하세요.</p>
+        <p>설치 없이 이 브라우저에서 바로 시작하세요.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>

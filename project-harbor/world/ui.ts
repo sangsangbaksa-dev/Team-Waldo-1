@@ -4,6 +4,8 @@ import { FreeRoam, type RoamInput } from './session';
 import { StreetActors } from './actors';
 import { ThreeChunks } from './infrastructure';
 import { WEAPONS, starCount, starLabel, type GroundItem, type Ped } from './street';
+import { CharacterGfx } from '../characters/infrastructure';
+import { modelYaw, playerLook, poseAt, type Clip } from '../characters/domain';
 
 function required<E extends HTMLElement>(id: string): E {
   const el = document.getElementById(id);
@@ -111,18 +113,15 @@ function start(): () => void {
   scene.fog = new T.FogExp2(0x9daebc, 0.004);
   const roam = new FreeRoam(new ThreeChunks(scene));
   const actors = new StreetActors(scene);
-  const avatar = new T.Group();
-  const body = new T.Mesh(new T.CapsuleGeometry(0.38, 0.9, 4, 8), new T.MeshStandardMaterial({ color: 0x344b58 }));
-  body.position.y = 1;
-  avatar.add(body);
-  const head = new T.Mesh(new T.SphereGeometry(0.27, 10, 8), new T.MeshStandardMaterial({ color: 0xc59c78 }));
-  head.position.y = 1.9;
-  avatar.add(head);
+  const people = new CharacterGfx();
+  const playerRig = people.create(playerLook());
   const held = new T.Mesh(new T.BoxGeometry(0.12, 0.12, 0.55), new T.MeshStandardMaterial({ color: 0xd6c27a }));
-  held.position.set(0.32, 1.15, -0.28);
+  held.position.set(0.02, -0.06, 0.04);
+  held.rotation.x = Math.PI / 2;
   held.visible = false;
-  avatar.add(held);
-  scene.add(avatar);
+  playerRig.bones.rHand.add(held);
+  scene.add(playerRig.root);
+  let gait = 0;
   const resize = () => {
     const w = Math.max(1, host.clientWidth), h = Math.max(1, host.clientHeight);
     renderer.setSize(w, h, false);
@@ -285,8 +284,13 @@ function start(): () => void {
     } else roam.world.stream();
     actors.sync(roam.peds, roam.items, roam.shots);
     held.visible = roam.vitals.weapon !== null;
-    avatar.position.set(roam.x, roam.world.y, roam.z);
-    avatar.rotation.y = -roam.yaw;
+    const moving = has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown') !== 0 || keys.has('KeyA') || keys.has('KeyD');
+    const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight') || actions.has('run');
+    const clip: Clip = moving ? (sprint ? 'run' : 'walk') : 'idle';
+    gait = moving ? (gait + dt / (sprint ? 0.44 : 0.78)) % 1 : 0;
+    playerRig.root.position.set(roam.x, roam.world.y, roam.z);
+    playerRig.root.rotation.y = modelYaw(roam.yaw, 'harbor');
+    people.apply(playerRig, poseAt(clip, gait));
     const aimX = Math.sin(roam.yaw);
     const aimZ = -Math.cos(roam.yaw);
     target.set(roam.x + aimX * 14, roam.world.y + 1.25, roam.z + aimZ * 14);
@@ -313,10 +317,12 @@ function start(): () => void {
     abort.abort();
     observer.disconnect();
     actors.dispose();
+    people.dispose();
     const geometries = new Set<T.BufferGeometry>();
     const materials = new Set<T.Material>();
     scene.traverse(obj => {
       if (!(obj instanceof T.Mesh) && !(obj instanceof T.Line)) return;
+      if (obj.userData.keep) return;
       const geometry = obj.geometry;
       if (geometry) geometries.add(geometry);
       const list = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -333,37 +339,37 @@ function start(): () => void {
   };
 }
 let stop: (() => void) | null = null;
+const startButton = document.getElementById('harbor-world-start') as HTMLButtonElement | null;
+const stageEl = document.getElementById('harbor-world-stage');
 function closeWorld() {
   stop?.();
   stop = null;
-  const stage = required<HTMLElement>('harbor-world-stage');
-  stage.hidden = true;
+  if (stageEl) stageEl.hidden = true;
   document.body.classList.remove('harbor-driving');
-  const button = required<HTMLButtonElement>('harbor-world-start');
-  button.disabled = false;
+  if (startButton) startButton.disabled = false;
 }
-required('harbor-world-stage').addEventListener('harbor-world-exit', () => {
+stageEl?.addEventListener('harbor-world-exit', () => {
   closeWorld();
-  required<HTMLButtonElement>('harbor-world-start').focus();
+  startButton?.focus();
 });
 window.addEventListener('harbor-mode', event => {
   if ((event as CustomEvent<string>).detail === 'world' || !stop) return;
   closeWorld();
 });
-required<HTMLButtonElement>('harbor-world-start').addEventListener('click', () => {
-  const button = required<HTMLButtonElement>('harbor-world-start');
-  const stage = required<HTMLElement>('harbor-world-stage');
+startButton?.addEventListener('click', () => {
+  if (!stageEl || !startButton) return;
   window.dispatchEvent(new CustomEvent('harbor-mode', { detail: 'world' }));
-  button.disabled = true;
-  stage.hidden = false;
-  required('harbor-world-error').textContent = '';
+  startButton.disabled = true;
+  stageEl.hidden = false;
+  const error = document.getElementById('harbor-world-error');
+  if (error) error.textContent = '';
   try {
     stop = start();
     document.body.classList.add('harbor-driving');
-  } catch (error) {
-    stage.hidden = true;
-    button.disabled = false;
-    required('harbor-world-error').textContent = '3D 화면을 시작하지 못했습니다. WebGL 지원 브라우저인지 확인하세요.';
-    console.error(error);
+  } catch (caught) {
+    stageEl.hidden = true;
+    startButton.disabled = false;
+    if (error) error.textContent = '3D 화면을 시작하지 못했습니다. WebGL 지원 브라우저인지 확인하세요.';
+    console.error(caught);
   }
 });

@@ -74,8 +74,8 @@ export class Atmosphere {
     const h = minutes / 60, el = Math.sin(((h - 6) / 12) * Math.PI), dayK = smooth(-0.08, 0.22, el), night = 1 - smooth(-0.22, 0.05, el), dusk = Math.exp(-Math.pow(el / 0.2, 2)) * (1 - 0.7 * night);
     const rainTarget = Atmosphere.rainyDay(day) ? 1 : 0; this.rainLevel += (rainTarget - this.rainLevel) * Math.min(1, dt * 0.25);
     const wet = this.rainLevel, cloud = 0.18 + wet * 0.75;
-    const top = C(0x2a62b5).lerp(C(0x020611), night).lerp(C(0x4b6b92), wet * 0.6 * (1 - night) + wet * 0.25).lerp(C(0x6a4a78), dusk * 0.35);
-    const hor = C(0xbfd6ea).lerp(C(0x0a1220), night).lerp(C(0x7e8c9c), wet * 0.55).lerp(C(0xffa560), dusk * 0.7 * (1 - wet * 0.6));
+    const top = C(0x1b4e96).lerp(C(0x070b16), night).lerp(C(0x3e5874), wet * 0.55 * (1 - night) + wet * 0.2).lerp(C(0x7a4568), dusk * 0.42);
+    const hor = C(0xd5e4f2).lerp(C(0x121826), night).lerp(C(0x6d7c8c), wet * 0.5).lerp(C(0xffb06a), dusk * 0.82 * (1 - wet * 0.55));
     const glowAmt = (1 - wet * 0.85) * (0.25 + dusk * 1.6);
     const azim = (h / 24) * Math.PI * 2, sx = Math.cos(azim) * 0.35, sz = Math.sin(azim) * 0.9;
     const sunDir = new THREE.Vector3(sx, Math.max(0.02, Math.abs(el)) * Math.sign(el || 1), sz).normalize(); if (el < 0) sunDir.y = Math.max(0.12, -el) * 1.0;
@@ -85,10 +85,10 @@ export class Atmosphere {
     this.skyU.uNight.value = night; this.skyU.uCloud.value = cloud; this.skyU.uTime.value = this.time; this.skyU.uGlowAmt.value = el > -0.05 ? glowAmt : 0.0;
     // 조명
     const sunCol = C(0xfff2d8).lerp(C(0xff9a50), dusk * 0.8).lerp(C(0xb8c4d6), wet * 0.6);
-    this.sun.color.copy(sunCol); this.sun.intensity = (0.15 + 2.4 * dayK) * (1 - wet * 0.65);
-    this.moon.intensity = night * (0.55 - wet * 0.25); this.moon.position.copy(focus).addScaledVector(light, 90).setY(70); this.moon.target.position.copy(focus);
+    this.sun.color.copy(sunCol); this.sun.intensity = (0.22 + 2.75 * dayK) * (1 - wet * 0.5);
+    this.moon.intensity = night * (0.72 - wet * 0.22); this.moon.position.copy(focus).addScaledVector(light, 90).setY(70); this.moon.target.position.copy(focus);
     this.sun.position.copy(focus).addScaledVector(light, 120); this.sun.target.position.copy(focus);
-    this.hemi.intensity = lerp(0.28, 0.75, dayK) * (1 - wet * 0.15) + night * 0.05; this.hemi.color.copy(C(0xbfd8ff).lerp(C(0x4b5f95), night)); this.hemi.groundColor.copy(C(0x3a3228).lerp(C(0x101420), night));
+    this.hemi.intensity = lerp(0.34, 0.82, dayK) * (1 - wet * 0.12) + night * 0.08; this.hemi.color.copy(C(0xd7e6ff).lerp(C(0x6d7eb8), night)); this.hemi.groundColor.copy(C(0x5a4636).lerp(C(0x1a140f), night));
     // 번개(비 오는 밤·낮)
     if (wet > 0.8) { this.nextFlash -= dt; if (this.nextFlash <= 0) { this.flash = 1; this.nextFlash = 6 + Math.random() * 14; } }
     this.flash = Math.max(0, this.flash - dt * 3.5); const fl = this.flash > 0 ? (Math.sin(this.flash * 18) > 0 ? this.flash : 0.2 * this.flash) : 0;
@@ -102,7 +102,7 @@ export class Atmosphere {
     return this.state;
   }
   /** 렌더러 노출(밤엔 살짝 올려 어둠이 답답하지 않게). */
-  exposure(): number { return lerp(0.95, 1.15, this.state.night); }
+  exposure(): number { return lerp(1.02, 1.24, this.state.night) + this.state.wet * 0.04; }
   dispose(): void {
     this.scene.remove(this.dome, this.rain, this.sun, this.moon, this.hemi); this.dome.geometry.dispose(); (this.dome.material as THREE.Material).dispose(); this.rain.geometry.dispose(); (this.rain.material as THREE.Material).dispose();
     this.env?.dispose(); this.pmrem.dispose(); this.scene.environment = null;

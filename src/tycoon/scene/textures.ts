@@ -52,7 +52,8 @@ export function facadeMaps(style: FacadeStyle): FacadeMaps {
 
 export function asphaltTexture(): THREE.CanvasTexture {
   const S = 512, [c, g] = canvas(S, S), r = rng(99);
-  g.fillStyle = '#4b4e54'; g.fillRect(0, 0, S, S);
+  g.fillStyle = '#3a3d43'; g.fillRect(0, 0, S, S);
+  g.fillStyle = '#2c2f34'; g.fillRect(S * 0.46, 0, S * 0.08, S);
   for (let k = 0; k < 9000; k++) { const v = Math.floor(50 + r() * 60); g.fillStyle = `rgba(${v},${v},${v + 4},${0.25 + r() * 0.4})`; g.fillRect(r() * S, r() * S, 1 + r() * 2.4, 1 + r() * 2.4); }
   g.strokeStyle = 'rgba(10,10,12,.55)'; g.lineWidth = 1.2;
   for (let k = 0; k < 7; k++) { g.beginPath(); let x = r() * S, y = r() * S; g.moveTo(x, y); for (let n = 0; n < 12; n++) { x += (r() - 0.4) * 40; y += (r() - 0.5) * 40; g.lineTo(x, y); } g.stroke(); }

@@ -118,9 +118,9 @@ function arenaSurface() {
 }
 
 function sky(scene) {
-  const glow = color('#d1a07f');
-  const top = color('#383443');
-  const horizon = color('#aa796c');
+  const glow = color('#f0b184');
+  const top = color('#241f2c');
+  const horizon = color('#c4846c');
   const sun = new THREE.Vector3(0.36, 0.20, -0.91).normalize();
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,

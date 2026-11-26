@@ -14,11 +14,22 @@ export function ladderHtml(stage: Stage): string {
 }
 
 function shopHtml(s: ShopView): string {
+  const stock = s.stockCap ? s.stock / s.stockCap : 0;
+  const fact = (label: string, value: string, tone = ''): string => `<div><dt>${label}</dt><dd class="${tone}">${value}</dd></div>`;
   return `<div class="ty-shop">
     <div class="ty-shop-head"><b>${esc(s.name)}</b><span>${esc(s.kindName)} · Lv${s.level}/${s.maxLevel}</span><em class="${s.serving ? 'on' : 'off'}">${s.serving ? '영업 중' : '영업 안 함'}</em></div>
-    <div class="ty-kv"><span>재고</span><b>${s.stock}/${s.stockCap}</b>${bar(s.stockCap ? s.stock / s.stockCap : 0)}</div>
-    <div class="ty-kv"><span>평점</span><b>${s.rating}</b>${bar(s.rating / 100, 'gold')}</div>
-    <div class="ty-chips"><span>오늘 매출 ${formatMoney(s.todayRevenue)}</span><span>손님 ${s.todayCustomers}명</span><span>놓침 ${s.todayLost}명</span><span>일 순이익 ${formatMoney(s.profitPerDay)}</span><span>직원 ${s.staff.length}명</span><span>가격 ×${s.priceMult.toFixed(2)}</span></div>
+    <div class="ty-meters">
+      <div class="ty-meter${stock < 0.22 ? ' low' : ''}"><span>재고</span><b>${s.stock}<small>/${s.stockCap}</small></b>${bar(stock)}</div>
+      <div class="ty-meter"><span>평점</span><b>${s.rating}</b>${bar(s.rating / 100, 'gold')}</div>
+    </div>
+    <dl class="ty-facts">
+      ${fact('오늘 매출', formatMoney(s.todayRevenue))}
+      ${fact('일 순이익', formatMoney(s.profitPerDay), s.profitPerDay >= 0 ? 'gain' : 'cost')}
+      ${fact('손님', `${s.todayCustomers}명`)}
+      ${fact('놓친 손님', `${s.todayLost}명`, s.todayLost > 0 ? 'cost' : '')}
+      ${fact('직원', `${s.staff.length}명`)}
+      ${fact('가격', `×${s.priceMult.toFixed(2)}`)}
+    </dl>
   </div>`;
 }
 

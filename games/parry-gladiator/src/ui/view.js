@@ -252,7 +252,10 @@ export class View {
   }
 
   pulse() {
-    this.damageLeft = 0.29;
+    this.damageLeft = 0.36;
+    this.damage.classList.remove('struck');
+    void this.damage.offsetWidth;
+    this.damage.classList.add('struck');
   }
 
   hud(state, local, dt, reduced) {
@@ -313,7 +316,7 @@ export class View {
     if (this.reactionLeft > 0) this.reactionLeft -= dt;
     if (this.damageLeft > 0) this.damageLeft -= dt;
     if (this.reactionLeft <= 0 && !this.reaction.hidden) this.reaction.hidden = true;
-    this.damage.style.opacity = reduced ? 0 : Math.max(0, this.damageLeft * 2.5);
+    this.damage.style.opacity = reduced ? 0 : Math.min(1, this.damageLeft * 3.1);
   }
 
   latency(ms) {

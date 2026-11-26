@@ -72,7 +72,12 @@ svg { width: 1.25rem; height: 1.25rem; display: block; flex: none; }
   pointer-events: none;
   opacity: 0;
   z-index: 2;
-  background: radial-gradient(ellipse at center, transparent 37%, #ac3a28a3 100%);
+  background: radial-gradient(ellipse at center, #fff4 0%, transparent 28%, #9c2e22c4 100%);
+}
+#damage.struck { animation: pg-hit 340ms ease-out; }
+@keyframes pg-hit {
+  0% { filter: contrast(1.15) saturate(1.2); }
+  100% { filter: none; }
 }
 .overlay {
   z-index: 3;
@@ -296,9 +301,9 @@ svg { width: 1.25rem; height: 1.25rem; display: block; flex: none; }
   margin-bottom: 0.18rem;
 }
 .meter {
-  height: 0.72rem;
-  border: 1px solid #d4a9928c;
-  background: #1e1718;
+  height: 0.86rem;
+  border: 1px solid #e4c2a8;
+  background: #120e0f;
   padding: 2px;
   position: relative;
   overflow: hidden;
@@ -318,7 +323,7 @@ svg { width: 1.25rem; height: 1.25rem; display: block; flex: none; }
 .fighter-bottom { margin-top: 0.38rem; display: flex; gap: 0.5rem; align-items: center; }
 .fighter.enemy .fighter-bottom { flex-direction: row-reverse; }
 .stamina { height: 0.52rem; width: 75%; --meter-color: var(--stamina); }
-.stamina.low { --meter-color: #de795f; }
+.stamina.low { --meter-color: #ff6d55; box-shadow: inset 0 0 0 1px #ffb19966; }
 .pips { display: flex; gap: 0.34rem; }
 .pips i { width: 0.41rem; height: 0.41rem; border: 1px solid #c19b7c; transform: rotate(45deg); }
 .pips i.won { background: var(--copper); border-color: var(--copper); }
@@ -418,7 +423,9 @@ kbd {
   text-align: center;
   text-shadow: 0 2px 3px #1a1112, 0 2px 15px #211315;
 }
-.reaction strong { display: block; font: 800 clamp(1.3rem, 3vw, 2.35rem)/1.15 var(--display); color: #ffdcac; }
+.reaction strong { display: block; font: 800 clamp(1.45rem, 3.4vw, 2.6rem)/1.1 var(--display); color: #fff1d4; letter-spacing: 0.03em; }
+.reaction:not([hidden]) strong { animation: pg-call 180ms ease-out; }
+@keyframes pg-call { from { transform: scale(1.08); } to { transform: none; } }
 .reaction span { letter-spacing: 0.09em; margin-top: 0.28rem; }
 .reaction[data-tone="danger"] strong { color: #ff9e8a; }
 .practice-help {

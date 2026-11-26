@@ -11,7 +11,7 @@ const particleVertex = `
     vColor = color;
     vec4 view = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * view;
-    gl_PointSize = clamp(size * 190.0 / -view.z, 1.0, 10.0);
+    gl_PointSize = clamp(size * 220.0 / -view.z, 1.4, 16.0);
   }
 `;
 const particleFragment = `
@@ -44,21 +44,21 @@ export class Sparks {
   }
 
   emit(event, x, z, low, reduced) {
-    const counts = { hit: 17, riposte: 30, parry: 45, block: 20, break: 35, clash: 35, dodge: 13, evade: 8 };
+    const counts = { hit: 26, riposte: 38, parry: 52, block: 22, break: 44, clash: 40, dodge: 13, evade: 8 };
     let count = counts[event] || 0;
     if (low) count = Math.floor(count * 0.55);
     if (reduced) count = Math.floor(count * 0.28);
     const dust = event === 'dodge' || event === 'evade';
     const bright = event === 'parry' || event === 'clash';
-    const tint = color(dust ? '#d4a179' : bright ? '#ffe6b4' : event === 'hit' ? '#e78561' : '#ffac60');
+    const tint = color(dust ? '#c9a07a' : event === 'parry' ? '#fff1c4' : event === 'break' ? '#ff6d45' : event === 'riposte' ? '#ffd7a4' : bright ? '#ffe6b4' : event === 'hit' ? '#ff8a55' : '#ffb56a');
     const pos = this.geometry.attributes.position;
     const colors = this.geometry.attributes.color;
     const size = this.geometry.attributes.size;
     for (let i = 0; i < count; i++) {
       const index = this.cursor++ % this.particles.length;
       const particle = this.particles[index];
-      const angle = Math.random() * Math.PI * 2;
-      const velocity = (dust ? 0.58 : 1.9) + Math.random() * (dust ? 1.2 : 6.5);
+      const angle = dust ? Math.random() * Math.PI * 2 : (Math.random() - 0.5) * 1.7 + (event === 'parry' ? Math.random() * Math.PI * 2 : 0);
+      const velocity = (dust ? 0.58 : event === 'parry' || event === 'break' ? 3.4 : 2.2) + Math.random() * (dust ? 1.2 : 5.2);
       const origin = Math.random() * (dust ? 0.48 : 0.12);
       particle.x = x + Math.cos(angle) * origin;
       particle.y = dust ? 0.045 : 1.03 + Math.random() * 0.47;
@@ -72,7 +72,7 @@ export class Sparks {
       particle.fade = dust ? 0.42 : 0.89;
       pos.setXYZ(index, particle.x, particle.y, particle.z);
       colors.setXYZ(index, tint.r, tint.g, tint.b);
-      size.setX(index, dust ? 0.11 : 0.041 + Math.random() * 0.13);
+      size.setX(index, dust ? 0.1 : (bright ? 0.07 : 0.05) + Math.random() * 0.11);
     }
     for (const attribute of [pos, colors, size]) attribute.needsUpdate = true;
     if (count) this.points.visible = true;
@@ -143,7 +143,7 @@ export class BladeTrail {
 
   update(dt, rig, active) {
     for (const sample of this.samples) sample.age += dt;
-    while (this.samples[0]?.age > 0.115) this.samples.shift();
+    while (this.samples[0]?.age > 0.16) this.samples.shift();
     if (active) {
       const sample = this.samples.length === this.limit ? this.samples.shift() : { a: new THREE.Vector3(), b: new THREE.Vector3(), age: 0 };
       rig.bladeBase.getWorldPosition(sample.a);
@@ -156,11 +156,11 @@ export class BladeTrail {
     const { position, fade } = this.geometry.attributes;
     for (let i = 0; i < this.samples.length; i++) {
       const { a, b, age } = this.samples[i];
-      const opacity = clamp(1 - age / 0.115, 0, 1) * (0.15 + 0.85 * i / this.limit);
+      const opacity = clamp(1 - age / 0.16, 0, 1) * (0.22 + 0.78 * i / this.limit);
       position.setXYZ(2 * i, a.x, a.y, a.z);
       position.setXYZ(2 * i + 1, b.x, b.y, b.z);
-      fade.setX(2 * i, opacity * 0.03);
-      fade.setX(2 * i + 1, opacity * 0.61);
+      fade.setX(2 * i, opacity * 0.08);
+      fade.setX(2 * i + 1, opacity * 0.78);
     }
     position.needsUpdate = fade.needsUpdate = true;
     this.geometry.setDrawRange(0, (this.samples.length - 1) * 6);
@@ -178,22 +178,25 @@ export class ImpactRing {
     this.mesh.rotation.x = -Math.PI / 2;
     this.mesh.visible = false;
     this.age = 1;
+    this.spread = 1.6;
     scene.add(this.mesh);
   }
 
   emit(x, z, event) {
-    this.mesh.position.set(x, 0.039, z);
-    this.material.color.set(event === 'parry' ? '#ffe7b7' : '#ff986a');
+    const ink = { parry: '#fff3cf', riposte: '#ffd7a8', break: '#ff7048', hit: '#ffb089', clash: '#ffe1b8' };
+    this.mesh.position.set(x, 0.045, z);
+    this.material.color.set(ink[event] || '#ffb089');
+    this.spread = event === 'parry' ? 1.15 : event === 'break' ? 2.45 : 1.85;
     this.age = 0;
   }
 
   update(dt) {
     this.age += dt;
-    const t = this.age / 0.38;
+    const t = this.age / (this.spread > 2 ? 0.46 : 0.32);
     this.mesh.visible = t < 1;
     if (this.mesh.visible) {
-      this.material.opacity = 0.50 * (1 - t) ** 2;
-      this.mesh.scale.setScalar(0.38 + 2.16 * (1 - (1 - t) ** 2));
+      this.material.opacity = 0.72 * (1 - t) ** 1.6;
+      this.mesh.scale.setScalar(0.22 + this.spread * (1 - (1 - t) ** 2));
     }
   }
 }

@@ -21,7 +21,9 @@
         <div class="harbor-info">
           <p class="harbor-version">1인용 3D 오픈월드 · v0.2.0</p>
           <h1 id="harbor-title">Project Harbor</h1>
-          <p>시장 골목, 운하, 컨테이너 부두를 가로지르며 항구 도시 포트 캘러웨이를 탐험하세요. 차량을 골라 여섯 가지 의뢰에 도전할 수 있습니다.</p>
+          <p>브라우저에서 캘러웨이와 주변 여섯 지역을 자유롭게 탐험하세요. 기존 데스크톱 에디션도 다운로드할 수 있습니다.</p>
+          <button type="button" id="harbor-world-start" class="harbor-world-start">브라우저에서 자유 탐험 시작</button>
+          <p id="harbor-world-error" role="alert"></p>
           <ul class="harbor-downloads" aria-label="운영체제별 다운로드">
             <li>
               <a href="https://media.githubusercontent.com/media/sangsangbaksa-dev/GTA-/227aadbd0b60bc71c56ae2ffde8646234424049c/project-harbor-windows-x86_64.zip">
@@ -43,6 +45,19 @@
           </nav>
         </div>
       </section>
+      <section id="harbor-world-stage" class="harbor-world-stage" hidden aria-label="자유 탐험">
+        <div class="harbor-world-hud">
+          <div id="harbor-world-status" aria-live="off">캘러웨이 도심</div>
+          <canvas id="harbor-world-mini" width="180" height="180" aria-label="미니맵"></canvas>
+          <button type="button" id="harbor-world-map-button">전체지도 (M)</button>
+        </div>
+        <div class="harbor-world-controls">WASD 이동 · Shift 달리기 · 마우스 드래그 / ← → 회전 · M 지도</div>
+        <div id="harbor-world-overlay" class="harbor-world-overlay" hidden>
+          <header><strong>PORT CALLOWAY / 전체지도</strong><button type="button" id="harbor-world-close-map">닫기 (M / Esc)</button></header>
+          <canvas id="harbor-world-atlas" width="900" height="600" aria-label="6개 지역과 전체 도로 지도"></canvas>
+        </div>
+      </section>
     </main>
+    <script type="module" src="./world/ui.ts"></script>
   </body>
 </html>

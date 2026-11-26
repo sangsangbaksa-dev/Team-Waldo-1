@@ -1,19 +1,25 @@
 import * as T from 'three';
-import { terrainHeight } from './domain';
+import { CharacterGfx, type Rig } from '../characters/infrastructure';
+import { modelYaw, poseAt, wardrobeFor, type Clip, type Locale } from '../characters/domain';
+import { districtAt, terrainHeight } from './domain';
 import type { GroundItem, Ped, ShotLine } from './street';
 
+function saltOf(id: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i += 1) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+  return hash >>> 0;
+}
+
 export class StreetActors {
-  private readonly peds = new Map<string, T.Group>();
+  private readonly rigs = new Map<string, Rig>();
+  private readonly phase = new Map<string, number>();
   private readonly items = new Map<string, T.Mesh>();
   private readonly lines: T.Line[] = [];
-  private readonly body = new T.MeshLambertMaterial({ color: 0xc4b8a4 });
-  private readonly police = new T.MeshLambertMaterial({ color: 0x243c66 });
-  private readonly down = new T.MeshLambertMaterial({ color: 0x6d645c });
+  private readonly gfx = new CharacterGfx();
   private readonly pistol = new T.MeshLambertMaterial({ color: 0xd6c27a });
   private readonly smg = new T.MeshLambertMaterial({ color: 0x8aa0b0 });
   private readonly med = new T.MeshLambertMaterial({ color: 0xd4554a });
   private readonly tracer = new T.LineBasicMaterial({ color: 0xffe2a4 });
-  private readonly capsule = new T.CapsuleGeometry(0.32, 0.7, 3, 6);
   private readonly gun = new T.BoxGeometry(0.28, 0.16, 0.7);
   private readonly kit = new T.BoxGeometry(0.35, 0.22, 0.35);
 
@@ -23,25 +29,30 @@ export class StreetActors {
     const live = new Set<string>();
     for (const ped of peds) {
       live.add(ped.id);
-      let group = this.peds.get(ped.id);
-      if (!group) {
-        group = new T.Group();
-        const mesh = new T.Mesh(this.capsule, this.body);
-        mesh.position.y = 0.85;
-        mesh.name = 'body';
-        group.add(mesh);
-        this.scene.add(group);
-        this.peds.set(ped.id, group);
+      let rig = this.rigs.get(ped.id);
+      if (!rig) {
+        const locale = districtAt(ped.x, ped.z).id as Locale;
+        const role = ped.kind === 'police' ? 'officer' : 'local';
+        rig = this.gfx.create(wardrobeFor(locale, saltOf(ped.id), role));
+        this.scene.add(rig.root);
+        this.rigs.set(ped.id, rig);
+        this.phase.set(ped.id, (saltOf(ped.id) % 100) / 100);
       }
-      group.position.set(ped.x, terrainHeight(ped.x, ped.z), ped.z);
-      group.rotation.set(ped.health <= 0 ? Math.PI / 2 : 0, ped.health <= 0 ? 0 : -ped.yaw, 0);
-      const mesh = group.children[0];
-      if (mesh instanceof T.Mesh) mesh.material = ped.health <= 0 ? this.down : ped.kind === 'police' ? this.police : this.body;
+      const down = ped.health <= 0;
+      const clip: Clip = down ? 'idle' : ped.state === 'flee' || ped.state === 'chase' ? 'run' : 'walk';
+      const step = clip === 'run' ? 0.04 : clip === 'walk' ? 0.02 : 0.008;
+      const next = ((this.phase.get(ped.id) ?? 0) + step) % 1;
+      this.phase.set(ped.id, next);
+      rig.root.position.set(ped.x, terrainHeight(ped.x, ped.z) + (down ? 0.35 : 0), ped.z);
+      rig.root.rotation.set(down ? Math.PI / 2 : 0, down ? 0 : modelYaw(ped.yaw, 'harbor'), 0);
+      this.gfx.apply(rig, poseAt(clip, down ? 0 : next, ped.kind === 'police' ? 0.7 : 0));
     }
-    for (const [id, group] of this.peds) {
+    for (const [id, rig] of this.rigs) {
       if (live.has(id)) continue;
-      this.scene.remove(group);
-      this.peds.delete(id);
+      rig.root.removeFromParent();
+      this.gfx.drop(rig);
+      this.rigs.delete(id);
+      this.phase.delete(id);
     }
     const shown = new Set<string>();
     for (const item of items) {
@@ -78,18 +89,19 @@ export class StreetActors {
   }
 
   dispose() {
-    for (const group of this.peds.values()) this.scene.remove(group);
+    for (const rig of this.rigs.values()) rig.root.removeFromParent();
+    this.rigs.clear();
+    this.phase.clear();
+    this.gfx.dispose();
     for (const mesh of this.items.values()) this.scene.remove(mesh);
     for (const line of this.lines) {
       this.scene.remove(line);
       line.geometry.dispose();
     }
-    this.peds.clear();
     this.items.clear();
     this.lines.length = 0;
-    this.capsule.dispose();
     this.gun.dispose();
     this.kit.dispose();
-    for (const material of [this.body, this.police, this.down, this.pistol, this.smg, this.med, this.tracer]) material.dispose();
+    for (const material of [this.pistol, this.smg, this.med, this.tracer]) material.dispose();
   }
 }

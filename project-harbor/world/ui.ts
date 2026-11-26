@@ -5,6 +5,8 @@ import { StreetActors } from './actors';
 import { CityGarage } from './garage';
 import { ThreeChunks } from './infrastructure';
 import { WEAPONS, starCount, starLabel, type GroundItem, type Ped } from './street';
+import { CharacterGfx } from '../characters/infrastructure';
+import { modelYaw, playerLook, poseAt, type Clip } from '../characters/domain';
 
 function required<E extends HTMLElement>(id: string): E {
   const el = document.getElementById(id);
@@ -116,18 +118,15 @@ function start(): () => void {
   const actors = new StreetActors(scene);
   const garage = new CityGarage(scene);
   let orbit = 0;
-  const avatar = new T.Group();
-  const body = new T.Mesh(new T.CapsuleGeometry(0.38, 0.9, 4, 8), new T.MeshStandardMaterial({ color: 0x344b58 }));
-  body.position.y = 1;
-  avatar.add(body);
-  const head = new T.Mesh(new T.SphereGeometry(0.27, 10, 8), new T.MeshStandardMaterial({ color: 0xc59c78 }));
-  head.position.y = 1.9;
-  avatar.add(head);
+  const people = new CharacterGfx();
+  const playerRig = people.create(playerLook());
   const held = new T.Mesh(new T.BoxGeometry(0.12, 0.12, 0.55), new T.MeshStandardMaterial({ color: 0xd6c27a }));
-  held.position.set(0.32, 1.15, -0.28);
+  held.position.set(0.02, -0.06, 0.04);
+  held.rotation.x = Math.PI / 2;
   held.visible = false;
-  avatar.add(held);
-  scene.add(avatar);
+  playerRig.bones.rHand.add(held);
+  scene.add(playerRig.root);
+  let gait = 0;
   const resize = () => {
     const w = Math.max(1, host.clientWidth), h = Math.max(1, host.clientHeight);
     renderer.setSize(w, h, false);
@@ -309,10 +308,15 @@ function start(): () => void {
     actors.sync(roam.peds, roam.items, roam.shots);
     garage.sync(roam.rides);
     held.visible = roam.vitals.weapon !== null && !roam.vehicle;
-    avatar.visible = !roam.vehicle;
+    playerRig.root.visible = !roam.vehicle;
     crosshair.hidden = mapOpen || roam.vehicle !== null;
-    avatar.position.set(roam.x, roam.world.y, roam.z);
-    avatar.rotation.y = -roam.yaw;
+    const moving = !roam.vehicle && (has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown') !== 0 || keys.has('KeyA') || keys.has('KeyD'));
+    const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight') || actions.has('run');
+    const clip: Clip = moving ? (sprint ? 'run' : 'walk') : 'idle';
+    gait = moving ? (gait + dt / (sprint ? 0.44 : 0.78)) % 1 : 0;
+    playerRig.root.position.set(roam.x, roam.world.y, roam.z);
+    playerRig.root.rotation.y = modelYaw(roam.yaw, 'harbor');
+    if (!roam.vehicle) people.apply(playerRig, poseAt(clip, gait));
     const facing = roam.yaw + (roam.vehicle ? orbit : 0);
     const aimX = Math.sin(facing);
     const aimZ = -Math.cos(facing);
@@ -343,11 +347,13 @@ function start(): () => void {
     abort.abort();
     observer.disconnect();
     actors.dispose();
+    people.dispose();
     garage.dispose();
     const geometries = new Set<T.BufferGeometry>();
     const materials = new Set<T.Material>();
     scene.traverse(obj => {
       if (!(obj instanceof T.Mesh) && !(obj instanceof T.Line)) return;
+      if (obj.userData.keep) return;
       const geometry = obj.geometry;
       if (geometry) geometries.add(geometry);
       const list = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -364,60 +370,61 @@ function start(): () => void {
   };
 }
 let stop: (() => void) | null = null;
+const startButton = document.getElementById('harbor-world-start') as HTMLButtonElement | null;
+const stageEl = document.getElementById('harbor-world-stage');
 function closeWorld() {
   stop?.();
   stop = null;
-  const stage = required<HTMLElement>('harbor-world-stage');
-  stage.hidden = true;
+  if (stageEl) stageEl.hidden = true;
   document.body.classList.remove('harbor-driving');
-  const button = required<HTMLButtonElement>('harbor-world-start');
-  button.disabled = false;
-  button.textContent = '브라우저에서 바로 플레이';
-  button.removeAttribute('aria-busy');
+  if (startButton) {
+    startButton.disabled = false;
+    startButton.textContent = '브라우저에서 바로 플레이';
+    startButton.removeAttribute('aria-busy');
+  }
   const loading = document.getElementById('harbor-world-loading');
   if (loading) loading.hidden = true;
 }
-required('harbor-world-stage').addEventListener('harbor-world-exit', () => {
+stageEl?.addEventListener('harbor-world-exit', () => {
   if (document.documentElement.dataset.harbor === 'desktop') {
     window.close();
     return;
   }
   closeWorld();
-  required<HTMLButtonElement>('harbor-world-start').focus();
+  startButton?.focus();
 });
 window.addEventListener('harbor-mode', event => {
   if ((event as CustomEvent<string>).detail === 'world' || !stop) return;
   closeWorld();
 });
-required<HTMLButtonElement>('harbor-world-start').addEventListener('click', () => {
-  const button = required<HTMLButtonElement>('harbor-world-start');
-  const stage = required<HTMLElement>('harbor-world-stage');
-  if (button.disabled) return;
+startButton?.addEventListener('click', () => {
+  if (!stageEl || !startButton || startButton.disabled) return;
   window.dispatchEvent(new CustomEvent('harbor-mode', { detail: 'world' }));
-  button.disabled = true;
-  button.textContent = '월드를 불러오는 중…';
-  button.setAttribute('aria-busy', 'true');
-  stage.hidden = false;
-  const loading = required<HTMLElement>('harbor-world-loading');
-  loading.hidden = false;
-  required('harbor-world-error').textContent = '';
+  startButton.disabled = true;
+  startButton.textContent = '월드를 불러오는 중…';
+  startButton.setAttribute('aria-busy', 'true');
+  stageEl.hidden = false;
+  const loading = document.getElementById('harbor-world-loading');
+  if (loading) loading.hidden = false;
+  const error = document.getElementById('harbor-world-error');
+  if (error) error.textContent = '';
   requestAnimationFrame(() => requestAnimationFrame(() => {
     try {
       stop = start();
       document.body.classList.add('harbor-driving');
-      loading.hidden = true;
-      button.textContent = '플레이 중';
-    } catch (error) {
-      stage.hidden = true;
-      loading.hidden = true;
-      button.disabled = false;
-      button.textContent = '브라우저에서 바로 플레이';
-      button.removeAttribute('aria-busy');
-      required('harbor-world-error').textContent = '3D 화면을 시작하지 못했습니다. WebGL 지원 브라우저인지 확인하세요.';
-      console.error(error);
+      if (loading) loading.hidden = true;
+      startButton.textContent = '플레이 중';
+    } catch (caught) {
+      stageEl.hidden = true;
+      if (loading) loading.hidden = true;
+      startButton.disabled = false;
+      startButton.textContent = '브라우저에서 바로 플레이';
+      startButton.removeAttribute('aria-busy');
+      if (error) error.textContent = '3D 화면을 시작하지 못했습니다. WebGL 지원 브라우저인지 확인하세요.';
+      console.error(caught);
     }
   }));
 });
 if (document.documentElement.dataset.harbor === 'desktop') {
-  queueMicrotask(() => required<HTMLButtonElement>('harbor-world-start').click());
+  queueMicrotask(() => startButton?.click());
 }

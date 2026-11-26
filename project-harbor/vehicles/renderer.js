@@ -55,8 +55,9 @@ function car(v){
   g.userData={paint,panels,tires,occupant,smoke,doors};return g;
 }
 export function createRenderer(host,world){
-  const renderer=new T.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.outputColorSpace=T.SRGBColorSpace;
+  const coarse=matchMedia('(pointer:coarse)').matches;
+  const renderer=new T.WebGLRenderer({antialias:!coarse,powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,coarse?1:1.25));renderer.outputColorSpace=T.SRGBColorSpace;
   renderer.domElement.setAttribute('aria-label','Project Harbor 3D 게임 화면');host.append(renderer.domElement);
   const scene=new T.Scene();scene.background=new T.Color(0xa9bfca);scene.fog=new T.Fog(0xa9bfca,90,280);
   const camera=new T.PerspectiveCamera(65,1,.15,420);
@@ -72,7 +73,7 @@ export function createRenderer(host,world){
   const signals=[];
   for(let x=-180;x<=180;x+=GRID)for(let z=-180;z<=180;z+=GRID){
     for(const axis of ['x','z']){
-      const sx=x+(axis==='x'?-8:8),sz=z-8;
+      const sx=x+(axis==='x'?-8:8),sz=z+(axis==='z'?8:-8);
       scene.add(box(.17,4,.17,0x53595a,sx,2,sz));
       const lamp=box(.5,.76,.48,0x333333,sx,4.05,sz);
       const m=new T.MeshBasicMaterial({color:0xff4034});lamp.material=m;scene.add(lamp);
@@ -88,9 +89,9 @@ export function createRenderer(host,world){
     }else{
       const color=b.kind==='도시'?0x8e9697:b.kind==='부촌'?0xe0d7c4:b.kind==='군사기지'?0x686f55:0x9d8575;
       scene.add(box(b.w,b.h,b.d,color,b.x,b.h/2,b.z),box(b.w+.3,.24,b.d+.3,0x555859,b.x,b.h+.12,b.z));
-      if(b.kind==='도시')for(let y=2;y<b.h-1;y+=3)for(let x=-8;x<=8;x+=5){
-        scene.add(box(2.7,1.5,.09,0x354b56,b.x+x,y,b.z+b.d/2+.05));
-        scene.add(box(2.7,1.5,.09,0x354b56,b.x+x,y,b.z-b.d/2-.05));
+      if(b.kind==='도시')for(let y=2;y<b.h-1;y+=4){
+        scene.add(box(b.w*.72,1.15,.08,0x354b56,b.x,y,b.z+b.d/2+.05));
+        scene.add(box(b.w*.72,1.15,.08,0x354b56,b.x,y,b.z-b.d/2-.05));
       }
       else scene.add(box(2.3,2.6,.12,0x49483e,b.x,1.3,b.z+b.d/2+.05));
     }
@@ -129,7 +130,7 @@ export function createRenderer(host,world){
       for(const d of u.doors)d.hinge.rotation.y=-d.sign*open*.85;
       u.occupant.visible=v.type==='bike'&&(v.driver||world.player.vehicle===v);
       u.smoke.visible=v.health<32;u.smoke.rotation.y=world.time*.6;
-      for(const tire of u.tires)tire.rotation.y+=Math.hypot(v.vx,v.vz)*dt*2.3;
+      for(const tire of u.tires)tire.rotation.x+=Math.hypot(v.vx,v.vz)*dt*2.3;
     }
     for(const s of signals)s.m.color.setHex(signalGreen(s.axis,s.x,s.z,world.time)?0x39e57a:0xf04942);
     const p=world.player;player.visible=!p.vehicle;player.position.set(p.x,.04,p.z);player.rotation.y=p.yaw;animatePerson(player,world.time,moving);
@@ -142,7 +143,7 @@ export function createRenderer(host,world){
     goal.set(p.x-Math.sin(a)*distance,height,p.z-Math.cos(a)*distance);
     target.set(p.x+Math.sin(a)*(mode===2?14:3),1.15,p.z+Math.cos(a)*(mode===2?14:3));
     for(const b of world.obstacles){
-      if(b.kind==='tree'||b.kind==='rock')continue;
+      if(b.kind==='tree'||b.kind==='rock'||Math.abs(b.x-p.x)>48||Math.abs(b.z-p.z)>48)continue;
       for(let i=1;i<=8;i++){
         const f=i/8,x=target.x+(goal.x-target.x)*f,z=target.z+(goal.z-target.z)*f,y=target.y+(goal.y-target.y)*f;
         if(y<b.h+.3&&Math.abs(x-b.x)<b.w/2+.3&&Math.abs(z-b.z)<b.d/2+.3){goal.lerp(target,1-(i-1)/8);goal.y=Math.max(goal.y,2);break;}
@@ -152,6 +153,20 @@ export function createRenderer(host,world){
     else{const blend=1-Math.exp(-dt*7);camera.position.lerp(goal,blend);look.lerp(target,blend);}
     camera.lookAt(look);renderer.render(scene,camera);
   }
-  function dispose(){observer.disconnect();renderer.dispose();scene.traverse(obj=>{if(obj.isMesh){obj.geometry.dispose();obj.material.dispose();}});materialCache.clear();geometryCache.clear();renderer.domElement.remove();}
+  function dispose(){
+    observer.disconnect();
+    const geometries=new Set(),materials=new Set();
+    scene.traverse(obj=>{
+      if(!obj.isMesh)return;
+      const gs=Array.isArray(obj.geometry)?obj.geometry:[obj.geometry];
+      const ms=Array.isArray(obj.material)?obj.material:[obj.material];
+      for(const geometry of gs)if(geometry)geometries.add(geometry);
+      for(const material of ms)if(material)materials.add(material);
+    });
+    for(const geometry of geometries)geometry.dispose();
+    for(const material of materials)material.dispose();
+    materialCache.clear();geometryCache.clear();
+    renderer.dispose();renderer.domElement.remove();
+  }
   return {draw,dispose};
 }

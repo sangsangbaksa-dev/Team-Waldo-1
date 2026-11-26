@@ -18,12 +18,12 @@ export function mountHarbor(root){
   window.addEventListener('keyup',e=>keys.delete(e.code),{signal});
   window.addEventListener('blur',()=>{keys.clear();drag=null;},{signal});
   document.addEventListener('visibilitychange',()=>{keys.clear();last=performance.now();acc=0;},{signal});
-  view.addEventListener('pointerdown',e=>{drag={id:e.pointerId,x:e.clientX};view.setPointerCapture(e.pointerId);},{signal});
+  view.addEventListener('pointerdown',e=>{drag={id:e.pointerId,x:e.clientX};try{view.setPointerCapture(e.pointerId);}catch(error){void error;}},{signal});
   view.addEventListener('pointermove',e=>{if(drag?.id===e.pointerId){orbit-= (e.clientX-drag.x)*.008;drag.x=e.clientX;}},{signal});
   for(const event of ['pointerup','pointercancel','lostpointercapture'])view.addEventListener(event,()=>{drag=null;},{signal});
   for(const button of root.querySelectorAll('[data-key]')){
     const key=button.dataset.key;
-    button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);keys.add(key);},{signal});
+    button.addEventListener('pointerdown',e=>{e.preventDefault();keys.add(key);try{button.setPointerCapture(e.pointerId);}catch(error){void error;}},{signal});
     for(const event of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(event,()=>keys.delete(key),{signal});
   }
   root.querySelector('[data-action=interact]').addEventListener('click',()=>interact(world),{signal});
@@ -56,17 +56,29 @@ export function mountHarbor(root){
     const input=getInput();
     while(acc>=STEP){update(world,input,STEP);acc-=STEP;}
     if(world.player.vehicle&&drag===null)orbit*=Math.exp(-dt*.8);
-    renderer.draw(dt,mode,orbit,!!(input.moveX||input.moveZ));
+    try{renderer.draw(dt,mode,orbit,!!(input.moveX||input.moveZ));}
+    catch(error){console.error(error);exit();return;}
     hudTime+=dt;if(hudTime>.1){drawHud();hudTime=0;}
     frame=requestAnimationFrame(tick);
   }
   drawHud();frame=requestAnimationFrame(tick);
-  return ()=>{closed=true;cancelAnimationFrame(frame);abort.abort();keys.clear();renderer.dispose();root.replaceChildren();};
+  const canvas=view.querySelector('canvas');
+  canvas?.addEventListener('webglcontextlost',event=>{
+    event.preventDefault();closed=true;cancelAnimationFrame(frame);
+    root.innerHTML='<div class="drive-error">그래픽 연결이 끊어졌습니다. <button type="button">돌아가기</button></div>';
+    root.querySelector('button').onclick=()=>root.dispatchEvent(new Event('harbor-exit'));
+  },{signal});
+  return ()=>{closed=true;cancelAnimationFrame(frame);abort.abort();keys.clear();try{renderer.dispose();}catch(error){console.error(error);}root.replaceChildren();};
 }
 const root=document.getElementById('harbor-drive'),start=document.getElementById('harbor-start');
 let stop=null;
+window.addEventListener('harbor-mode',event=>{
+  if(event.detail==='drive'||!stop||!root)return;
+  stop();stop=null;root.hidden=true;document.body.classList.remove('harbor-driving');
+});
 start?.addEventListener('click',()=>{
   if(stop||!root)return;
+  window.dispatchEvent(new CustomEvent('harbor-mode',{detail:'drive'}));
   root.hidden=false;document.body.classList.add('harbor-driving');stop=mountHarbor(root);root.focus();
 });
 root?.addEventListener('harbor-exit',()=>{

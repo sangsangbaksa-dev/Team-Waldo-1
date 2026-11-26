@@ -7,6 +7,9 @@ import { ThreeChunks } from './infrastructure';
 import { WEAPONS, starCount, starLabel, type GroundItem, type Ped } from './street';
 import { CharacterGfx } from '../characters/infrastructure';
 import { modelYaw, playerLook, poseAt, type Clip } from '../characters/domain';
+import { clampSettings, createMixer, DEFAULT_AUDIO, renderMix, type AudioSettings } from './civic/audio';
+import { climateAt } from './civic/regions';
+import { HarborAudio } from './civic/webaudio';
 
 function required<E extends HTMLElement>(id: string): E {
   const el = document.getElementById(id);
@@ -38,8 +41,8 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
   ctx.fillStyle = '#7eb6ff';
   for (const ride of roam.rides) ctx.fillRect(ox + ride.x * scale - 2, oz + ride.z * scale - 1.5, 4, 3);
   for (const ped of peds) {
-    if (ped.health <= 0) continue;
-    ctx.fillStyle = ped.kind === 'police' ? '#ff5d4e' : '#101816';
+    if (ped.health <= 0 || ped.hidden) continue;
+    ctx.fillStyle = ped.kind === 'police' ? '#ff5d4e' : ped.mood === 'panic' ? '#e7c3ad' : '#101816';
     ctx.beginPath();
     ctx.arc(ox + ped.x * scale, oz + ped.z * scale, ped.kind === 'police' ? 4 : 2.4, 0, Math.PI * 2);
     ctx.fill();
@@ -72,17 +75,54 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
   ctx.stroke();
   ctx.restore();
 }
-function tone(context: AudioContext, frequency: number, seconds: number) {
-  const now = context.currentTime;
-  const osc = context.createOscillator();
-  const amp = context.createGain();
-  osc.type = 'square';
-  osc.frequency.value = frequency;
-  amp.gain.setValueAtTime(0.035, now);
-  amp.gain.exponentialRampToValueAtTime(0.0001, now + seconds);
-  osc.connect(amp).connect(context.destination);
-  osc.start(now);
-  osc.stop(now + seconds);
+const AUDIO_KEY = 'harbor-audio-v1';
+function loadAudio(): AudioSettings {
+  try {
+    const raw = localStorage.getItem(AUDIO_KEY);
+    return clampSettings(raw ? JSON.parse(raw) as Partial<AudioSettings> : DEFAULT_AUDIO);
+  } catch {
+    return { ...DEFAULT_AUDIO };
+  }
+}
+function mountAudio(host: HTMLElement, settings: AudioSettings) {
+  const panel = document.createElement('fieldset');
+  panel.className = 'harbor-audio';
+  const legend = document.createElement('legend');
+  legend.textContent = '소리';
+  const note = document.createElement('p');
+  note.textContent = '모든 소리는 재생 중에 합성됩니다. 외부 녹음은 쓰지 않으며 CC0입니다.';
+  panel.append(legend, note);
+  const rows: [Exclude<keyof AudioSettings, 'muted'>, string][] = [
+    ['master', '전체'], ['ambient', '환경'], ['vehicles', '차량'], ['weapons', '무기'],
+    ['voices', '목소리'], ['footsteps', '발소리'], ['ui', '조작'],
+  ];
+  for (const [key, label] of rows) {
+    const wrap = document.createElement('label');
+    wrap.append(label);
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '1';
+    slider.step = '0.05';
+    slider.value = String(settings[key]);
+    slider.addEventListener('input', () => {
+      settings[key] = Number(slider.value);
+      localStorage.setItem(AUDIO_KEY, JSON.stringify(settings));
+    });
+    wrap.append(slider);
+    panel.append(wrap);
+  }
+  const mute = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = settings.muted;
+  box.addEventListener('change', () => {
+    settings.muted = box.checked;
+    localStorage.setItem(AUDIO_KEY, JSON.stringify(settings));
+  });
+  mute.append('음소거', box);
+  panel.append(mute);
+  host.append(panel);
 }
 function start(): () => void {
   const host = required<HTMLElement>('harbor-world-stage');
@@ -114,7 +154,8 @@ function start(): () => void {
   const sun = new T.DirectionalLight(0xffe2bd, 2.2);
   scene.add(sky, sun);
   scene.fog = new T.FogExp2(0x9daebc, 0.004);
-  const roam = new FreeRoam(new ThreeChunks(scene));
+  const chunks = new ThreeChunks(scene);
+  const roam = new FreeRoam(chunks);
   const actors = new StreetActors(scene);
   const garage = new CityGarage(scene);
   let orbit = 0;
@@ -139,7 +180,11 @@ function start(): () => void {
   const abort = new AbortController();
   const signal = abort.signal;
   let raf = 0;
-  let audio: AudioContext | null = null;
+  const audioSettings = loadAudio();
+  mountAudio(host, audioSettings);
+  let speaker: HarborAudio | null = null;
+  try { speaker = new HarborAudio(new AudioContext()); } catch { speaker = null; }
+  const mixer = createMixer(districtAt(roam.x, roam.z).id);
   let mapOpen = false, drag = false, pressed = false, lastX = 0, pressX = 0, pressY = 0;
   let previous = performance.now(), hudAt = 0;
   const toggleMap = () => {
@@ -238,10 +283,15 @@ function start(): () => void {
     button.addEventListener('pointercancel', clear, { signal });
     button.addEventListener('lostpointercapture', clear, { signal });
   }
-  const target = new T.Vector3(), desired = new T.Vector3(), day = new T.Color(0xa6c8df), night = new T.Color(0x142039), color = new T.Color();
+  const target = new T.Vector3(), desired = new T.Vector3(), color = new T.Color();
   const has = (a: string, b: string) => Number(keys.has(a) || keys.has(b));
   camera.position.set(roam.x, roam.world.y + 6, roam.z + 10);
-  try { audio = new AudioContext(); } catch (error) { void error; }
+  const wake = () => { void speaker?.resume(); };
+  renderer.domElement.addEventListener('pointerdown', wake, { signal });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) void speaker?.suspend();
+    else void speaker?.resume();
+  }, { signal });
   function input(): RoamInput {
     const driving = roam.vehicle !== null;
     const forward = has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown');
@@ -299,10 +349,14 @@ function start(): () => void {
       command.look = look;
       roam.tick(command, dt);
       pulses.clear();
-      const heard = roam.shots.some(shot => Math.hypot(shot.x - roam.x, shot.z - roam.z) < 2 || Math.hypot(shot.tx - roam.x, shot.tz - roam.z) < 2);
-      if (heard) {
-        if (audio && audio.state === 'running') tone(audio, 210, 0.045);
-        else void audio?.resume()?.then(() => { if (audio) tone(audio, 210, 0.045); }).catch(error => { void error; });
+      if (speaker) {
+        speaker.apply(renderMix(mixer, {
+          ears: roam.ears,
+          listen: { x: roam.x, z: roam.z, yaw: roam.yaw, hours: roam.world.hours },
+          district: districtAt(roam.x, roam.z).id,
+          siren: roam.siren,
+          engines: roam.engines(),
+        }, audioSettings, dt), dt);
       }
     } else roam.world.stream();
     actors.sync(roam.peds, roam.items, roam.shots);
@@ -326,14 +380,21 @@ function start(): () => void {
     desired.set(roam.x - aimX * distance, roam.world.y + height, roam.z - aimZ * distance);
     camera.position.lerp(desired, 1 - Math.exp(-dt * 13));
     camera.lookAt(target);
+    const climate = climateAt(roam.x, roam.z, roam.world.hours);
     const angle = (roam.world.hours - 6) * Math.PI / 12;
     const brightness = Math.max(0.08, Math.min(1, Math.sin(angle) * 1.5 + 0.15));
-    sky.intensity = 0.35 + brightness * 1.65;
-    sun.intensity = 0.08 + brightness * 2.1;
+    sky.color.setHex(climate.hemi);
+    sky.groundColor.setHex(climate.ground);
+    sky.intensity = (0.35 + brightness * 1.55) * (1 - climate.night * 0.25);
+    sun.color.setHex(climate.sun);
+    sun.intensity = (0.08 + brightness * 2.1) * (1 - climate.night * 0.35);
     sun.position.set(Math.cos(angle) * 150, Math.max(12, Math.sin(angle) * 180), 75);
-    color.copy(night).lerp(day, brightness);
-    scene.background = color;
-    if (scene.fog) scene.fog.color.copy(color);
+    scene.background = color.setHex(climate.sky);
+    if (scene.fog instanceof T.FogExp2) {
+      scene.fog.color.setHex(climate.fog);
+      scene.fog.density = climate.fogDensity;
+    }
+    chunks.setNight(climate.night);
     paintHud(now);
     renderer.render(scene, camera);
     raf = requestAnimationFrame(frame);
@@ -352,7 +413,7 @@ function start(): () => void {
     const geometries = new Set<T.BufferGeometry>();
     const materials = new Set<T.Material>();
     scene.traverse(obj => {
-      if (!(obj instanceof T.Mesh) && !(obj instanceof T.Line)) return;
+      if (!(obj instanceof T.Mesh) && !(obj instanceof T.InstancedMesh) && !(obj instanceof T.Line)) return;
       if (obj.userData.keep) return;
       const geometry = obj.geometry;
       if (geometry) geometries.add(geometry);
@@ -366,7 +427,8 @@ function start(): () => void {
     scene.clear();
     overlay.hidden = true;
     crosshair.hidden = false;
-    void audio?.close().catch(error => { void error; });
+    host.querySelector('.harbor-audio')?.remove();
+    void speaker?.dispose();
   };
 }
 let stop: (() => void) | null = null;

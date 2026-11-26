@@ -20,6 +20,13 @@ test('signal phases and red-light braking',()=>{
   assert.ok(signalGreen('x',0,0,0));assert.ok(!signalGreen('z',0,0,0));
   const a=makeVehicle(1,'sedan',-12,3.1,Math.PI/2,true);a.traffic={axis:'x',road:0,dir:1,cruise:14};a.vx=12;
   assert.ok(trafficInput(a,[a],14).throttle<0);
+  const open=makeVehicle(3,'sedan',-12,3.1,Math.PI/2,true);open.traffic={axis:'x',road:0,dir:1,cruise:14};open.vx=10;
+  const clear=trafficInput(open,[open],0);
+  const blocked=trafficInput(open,[open],0,{x:0,z:3.1,panic:false});
+  assert.ok(blocked.throttle<clear.throttle);
+  assert.equal(blocked.horn,1);
+  const scared=trafficInput(open,[open],0,{x:0,z:3.1,panic:true});
+  assert.ok(scared.throttle<=blocked.throttle);
 });
 test('a car within approach range is reached and entered',()=>{
   const w=createWorld();

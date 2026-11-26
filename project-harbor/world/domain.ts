@@ -40,8 +40,8 @@ export function randomFor(cx:number,cz:number) {
   let s=(Math.imul(cx+1,73856093)^Math.imul(cz+1,19349663)^0x5379a14)>>>0;
   return ()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296;};
 }
-export type PropKind='tree'|'rock'|'tower'|'house'|'shack'|'hangar'|'crate'|'lamp'|'cactus';
-export interface WorldProp {kind:PropKind;x:number;z:number;w:number;d:number;h:number;color:number}
+export type PropKind='tree'|'rock'|'tower'|'house'|'shack'|'hangar'|'crate'|'lamp'|'cactus'|'bench'|'sign'|'trash'|'plant'|'stall'|'planter'|'barricade'|'sandbag';
+export interface WorldProp {kind:PropKind;x:number;z:number;w:number;d:number;h:number;color:number;yaw?:number;detail?:boolean;glow?:boolean}
 export function propsFor(cx:number,cz:number):WorldProp[] {
   const rand=randomFor(cx,cz), id=districtAt(cx*CHUNK+64,cz*CHUNK+64).id;
   const props:WorldProp[]=[];

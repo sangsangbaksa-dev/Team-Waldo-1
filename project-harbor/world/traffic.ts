@@ -50,28 +50,47 @@ export function nearestRide(rides: readonly Ride[], x: number, z: number, range:
   return best;
 }
 
-export function cruiseInput(ride: Ride, others: readonly Ride[]): VehicleInput {
+export interface RoadHazard { x: number; z: number; panic?: boolean }
+
+export function cruiseInput(ride: Ride, others: readonly Ride[], hazards: readonly RoadHazard[] = []): VehicleInput & { horn: number } {
   const order = ride.traffic;
-  if (!order) return { throttle: 0, steer: 0, handbrake: true };
+  if (!order) return { throttle: 0, steer: 0, handbrake: true, horn: 0 };
   const axis = order.axis;
   const cross = axis === 'x' ? 'z' : 'x';
   const along = axis === 'z' ? (order.dir > 0 ? 0 : Math.PI) : (order.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
   const laneError = order.road + order.lane - ride[cross];
   const crossSign = axis === 'z' ? order.dir : -order.dir;
-  const correction = clamp(laneError * 0.12, -0.4, 0.4) * crossSign;
-  const error = angleDelta(along + correction, ride.yaw);
+  let swerve = 0;
   let target = order.cruise;
+  let horn = 0;
   for (const other of others) {
     if (other === ride) continue;
     const gap = (other[axis] - ride[axis]) * order.dir;
     const side = Math.abs(other[cross] - ride[cross]);
     if (gap > 0 && gap < 26 && side < 3.4) target = Math.min(target, Math.max(0, (gap - 7) * 0.8));
   }
+  for (const hazard of hazards) {
+    const senseAlong = axis === 'x' ? hazard.x : hazard.z;
+    const senseFixed = axis === 'x' ? hazard.z : hazard.x;
+    const gap = (senseAlong - ride[axis]) * order.dir;
+    const side = Math.abs(senseFixed - ride[cross]);
+    if (hazard.panic && gap > -4 && gap < 18 && side < 8) target = Math.min(target, 2);
+    else if (gap > 0 && gap < 16 && side < 3.2) {
+      target = Math.min(target, Math.max(0, (gap - 4) * 0.55));
+      if (gap < 13) horn = 1;
+    } else if (gap > 0 && gap < 22 && side < 4.2) {
+      target = Math.min(target, 6);
+      horn = 1;
+    } else if (Math.abs(gap) < 7 && side > 1.2 && side < 5) swerve = Math.sign(ride[cross] - senseFixed) || 1;
+  }
+  const correction = clamp(laneError * 0.12 + swerve * 0.2, -0.4, 0.4) * crossSign;
+  const error = angleDelta(along + correction, ride.yaw);
   const speed = longitudinal(ride);
   return {
     throttle: clamp((target - speed) * 0.45, -1, 1),
     steer: clamp(error * 2.4, -1, 1),
     handbrake: target < 0.2 && Math.abs(speed) < 0.8,
+    horn,
   };
 }
 
@@ -154,14 +173,17 @@ export class CityTraffic {
     return this.rides.some(ride => ride !== ignore && Math.hypot(ride.x - x, ride.z - z) < Math.max(ride.spec.length, ride.spec.width) * 0.42 + 0.55);
   }
 
-  step(x: number, z: number, dt: number, drive: VehicleInput | null, propsAt: (x: number, z: number) => readonly WorldProp[]) {
+  step(x: number, z: number, dt: number, drive: VehicleInput | null, propsAt: (x: number, z: number) => readonly WorldProp[], hazards: readonly RoadHazard[] = []) {
+    const horns: { x: number; z: number }[] = [];
     const active = this.rides.filter(ride => ride === this.occupied || Math.abs(ride.x - x) < 280 && Math.abs(ride.z - z) < 280);
     for (const ride of active) {
+      const cruise = ride.driver && ride.traffic ? cruiseInput(ride, active, hazards) : null;
       const input = ride === this.occupied && drive
         ? drive
-        : ride.driver && ride.traffic
-          ? cruiseInput(ride, active)
+        : cruise
+          ? cruise
           : { throttle: 0, steer: 0, handbrake: true };
+      if (cruise?.horn) horns.push({ x: ride.x, z: ride.z });
       stepVehicle(ride, input, dt, roadDistance(ride.x, ride.z) > 1.2);
       for (const prop of propsAt(ride.x, ride.z)) hitWall(ride, prop);
       this.keepInside(ride);
@@ -175,6 +197,7 @@ export class CityTraffic {
     }
     const car = this.occupied;
     if (car) this.keepInside(car);
+    return horns;
   }
 
   private keepInside(ride: Ride) {

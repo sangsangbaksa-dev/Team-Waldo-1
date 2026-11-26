@@ -65,9 +65,11 @@ export function createWorld() {
     }
     return found;
   }
-  return {vehicles,obstacles,decor,people,obstaclesNear,player:{x:0,z:11,yaw:0,vehicle:null},time:0,notice:'차량 가까이에서 E를 누르세요.',noticeUntil:6};
+  add('sedan',3.1,22,0);
+  return {vehicles,obstacles,decor,people,obstaclesNear,seek:null,player:{x:0,z:11,yaw:0,vehicle:null},time:0,notice:'앞의 세단 근처에서 E를 누르면 다가가 탑니다.',noticeUntil:6};
 }
-export function nearestVehicle(world,range=5) {
+const ENTER_GAP=6, SEEK_GAP=16;
+export function nearestVehicle(world,range=ENTER_GAP) {
   const p=world.player;
   let best=null,d=range;
   for(const v of world.vehicles){const n=Math.hypot(p.x-v.x,p.z-v.z)-v.spec.width/2;if(n<d){best=v;d=n;}}
@@ -87,15 +89,8 @@ function exitPoint(world,v) {
   return null;
 }
 function notice(world,message){world.notice=message;world.noticeUntil=world.time+3;}
-export function interact(world) {
-  const p=world.player,v=p.vehicle;
-  if(v){
-    if(Math.abs(longitudinal(v))>3){notice(world,'속도를 줄인 뒤 내리세요.');return;}
-    const point=exitPoint(world,v);if(!point){notice(world,'내릴 공간이 없습니다.');return;}
-    v.doorAt=world.time;Object.assign(p,point,{vehicle:null});notice(world,'차량에서 내렸습니다.');return;
-  }
-  const target=nearestVehicle(world,3.5);
-  if(!target){notice(world,'가까운 차량이 없습니다.');return;}
+function board(world,target){
+  const p=world.player;
   if(Math.hypot(target.vx,target.vz)>7){notice(world,'너무 빠른 차량입니다.');return;}
   if(target.driver){
     const point=exitPoint(world,target);if(!point){notice(world,'운전자가 나올 공간이 없습니다.');return;}
@@ -103,11 +98,40 @@ export function interact(world) {
     if(world.people.length>40)world.people.shift();
     target.driver=false;target.traffic=null;notice(world,'운전자를 끌어내리고 차량을 탈취했습니다.');
   } else notice(world,target.spec.name+' 탑승');
-  target.doorAt=world.time;p.vehicle=target;p.x=target.x;p.z=target.z;
+  world.seek=null;target.doorAt=world.time;p.vehicle=target;p.x=target.x;p.z=target.z;
+}
+export function interact(world) {
+  const p=world.player,v=p.vehicle;
+  if(v){
+    if(Math.abs(longitudinal(v))>3){notice(world,'속도를 줄인 뒤 내리세요.');return;}
+    const point=exitPoint(world,v);if(!point){notice(world,'내릴 공간이 없습니다.');return;}
+    v.doorAt=world.time;Object.assign(p,point,{vehicle:null});notice(world,'차량에서 내렸습니다.');return;
+  }
+  const target=nearestVehicle(world,ENTER_GAP);
+  if(target){board(world,target);return;}
+  const far=nearestVehicle(world,SEEK_GAP);
+  if(!far){notice(world,'가까운 차량이 없습니다.');return;}
+  world.seek=far;
+  notice(world,far.spec.name+'으로 다가갑니다.');
 }
 export function update(world,input,dt) {
   world.time+=dt;
   const p=world.player;
+  if(!p.vehicle && world.seek){
+    const target=world.seek;
+    if(input.moveX||input.moveZ)world.seek=null;
+    else {
+      const gap=Math.hypot(target.x-p.x,target.z-p.z)-target.spec.width/2;
+      if(gap<ENTER_GAP)board(world,target);
+      else {
+        const dx=target.x-p.x,dz=target.z-p.z,n=Math.max(1,Math.hypot(dx,dz));
+        p.yaw=Math.atan2(dx,dz);
+        const x=clamp(p.x+dx/n*6*dt,-LIMIT+1,LIMIT-1),z=clamp(p.z+dz/n*6*dt,-LIMIT+1,LIMIT-1);
+        if(clearPoint(world,x,p.z,target))p.x=x;
+        if(clearPoint(world,p.x,z,target))p.z=z;
+      }
+    }
+  }
   if(!p.vehicle){
     const dx=input.moveX||0,dz=input.moveZ||0,n=Math.max(1,Math.hypot(dx,dz));
     if(dx||dz)p.yaw=Math.atan2(dx,dz);

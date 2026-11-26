@@ -21,6 +21,18 @@ test('signal phases and red-light braking',()=>{
   const a=makeVehicle(1,'sedan',-12,3.1,Math.PI/2,true);a.traffic={axis:'x',road:0,dir:1,cruise:14};a.vx=12;
   assert.ok(trafficInput(a,[a],14).throttle<0);
 });
+test('a car within approach range is reached and entered',()=>{
+  const w=createWorld();
+  const v=w.vehicles.find(car=>car.type==='sedan'&&car.z===22);
+  assert.ok(v);
+  for(const car of w.vehicles)if(car!==v){car.x=220;car.z=220;}
+  w.player.x=v.x;w.player.z=v.z+10;
+  interact(w);
+  assert.equal(w.player.vehicle,null);
+  assert.equal(w.seek,v);
+  for(let i=0;i<240&&!w.player.vehicle;i++)update(w,{throttle:0,steer:0,handbrake:false,moveX:0,moveZ:0},1/60);
+  assert.equal(w.player.vehicle,v);
+});
 test('occupied vehicle theft and safe exit',()=>{
   const w=createWorld(),v=w.vehicles.find(v=>v.driver);
   w.player.x=v.x;w.player.z=v.z;interact(w);

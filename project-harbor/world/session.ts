@@ -6,6 +6,7 @@ import {
   rayHit, rob, starCount, stepActor, takeItem,
   type CrimeResult, type GroundItem, type Ped, type ShotLine, type Vitals,
 } from './street';
+import { CityTraffic, ENTER_RANGE, SEEK_RANGE, surfaceGap, type Ride } from './traffic';
 
 export interface RoamInput {
   forward: number;
@@ -17,10 +18,14 @@ export interface RoamInput {
   rob: boolean;
   fire: boolean;
   reload: boolean;
+  throttle: number;
+  steer: number;
+  handbrake: boolean;
 }
 
 export const IDLE_INPUT: RoamInput = {
   forward: 0, side: 0, sprint: false, look: 0, use: false, pickpocket: false, rob: false, fire: false, reload: false,
+  throttle: 0, steer: 0, handbrake: false,
 };
 
 interface Bucket { peds: Ped[]; items: GroundItem[]; refill: number }
@@ -38,11 +43,14 @@ export class FreeRoam {
   private generation = 1;
   private readonly life = new Map<string, Bucket>();
   private readonly police: Ped[] = [];
+  private readonly traffic = new CityTraffic();
 
   constructor(view: ChunkView) {
     this.world = new World(view);
     this.ensureAround(2);
     this.seedEncounter();
+    this.traffic.ensure(this.world.x, this.world.z);
+    this.traffic.seedStarter(this.world.x, this.world.z);
     this.world.stream(12);
   }
 
@@ -52,24 +60,62 @@ export class FreeRoam {
   set yaw(value: number) { this.world.yaw = value; }
   get peds(): Ped[] { return [...this.actorsIn(1), ...this.police]; }
   get items(): GroundItem[] { return this.itemsIn(2); }
+  get rides(): readonly Ride[] { return this.traffic.rides; }
+  get vehicle(): Ride | null { return this.traffic.occupied; }
   get activePedCount() { return this.peds.length; }
 
   tick(input: RoamInput, dt: number) {
     const step = Math.max(0, Math.min(0.05, dt));
     this.time += step;
     this.shots.length = 0;
-    this.world.yaw = Math.atan2(Math.sin(this.world.yaw + input.look), Math.cos(this.world.yaw + input.look));
+    if (!this.traffic.occupied) {
+      this.world.yaw = Math.atan2(Math.sin(this.world.yaw + input.look), Math.cos(this.world.yaw + input.look));
+    }
     if (this.vitals.invulnerable > 0) this.vitals.invulnerable = Math.max(0, this.vitals.invulnerable - step);
     if (this.vitals.health <= 0) this.respawn();
-    this.world.move(input.forward, input.side, step, input.sprint);
+    this.traffic.ensure(this.world.x, this.world.z);
+    const propsAt = (x: number, z: number) => this.world.nearbyProps(x, z);
+    let exited = false;
+    if (this.traffic.occupied) {
+      if (input.use) {
+        this.leaveCar();
+        exited = this.traffic.occupied === null;
+      }
+      const car = this.traffic.occupied;
+      if (car) {
+        this.traffic.step(this.world.x, this.world.z, step, {
+          throttle: input.throttle, steer: input.steer, handbrake: input.handbrake,
+        }, propsAt);
+        this.world.x = car.x;
+        this.world.z = car.z;
+        this.world.yaw = Math.atan2(Math.sin(Math.PI - car.yaw), Math.cos(Math.PI - car.yaw));
+        this.world.hours = (this.world.hours + step * 24 / 720) % 24;
+      }
+    } else {
+      if (!input.use && (input.forward !== 0 || input.side !== 0)) this.traffic.seeking = null;
+      const target = this.traffic.seeking;
+      if (target && input.forward === 0 && input.side === 0) {
+        const next = this.traffic.seekToward(this.world.x, this.world.z, step);
+        if (next) this.glide(next.x, next.z);
+        if (surfaceGap(target, this.world.x, this.world.z) < ENTER_RANGE) this.takeCar(target);
+        else if (!this.traffic.seeking) this.say('차로 가는 길이 막혀 있습니다.');
+      } else {
+        const previousX = this.world.x;
+        const previousZ = this.world.z;
+        this.world.move(input.forward, input.side, step, input.sprint);
+        this.keepOut(previousX, previousZ);
+      }
+      this.traffic.step(this.world.x, this.world.z, step, null, propsAt);
+    }
     this.world.stream();
     this.ensureAround(2);
-    this.interact(input);
+    if (!this.traffic.occupied && !exited) this.interact(input);
+    const driving = this.traffic.occupied !== null;
     const weapon = this.vitals.weapon;
-    const trigger = armWeapon(this.vitals, step, input.fire, input.reload);
-    if (trigger === 'shot' && weapon) this.fire(weapon);
-    else if (trigger === 'empty' && input.fire) this.say('쏠 총이나 탄약이 없습니다.');
-    else if (trigger === 'reload' && weapon) this.say(WEAPONS[weapon].name + ' 재장전');
+    const trigger = armWeapon(this.vitals, step, !driving && input.fire, !driving && input.reload);
+    if (trigger === 'shot' && weapon && !driving) this.fire(weapon);
+    else if (trigger === 'empty' && input.fire && !driving) this.say('쏠 총이나 탄약이 없습니다.');
+    else if (trigger === 'reload' && weapon && !driving) this.say(WEAPONS[weapon].name + ' 재장전');
     const blockedAt = (x: number, z: number) => !this.world.open(x, z, 0.45);
     for (const ped of this.actorsIn(1)) stepActor(ped, step, this.world.x, this.world.z, blockedAt);
     for (const ped of this.police) stepActor(ped, step, this.world.x, this.world.z, blockedAt);
@@ -81,6 +127,14 @@ export class FreeRoam {
   }
 
   hint(): string {
+    const car = this.traffic.occupied;
+    if (car) {
+      const speed = Math.round(Math.hypot(car.vx, car.vz) * 3.6);
+      return 'E · 하차 · ' + car.spec.name + ' ' + speed + ' km/h · WASD 운전 · Space 브레이크';
+    }
+    if (this.traffic.seeking) return this.traffic.seeking.spec.name + '으로 다가가는 중';
+    const closeCar = this.traffic.nearest(this.x, this.z, ENTER_RANGE);
+    const farCar = closeCar ? null : this.traffic.nearest(this.x, this.z, SEEK_RANGE);
     const item = nearestItem(this.items, this.x, this.z, 3.2);
     const ped = nearestPed(this.actorsIn(1), this.x, this.z, 3.4, true);
     const parts: string[] = [];
@@ -91,6 +145,8 @@ export class FreeRoam {
       if (nearby?.kind === 'weapon') parts.push('앞에 무기가 있습니다');
       else if (nearby?.kind === 'med') parts.push('앞에 치료제가 있습니다');
     }
+    if (closeCar) parts.unshift(closeCar.driver ? 'E · 운전자를 끌어내리기' : 'E · ' + closeCar.spec.name + ' 탑승');
+    else if (farCar) parts.unshift(farCar.spec.name + ' 근처 · E로 다가가기');
     if (ped) parts.push('F · 소매치기 · G · 강도');
     else if (nearestPed(this.actorsIn(1), this.x, this.z, 12, true)) parts.push('앞에 사람이 있습니다');
     if (this.vitals.weapon) parts.push('클릭 · 사격 · R · 재장전');
@@ -202,9 +258,54 @@ export class FreeRoam {
     }
   }
 
+  private glide(x: number, z: number) {
+    const previousX = this.world.x;
+    const previousZ = this.world.z;
+    if (this.world.open(x, previousZ)) this.world.x = x;
+    if (this.world.open(this.world.x, z)) this.world.z = z;
+    this.keepOut(previousX, previousZ);
+  }
+
+  private keepOut(previousX: number, previousZ: number) {
+    if (this.traffic.overlaps(this.world.x, previousZ)) this.world.x = previousX;
+    if (this.traffic.overlaps(this.world.x, this.world.z)) this.world.z = previousZ;
+  }
+
+  private takeCar(ride: Ride) {
+    const stolen = this.traffic.claim(ride);
+    if (stolen) {
+      const spot = this.findOpen(ride.x + 2.4, ride.z + 2.4, 0.55, true) ?? { x: ride.x + 2.4, z: ride.z + 2.4 };
+      this.placePed(spot.x, spot.z, { cash: 40, health: 55, state: 'flee' });
+      addWanted(this.vitals, 1);
+      this.say('운전자를 끌어내리고 차량을 탈취했습니다.');
+    } else this.say(ride.spec.name + ' 탑승');
+    this.world.x = ride.x;
+    this.world.z = ride.z;
+    this.world.yaw = Math.atan2(Math.sin(Math.PI - ride.yaw), Math.cos(Math.PI - ride.yaw));
+  }
+
+  private leaveCar() {
+    const spot = this.traffic.leave((x, z) => this.findOpen(x, z, 0.55, false));
+    if (spot === 'fast') { this.say('속도를 줄인 뒤 내리세요.'); return; }
+    if (spot === 'blocked') { this.say('내릴 공간이 없습니다.'); return; }
+    this.world.x = spot.x;
+    this.world.z = spot.z;
+    this.say('차량에서 내렸습니다.');
+  }
+
   private interact(input: RoamInput) {
     if (input.use) {
+      const closeCar = this.traffic.nearest(this.world.x, this.world.z, ENTER_RANGE);
+      if (closeCar) { this.takeCar(closeCar); return; }
       const item = nearestItem(this.items, this.world.x, this.world.z, 3.2);
+      if (item) { this.collect(item); return; }
+      const farCar = this.traffic.nearest(this.world.x, this.world.z, SEEK_RANGE);
+      if (farCar) {
+        this.traffic.seeking = farCar;
+        this.traffic.seekLeft = 5;
+        this.say(farCar.spec.name + '으로 다가갑니다.');
+        return;
+      }
       if (!item) this.say('주울 것이 없습니다.');
       else this.collect(item);
       return;
@@ -345,6 +446,8 @@ export class FreeRoam {
   }
 
   private respawn() {
+    this.traffic.occupied = null;
+    this.traffic.seeking = null;
     const site = hospital(this.world.x, this.world.z);
     const spot = this.findOpen(site.x, site.z, 0.75) ?? site;
     this.world.x = spot.x;

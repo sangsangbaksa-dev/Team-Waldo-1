@@ -32,6 +32,15 @@ export class World {
     if(this.open(this.x,this.z+dz))this.z+=dz;
     this.hours=(this.hours+dt*24/720)%24;
   }
+  nearbyProps(x:number,z:number,reach=8){
+    const cx=Math.floor(x/CHUNK),cz=Math.floor(z/CHUNK),found:WorldProp[]=[];
+    for(let i=cx-1;i<=cx+1;i++)for(let j=cz-1;j<=cz+1;j++){
+      if(i<0||j<0||i>=WIDTH/CHUNK||j>=DEPTH/CHUNK)continue;
+      for(const prop of this.props(i,j))
+        if(Math.abs(prop.x-x)<prop.w/2+reach&&Math.abs(prop.z-z)<prop.d/2+reach)found.push(prop);
+    }
+    return found;
+  }
   get y(){return terrainHeight(this.x,this.z);}
   get activeChunks(){return this.loaded.size;}
   stream(budget=2){

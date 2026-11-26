@@ -130,6 +130,12 @@
 #harbor-world-prompt { bottom: 58px; }
 #harbor-world-notice { bottom: 96px; color: #f2cc89; }
 #harbor-world-prompt:empty, #harbor-world-notice:empty { display: none; }
+#harbor-world-loading {
+  position: absolute; inset: 0; z-index: 4; display: grid; place-items: center;
+  margin: 0; background: #101418; color: #f2cc89; font-size: 18px;
+}
+#harbor-world-loading[hidden] { display: none; }
+#harbor-world-start[aria-busy="true"] { opacity: .85; cursor: progress; }
 .harbor-touch { display: none; }
 .harbor-world-controls { position: absolute; right: 12px; bottom: 12px; color: #fff; pointer-events: none; }
 .harbor-world-overlay { position: absolute; inset: 0; background: #15201e; color: #fff; padding: 16px; display: flex; flex-direction: column; align-items: center; }

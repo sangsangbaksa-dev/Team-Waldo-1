@@ -61,3 +61,23 @@
   .harbor-panel { grid-template-columns: minmax(0, 1fr); }
   .harbor-image { height: auto; aspect-ratio: 16 / 9; }
 }
+
+.harbor-world-start {
+  border: 0; border-radius: 6px; background: #c5dfb6; color: #172018;
+  font: inherit; font-weight: 700; padding: 13px 18px; cursor: pointer;
+}
+.harbor-world-stage {
+  position: relative; height: min(80vh, 820px); min-height: 360px;
+  background: #151c21; overflow: hidden; border: 1px solid #374142; border-radius: 8px;
+  margin-bottom: 36px;
+}
+.harbor-world-stage[hidden], .harbor-world-overlay[hidden], .harbor-world-start[hidden] { display: none; }
+.harbor-world-stage > canvas { display: block; width: 100%; height: 100%; touch-action: none; outline-offset: -3px; }
+.harbor-world-hud { position: absolute; left: 14px; top: 14px; display: grid; gap: 6px; max-width: calc(100% - 28px); color: #fff; }
+#harbor-world-status, .harbor-world-controls { background: rgba(14,20,22,.86); padding: 8px 10px; font-size: 12px; border-radius: 4px; }
+#harbor-world-mini { width: 140px; height: 140px; border: 2px solid #d0d4c9; border-radius: 50%; }
+.harbor-world-hud button, .harbor-world-overlay button { background: #202a2b; color: #f2f3ee; border: 1px solid #71837b; border-radius: 4px; padding: 7px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+.harbor-world-controls { position: absolute; right: 12px; bottom: 12px; color: #fff; pointer-events: none; }
+.harbor-world-overlay { position: absolute; inset: 0; background: #15201e; color: #fff; padding: 16px; display: flex; flex-direction: column; align-items: center; }
+.harbor-world-overlay header { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#harbor-world-atlas { display: block; max-width: 100%; max-height: calc(100% - 42px); object-fit: contain; margin: auto; }

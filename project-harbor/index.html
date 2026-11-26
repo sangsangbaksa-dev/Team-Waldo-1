@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0d0e10" />
-    <meta name="description" content="포트 캘러웨이를 탐험하는 1인용 3D 오픈월드 게임. Windows와 Linux에서 Project Harbor를 플레이하세요." />
+    <meta name="description" content="포트 캘러웨이에서 자유롭게 차량을 운전하고 탐험하는 1인용 3D 오픈월드 게임." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/src/style.css" />
     <link rel="stylesheet" href="./style.css" />
@@ -19,11 +19,13 @@
       <section class="harbor-panel" aria-labelledby="harbor-title">
         <img class="harbor-image" src="/assets/home/project-harbor-lighthouse.webp" width="1280" height="720" alt="포트 캘러웨이 부두의 청록색 등대와 방파제" fetchpriority="high" />
         <div class="harbor-info">
-          <p class="harbor-version">1인용 3D 오픈월드 · v0.2.0</p>
+          <p class="harbor-version">1인용 3D 오픈월드 · 브라우저 자유주행</p>
           <h1 id="harbor-title">Project Harbor</h1>
-          <p>브라우저에서 캘러웨이와 주변 여섯 지역을 자유롭게 탐험하세요. 기존 데스크톱 에디션도 다운로드할 수 있습니다.</p>
-          <button type="button" id="harbor-world-start" class="harbor-world-start">브라우저에서 자유 탐험 시작</button>
+          <p>도시, 숲, 사막, 부촌, 빈민가, 군사기지를 자유롭게 탐험하세요. 원하는 차량을 타고 달리거나 교통 속에서 드리프트할 수 있습니다. 브라우저 자유주행 모드에는 미션이 없습니다.</p>
+          <button class="harbor-start" id="harbor-start" type="button">차량 자유주행 (기존 맵)</button>
+          <button type="button" id="harbor-world-start" class="harbor-world-start">확장 맵 자유 탐험 (도보)</button>
           <p id="harbor-world-error" role="alert"></p>
+          <p>기존 데스크톱 버전 v0.2.0</p>
           <ul class="harbor-downloads" aria-label="운영체제별 다운로드">
             <li>
               <a href="https://media.githubusercontent.com/media/sangsangbaksa-dev/GTA-/227aadbd0b60bc71c56ae2ffde8646234424049c/project-harbor-windows-x86_64.zip">
@@ -45,11 +47,13 @@
           </nav>
         </div>
       </section>
+    </main>
       <section id="harbor-world-stage" class="harbor-world-stage" hidden aria-label="자유 탐험">
         <div class="harbor-world-hud">
           <div id="harbor-world-status" aria-live="off">캘러웨이 도심</div>
           <canvas id="harbor-world-mini" width="180" height="180" aria-label="미니맵"></canvas>
           <button type="button" id="harbor-world-map-button">전체지도 (M)</button>
+          <button type="button" id="harbor-world-exit">종료 (Esc)</button>
         </div>
         <div class="harbor-world-controls">WASD 이동 · Shift 달리기 · 마우스 드래그 / ← → 회전 · M 지도</div>
         <div id="harbor-world-overlay" class="harbor-world-overlay" hidden>
@@ -57,7 +61,8 @@
           <canvas id="harbor-world-atlas" width="900" height="600" aria-label="6개 지역과 전체 도로 지도"></canvas>
         </div>
       </section>
-    </main>
+    <section id="harbor-drive" tabindex="-1" aria-label="Project Harbor 자유주행" hidden></section>
+    <script type="module" src="./vehicles/ui.js"></script>
     <script type="module" src="./world/ui.ts"></script>
   </body>
 </html>

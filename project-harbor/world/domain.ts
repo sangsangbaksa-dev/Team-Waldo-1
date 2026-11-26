@@ -33,6 +33,7 @@ export function terrainHeight(x:number,z:number):number {
   // Smooth the transition between districts and flatten road shoulders.
   const edge=Math.min(x%1024,1024-x%1024,z%1024,1024-z%1024);
   const blend=Math.max(0,Math.min(1,edge/45,(roadDistance(x,z)-3)/28));
+  if(amp===0||blend===0)return 0;
   return amp*blend*(Math.sin(x*.023)*Math.cos(z*.018)*.65+Math.sin((x+z)*.011)*.35);
 }
 export function randomFor(cx:number,cz:number) {

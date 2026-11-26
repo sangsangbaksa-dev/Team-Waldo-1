@@ -29,7 +29,7 @@ function drawMap(canvas:HTMLCanvasElement,world:World,full:boolean){
   ctx.save();ctx.translate(ox+world.x*scale,oz+world.z*scale);ctx.rotate(world.yaw);
   ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(6,7);ctx.lineTo(0,4);ctx.lineTo(-6,7);ctx.closePath();ctx.fillStyle='#fff';ctx.strokeStyle='#1b2424';ctx.lineWidth=2;ctx.fill();ctx.stroke();ctx.restore();
 }
-function start(){
+function start():()=>void{
   const host=required<HTMLElement>('harbor-world-stage'), mini=required<HTMLCanvasElement>('harbor-world-mini');
   const atlas=required<HTMLCanvasElement>('harbor-world-atlas'), overlay=required<HTMLElement>('harbor-world-overlay');
   const hud=required<HTMLElement>('harbor-world-status'), keys=new Set<string>();
@@ -47,20 +47,23 @@ function start(){
   const head=new T.Mesh(new T.SphereGeometry(.27,10,8),new T.MeshStandardMaterial({color:0xc59c78}));
   head.position.y=1.9;avatar.add(head);scene.add(avatar);
   const resize=()=>{const w=Math.max(1,host.clientWidth),h=Math.max(1,host.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();};
-  new ResizeObserver(resize).observe(host);resize();
+  const observer=new ResizeObserver(resize);observer.observe(host);resize();
+  const abort=new AbortController(),signal=abort.signal;
+  let raf=0;
   let mapOpen=false,drag=false,lastX=0,previous=performance.now(),hudAt=0;
   const toggleMap=()=>{mapOpen=!mapOpen;overlay.hidden=!mapOpen;keys.clear();if(mapOpen)drawMap(atlas,world,true);else renderer.domElement.focus();};
-  required('harbor-world-map-button').addEventListener('click',toggleMap);
-  required('harbor-world-close-map').addEventListener('click',toggleMap);
+  required('harbor-world-map-button').addEventListener('click',toggleMap,{signal});
+  required('harbor-world-close-map').addEventListener('click',toggleMap,{signal});
+  required('harbor-world-exit').addEventListener('click',()=>host.dispatchEvent(new Event('harbor-world-exit')),{signal});
   window.addEventListener('keydown',e=>{
     if(!host.contains(document.activeElement)&&!mapOpen)return;
     if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','KeyM','Escape'].includes(e.code)){
-      e.preventDefault();if(e.code==='KeyM'&&!e.repeat){toggleMap();return;}if(e.code==='Escape'&&mapOpen){toggleMap();return;}
+      e.preventDefault();if(e.code==='KeyM'&&!e.repeat){toggleMap();return;}if(e.code==='Escape'){if(mapOpen)toggleMap();else host.dispatchEvent(new Event('harbor-world-exit'));return;}
       if(!mapOpen)keys.add(e.code);
     }
-  });
-  window.addEventListener('keyup',e=>keys.delete(e.code));
-  window.addEventListener('blur',()=>{keys.clear();drag=false;});
+  },{signal});
+  window.addEventListener('keyup',e=>keys.delete(e.code),{signal});
+  window.addEventListener('blur',()=>{keys.clear();drag=false;},{signal});
   renderer.domElement.addEventListener('pointerdown',e=>{renderer.domElement.focus();drag=true;lastX=e.clientX;renderer.domElement.setPointerCapture(e.pointerId);});
   renderer.domElement.addEventListener('pointermove',e=>{if(drag){world.yaw+=(e.clientX-lastX)*.007;lastX=e.clientX;}});
   renderer.domElement.addEventListener('pointerup',()=>{drag=false;});
@@ -90,14 +93,17 @@ function start(){
       const hours=Math.floor(world.hours),minutes=Math.floor((world.hours-hours)*60);
       hud.textContent=districtAt(world.x,world.z).name+' · '+String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0')+' · 청크 '+world.activeChunks;
     }
-    renderer.render(scene,camera);requestAnimationFrame(frame);
+    renderer.render(scene,camera);raf=requestAnimationFrame(frame);
   }
-  renderer.domElement.focus();requestAnimationFrame(frame);
+  renderer.domElement.focus();raf=requestAnimationFrame(frame);
+  return ()=>{cancelAnimationFrame(raf);abort.abort();observer.disconnect();renderer.dispose();renderer.domElement.remove();scene.traverse(obj=>{if(obj instanceof T.Mesh){obj.geometry.dispose();if(obj.material instanceof T.Material)obj.material.dispose();}});scene.clear();overlay.hidden=true;};
 }
+let stop:(()=>void)|null=null;
+required('harbor-world-stage').addEventListener('harbor-world-exit',()=>{stop?.();stop=null;const stage=required('harbor-world-stage');stage.hidden=true;document.body.classList.remove('harbor-driving');const button=required<HTMLButtonElement>('harbor-world-start');button.disabled=false;button.focus();});
 required<HTMLButtonElement>('harbor-world-start').addEventListener('click',()=>{
   const button=required<HTMLButtonElement>('harbor-world-start');
   const stage=required<HTMLElement>('harbor-world-stage');
   button.disabled=true;stage.hidden=false;
-  try{start();button.hidden=true;stage.scrollIntoView({block:'start'});}
+  try{stop=start();document.body.classList.add('harbor-driving');}
   catch(error){stage.hidden=true;button.disabled=false;required('harbor-world-error').textContent='3D 화면을 시작하지 못했습니다. WebGL 지원 브라우저인지 확인하세요.';console.error(error);}
 },{once:false});

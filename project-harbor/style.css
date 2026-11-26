@@ -61,3 +61,33 @@
   .harbor-panel { grid-template-columns: minmax(0, 1fr); }
   .harbor-image { height: auto; aspect-ratio: 16 / 9; }
 }
+
+.harbor-start { display:block; width:100%; border:0; border-radius:8px; padding:16px; font:inherit; font-weight:700; color:#18211c; background:#c5dfb6; cursor:pointer; }
+.harbor-start:hover { background:#e1efd9; }
+.harbor-driving { overflow:hidden; }
+#harbor-drive[hidden] { display:none; }
+#harbor-drive { position:fixed; inset:0; z-index:999; overflow:hidden; background:#1d272b; color:white; font:500 14px/1.5 system-ui,sans-serif; outline:0; }
+.drive-view { position:absolute; inset:0; touch-action:none; cursor:grab; }
+.drive-view canvas { display:block; width:100%; height:100%; }
+.drive-hud { position:absolute; top:18px; left:18px; padding:14px 18px; border-left:3px solid #c5dfb6; background:#151d21d9; pointer-events:none; max-width:calc(100% - 36px); }
+.drive-place { font-size:12px; color:#c5dfb6; letter-spacing:.06em; }
+.drive-speed { font-size:clamp(20px,3vw,34px); font-weight:700; font-variant-numeric:tabular-nums; }
+.drive-health { color:#e8e8e4; }
+.drive-notice { min-height:1.5em; color:#f2cc89; }
+.drive-map { position:absolute; right:18px; bottom:18px; width:156px; height:156px; border:2px solid #e1e1d0; border-radius:50%; background:#293338; }
+.drive-actions { position:absolute; right:18px; top:18px; display:flex; gap:7px; }
+#harbor-drive button { background:#151d21e8; color:#fff; border:1px solid #ffffff44; border-radius:5px; padding:10px 14px; font:inherit; cursor:pointer; touch-action:none; }
+#harbor-drive button:active { background:#45614f; }
+.drive-help { position:absolute; bottom:18px; left:18px; background:#151d21d9; padding:9px 14px; pointer-events:none; }
+.drive-touch { display:none; }
+.drive-error { position:absolute; inset:0; display:grid; place-content:center; gap:16px; padding:24px; text-align:center; }
+@media (pointer:coarse), (max-width:720px) {
+ .drive-touch { display:flex; justify-content:space-between; position:absolute; left:12px; right:12px; bottom:14px; gap:8px; }
+ .drive-touch>div { display:flex; gap:6px; }
+ .drive-touch button { min-height:52px; }
+ .drive-help { display:none; }
+ .drive-map { width:98px; height:98px; right:12px; bottom:85px; }
+ .drive-hud { top:10px; left:10px; max-width:calc(100% - 20px); padding:8px; }
+ .drive-actions { top:125px; right:10px; flex-direction:column; }
+ .drive-actions button { font-size:12px!important; padding:7px!important; }
+}

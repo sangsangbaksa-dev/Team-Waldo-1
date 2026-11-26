@@ -6,6 +6,7 @@ export class World {
   x=1536; z=576; yaw=0; hours=10;
   private readonly cache=new Map<string,WorldProp[]>();
   private readonly loaded=new Map<string,0|1>();
+  private lastComplete='';
   constructor(private readonly view:ChunkView) {}
   private props(cx:number,cz:number){
     const key=chunkKey(cx,cz);
@@ -35,6 +36,9 @@ export class World {
   get activeChunks(){return this.loaded.size;}
   stream(budget=2){
     const cx=Math.floor(this.x/CHUNK),cz=Math.floor(this.z/CHUNK);
+    const center=chunkKey(cx,cz);
+    if(center===this.lastComplete)return;
+    this.lastComplete='';
     const wanted=new Map<string,ChunkData>();
     for(let r=0;r<=3;r++)for(let i=cx-r;i<=cx+r;i++)for(let j=cz-r;j<=cz+r;j++){
       if(Math.max(Math.abs(i-cx),Math.abs(j-cz))!==r||i<0||j<0||i>=WIDTH/CHUNK||j>=DEPTH/CHUNK)continue;
@@ -47,6 +51,7 @@ export class World {
       if(this.loaded.has(key))this.view.unload(key);
       this.view.load(chunk);this.loaded.set(key,chunk.lod);budget--;
     }
+    if([...wanted].every(([key,chunk])=>this.loaded.get(key)===chunk.lod))this.lastComplete=center;
     // Collision geometry is deterministic; old descriptions can be regenerated.
     for(const key of this.cache.keys())if(!wanted.has(key))this.cache.delete(key);
   }

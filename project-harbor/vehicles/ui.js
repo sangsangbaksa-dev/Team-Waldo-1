@@ -35,11 +35,11 @@ export function mountHarbor(root){
     return {throttle,steer,handbrake:keys.has('Space'),moveX:steer*Math.cos(orbit)+throttle*Math.sin(orbit),moveZ:throttle*Math.cos(orbit)-steer*Math.sin(orbit),run:keys.has('ShiftLeft')||keys.has('ShiftRight')};
   }
   function drawHud(){
-    const p=world.player,v=p.vehicle,near=!v&&nearestVehicle(world,3.5);
+    const p=world.player,v=p.vehicle,near=!v&&nearestVehicle(world,6),far=!v&&!near&&nearestVehicle(world,16);
     place.textContent='PORT CALLOWAY / '+district(p.x,p.z).name;
     speed.textContent=v?Math.round(Math.hypot(v.vx,v.vz)*3.6)+' km/h · '+v.spec.name:'도보';
     health.textContent=v?'차량 상태 '+Math.round(v.health)+'%'+(v.health<=0?' · 운행 불가':''):'자유 탐험';
-    notice.textContent=world.time<world.noticeUntil?world.notice:near?(near.driver?'E · 운전자 끌어내리기':'E · '+near.spec.name+' 탑승'):'';
+    notice.textContent=world.time<world.noticeUntil?world.notice:near?(near.driver?'E · 운전자 끌어내리기':'E · '+near.spec.name+' 탑승'):far?far.spec.name+' 근처 · E로 다가가기':'';
     if(!map)return;
     const size=156,scale=size/(LIMIT*2),point=n=>(n+LIMIT)*scale;
     map.fillStyle='#252e30';map.fillRect(0,0,size,size);

@@ -2,6 +2,8 @@ import {describe,it,expect} from 'vitest';
 import {CHUNK,WIDTH,DEPTH,DISTRICTS,HIGHWAYS,CROSS_HIGHWAY,districtAt,roadHalf,roadDistance,terrainHeight,propsFor,blocked} from '../../project-harbor/world/domain';
 import {World,type ChunkData} from '../../project-harbor/world/application';
 import {FreeRoam,IDLE_INPUT} from '../../project-harbor/world/session';
+import {makeVehicle, stepVehicle} from '../../project-harbor/vehicles/domain.js';
+import {cruiseInput, type Ride} from '../../project-harbor/world/traffic';
 import {
   WEAPONS,WANTED_DECAY_DELAY,addWanted,applyHit,armWeapon,createVitals,decayWanted,hospital,
   makeMed,makePed,makeWeapon,pickpocket,populationFor,rayHit,rob,starCount,takeItem,
@@ -162,6 +164,7 @@ describe('Harbor free-roam world',()=>{
       stress.tick({
         forward:i%3===0?1:0.4,side:i%5===0?1:0,sprint:i%2===0,look:0.04,
         use:i%45===0,pickpocket:i%55===0,rob:i%80===0,fire:i%7===0,reload:i%100===0,
+        throttle:0,steer:0,handbrake:false,
       },0.05);
       expect(Number.isFinite(stress.x+stress.z+stress.vitals.money+stress.vitals.wanted+stress.vitals.health)).toBe(true);
       expect(stress.vitals.health).toBeGreaterThanOrEqual(0);
@@ -171,5 +174,37 @@ describe('Harbor free-roam world',()=>{
       expect(stress.vitals.wanted).toBeLessThanOrEqual(5);
       expect(stress.activePedCount).toBeLessThanOrEqual(48);
     }
+  });
+  it('drives and steals cars on the streamed map',()=>{
+    const view={load(){},unload(){}};
+    const roam=new FreeRoam(view);
+    const parked=roam.rides.find(ride=>!ride.driver&&Math.hypot(ride.x-roam.x,ride.z-roam.z)<22);
+    expect(parked).toBeTruthy();
+    roam.tick({...IDLE_INPUT,use:true},0.05);
+    for(let i=0;i<120&&!roam.vehicle;i++)roam.tick(IDLE_INPUT,0.05);
+    expect(roam.vehicle?.spec.name).toBeTruthy();
+    const started=roam.x;
+    for(let i=0;i<50;i++)roam.tick({...IDLE_INPUT,throttle:1},0.05);
+    expect(Math.hypot(roam.x-started,roam.z-576)).toBeGreaterThan(3);
+    if(roam.vehicle){roam.vehicle.vx=0;roam.vehicle.vz=0;}
+    roam.tick({...IDLE_INPUT,use:true},0.05);
+    expect(roam.vehicle).toBeNull();
+    const driven=roam.rides.find(ride=>ride.driver);
+    expect(driven).toBeTruthy();
+    if(!driven)return;
+    roam.world.x=driven.x+1.2;roam.world.z=driven.z;
+    const before=roam.vitals.wanted;
+    roam.tick({...IDLE_INPUT,use:true},0.05);
+    expect(roam.vehicle).toBe(driven);
+    expect(driven.driver).toBe(false);
+    expect(roam.vitals.wanted).toBeGreaterThan(before);
+  });
+  it('keeps traffic in its lane',()=>{
+    const ride=makeVehicle(1,'sedan',1602,400,0,true) as Ride;
+    ride.traffic={axis:'z',road:1600,dir:1,cruise:12,lane:2};
+    ride.vz=8;
+    for(let i=0;i<360;i++)stepVehicle(ride,cruiseInput(ride,[ride]),1/60,false);
+    expect(ride.z).toBeGreaterThan(460);
+    expect(Math.abs(ride.x-1602)).toBeLessThan(3);
   });
 });

@@ -1,0 +1,98 @@
+name: Harbor desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub Release tag
+        required: true
+        default: harbor-v0.3.0
+  push:
+    tags:
+      - "harbor-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vite build --config project-harbor/desktop/vite.config.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harbor-web-dist
+          path: dist
+          retention-days: 2
+
+  package:
+    needs: web
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+          - os: ubuntu-latest
+            label: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: project-harbor/desktop/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: harbor-web-dist
+          path: dist
+      - name: Install AppImage dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfuse2
+      - name: Package
+        working-directory: project-harbor/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: npm ci && npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harbor-desktop-${{ matrix.label }}
+          path: |
+            release/harbor/*.zip
+            release/harbor/*.exe
+            release/harbor/*.AppImage
+            release/harbor/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: harbor-desktop-*
+          merge-multiple: true
+          path: release
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Project Harbor ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            release/**/*.zip
+            release/**/*.exe
+            release/**/*.AppImage
+            release/**/*.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

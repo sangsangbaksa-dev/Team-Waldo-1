@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { terrainHeight } from './domain';
+import { makeSave, parseSave, restoreSave, SAVE_KEY } from './save';
 import { mapPoint, roadGuide, PACKAGES, type Point } from './exploration';
 import { SERVICE_INFO, SITES } from './services';
 import { DISTRICTS, WIDTH, DEPTH, roadHalf, districtAt } from './domain';
@@ -191,6 +192,12 @@ function start(): () => void {
   scene.fog = new T.FogExp2(0x9daebc, 0.004);
   const chunks = new ThreeChunks(scene);
   const roam = new FreeRoam(chunks);
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    const saved = raw ? parseSave(raw) : null;
+    if (saved && restoreSave(roam, saved)) roam.notify('저장된 게임을 불러왔습니다.');
+    else if (raw) roam.notify('저장 데이터를 불러올 수 없어 새 게임을 시작했습니다.');
+  } catch { roam.notify('이 환경에서는 로컬 저장을 사용할 수 없습니다.'); }
   const ringGeometry = new T.RingGeometry(3.4, 3.7, 32);
   const beaconGeometry = new T.CylinderGeometry(0.13, 0.13, 2.8, 8);
   const markers = SITES.map(site => {
@@ -260,10 +267,22 @@ function start(): () => void {
     waypoint = waypoint && Math.hypot(waypoint.x - point.x, waypoint.z - point.z) < 35 ? null : point;
     drawMap(atlas, roam, true, roam.peds, roam.items, waypoint);
   }, { signal });
+  const saveNow = () => {
+    const data = makeSave(roam);
+    if (!data) { roam.notify('수배 없이 안전한 곳에서 차량을 내려 저장하세요.'); return; }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); roam.notify('게임을 이 기기에 저장했습니다.'); }
+    catch { roam.notify('저장할 수 없습니다. 브라우저 저장 공간을 확인하세요.'); }
+  };
+  required('harbor-world-save').addEventListener('click', saveNow, { signal });
+  required('harbor-world-reset').addEventListener('click', () => {
+    if (!window.confirm('저장 기록을 삭제하고 새 게임을 시작할까요?')) return;
+    try { localStorage.removeItem(SAVE_KEY); } catch { roam.notify('저장 기록을 지울 수 없습니다.'); return; }
+    window.location.reload();
+  }, { signal });
   required('harbor-world-map-button').addEventListener('click', toggleMap, { signal });
   required('harbor-world-close-map').addEventListener('click', toggleMap, { signal });
   required('harbor-world-exit').addEventListener('click', () => host.dispatchEvent(new Event('harbor-world-exit')), { signal });
-  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyB', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
+  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyB', 'KeyK', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
   const focusGame = () => {
     if (host.hidden) return;
     host.tabIndex = -1;
@@ -282,6 +301,7 @@ function start(): () => void {
       return;
     }
     if (mapOpen) return;
+    if (event.code === 'KeyK' && !event.repeat) { saveNow(); return; }
     keys.add(event.code);
     if (!event.repeat) {
       if (event.code === 'KeyE') pulses.add('use');

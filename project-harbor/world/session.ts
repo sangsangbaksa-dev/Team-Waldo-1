@@ -314,6 +314,8 @@ export class FreeRoam {
     return this.rollState / 4294967296;
   }
 
+  notify(text: string) { this.say(text, 3.5); }
+
   private say(text: string, seconds = 2.6) {
     if (this.notice === text && this.time < this.noticeUntil) return;
     this.notice = text;

@@ -30,8 +30,8 @@ export function roadGuide(from: Point, to: Point): Point[] {
   for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
     const start = a[i]!, end = b[j]!;
     const sx = road(start.x, WIDTH), sz = road(start.z, DEPTH);
-    const ex = road(end.x, WIDTH), ez = road(end.z, DEPTH);
-    const points = i === 0 && j === 1 ? [from, start, { x: start.x, z: end.z }, end, to]
+    const sameStreet = i === j && (i === 0 ? start.x === end.x : start.z === end.z);
+    const points = sameStreet ? [from, start, end, to] : i === 0 && j === 1 ? [from, start, { x: start.x, z: end.z }, end, to]
       : i === 1 && j === 0 ? [from, start, { x: end.x, z: start.z }, end, to]
       : i === 0 ? [from, start, { x: start.x, z: sz }, { x: end.x, z: sz }, end, to]
       : [from, start, { x: sx, z: start.z }, { x: sx, z: end.z }, end, to];
@@ -41,7 +41,7 @@ export function roadGuide(from: Point, to: Point): Point[] {
       const prev = points[k - 1]!, next = points[k]!;
       cost += Math.hypot(next.x - prev.x, next.z - prev.z) * (k === 1 || k === points.length - 1 ? 1.6 : 1);
     }
-    if (sx === ex && sz === ez && cost === 0) return [from, to];
+    if (cost === 0) return [from, to];
     if (cost < bestCost) { bestCost = cost; best = points; }
   }
   return best.filter((point, index) => !index || point.x !== best[index - 1]!.x || point.z !== best[index - 1]!.z);

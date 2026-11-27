@@ -6,6 +6,7 @@ import { loadModule, type LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BAG_MAX, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
+import { CACHE_RADIUS, CACHE_SECONDS } from './field-cache';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -142,7 +143,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function startSolo(): void {
     audio.unlock(); pvp = null; const seed = (Math.random() * 2 ** 31) >>> 0;
-    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true }), 0);
+    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true, fieldCaches: true }), 0);
   }
 
   // ---------- 1대1 대전 ----------
@@ -485,6 +486,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       g.translate(px(at.x), pz(at.z)); g.rotate(Math.atan2(pl.dz, pl.dx)); g.fillStyle = '#ffd34d'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, -7); g.lineTo(-3, 0); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
     }
     for (const d of m.drops) if (d.called && m.t < d.at + 150) { const x = px(d.x), y = pz(d.z), pulse = 6 + Math.sin(m.t * 5) * 1.5; g.fillStyle = '#ffd34d'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y - pulse); g.lineTo(x + pulse, y); g.lineTo(x, y + pulse); g.lineTo(x - pulse, y); g.closePath(); g.fill(); g.stroke(); }
+    for (const c of m.fieldCaches) if (!c.claimed && !c.expired) { g.fillStyle = '#d4e1c4'; g.strokeStyle = '#233021'; g.lineWidth = 1.5; g.fillRect(px(c.x) - 4, pz(c.z) - 4, 8, 8); g.strokeRect(px(c.x) - 4, pz(c.z) - 4, 8, 8); }
     for (const s of m.sounds) { if (s.quiet || s.by === p.id || m.t - s.t > 1.6) continue; const d = Math.hypot(s.x - p.x, s.z - p.z); if (d > 110) continue; g.fillStyle = `rgba(255,70,60,${1 - (m.t - s.t) / 1.6})`; g.beginPath(); g.arc(px(s.x), pz(s.z), 5, 0, Math.PI * 2); g.fill(); }
     if (pvp?.opp?.alive && m.mode === 'duel') { /* 상대 위치는 알려 주지 않습니다 */ }
     g.save(); g.translate(px(p.x), pz(p.z)); g.rotate(p.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 0); g.lineTo(-7, -6); g.lineTo(-4, 0); g.lineTo(-7, 6); g.closePath(); g.stroke(); g.fill(); g.restore();
@@ -504,6 +506,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const z = m.zone, mark = (x: number, zz: number, color: string): void => { const b = bearing(x - p.x, zz - p.z), px = Math.max(8, Math.min(W - 8, at(b))); g.fillStyle = color; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px, 20); g.lineTo(px + 6, 27); g.lineTo(px, 33); g.lineTo(px - 6, 27); g.closePath(); g.fill(); g.stroke(); };
     mark(z.nextR < z.r - 0.5 ? z.nextCx : z.cx, z.nextR < z.r - 0.5 ? z.nextCz : z.cz, '#6fb2ff');
     for (const d of m.drops) if (d.called && !d.landed) mark(d.x, d.z, '#ffd34d');
+    for (const c of m.fieldCaches) if (!c.claimed && !c.expired) mark(c.x, c.z, '#d4e1c4');
     g.fillStyle = '#ff5a3c'; g.beginPath(); g.moveTo(W / 2, 20); g.lineTo(W / 2 + 5, 14); g.lineTo(W / 2 - 5, 14); g.closePath(); g.fill();
   }
 
@@ -542,7 +545,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     // 줍기 안내
     let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || (l.kind !== 'weapon' && l.kind !== 'attach')) continue; if (Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup) { if (l.kind === 'weapon') { near = WEAPONS[l.weapon!].name; break; } if (p.parts.length >= BAG_MAX) { near = '파츠 가방이 가득 찼습니다'; break; } } }
     if (!near && p.alive && p.air === 0 && p.veh < 0) { const v = m.vehicleNear(p); if (v) near = `${VEHICLES[v.kind].name} 탑승`; }
-    q('#sz-prompt').classList.toggle('show', !!near); set(q('#sz-prompt'), 'prompt', near ? `${touch ? '줍기 버튼' : 'E'} · ${near}` : '');
+    const cache = p.alive && !p.air && p.veh < 0 ? m.fieldCaches.find(c => !c.claimed && !c.expired && Math.hypot(p.x - c.x, p.z - c.z) <= 12) : undefined;
+    const cacheText = cache ? Math.hypot(p.x - cache.x, p.z - cache.z) > CACHE_RADIUS ? `보급 거점 접근 · ${CACHE_RADIUS}m 이내` : cache.contested ? '보급 거점 · 적 접근' : `보급 거점 확보 ${Math.min(100, Math.floor(cache.progress / CACHE_SECONDS * 100))}%` : '';
+    q('#sz-prompt').classList.toggle('show', !!near || !!cacheText);
+    set(q('#sz-prompt'), 'prompt', cacheText || (near ? `${touch ? '줍기 버튼' : 'E'} · ${near}` : ''));
     // 자기장 밖
     const out = Math.hypot(p.x - z.cx, p.z - z.cz) > z.r && p.alive && !p.air && m.t >= m.zoneDelay; q('#sz-zonefx').classList.toggle('on', out); audio.danger(out ? 1 : 0);
     if (out && !paused && phase === 'play' && Math.floor(m.t) !== zoneTick) { zoneTick = Math.floor(m.t); const fx = q('#sz-zonefx'); fx.classList.remove('tick'); void fx.offsetWidth; fx.classList.add('tick'); }
@@ -605,7 +611,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       } else if (e.t === 'heal') { if (e.id === p.id) { if (e.stage === 'done') { audio.play('heal'); say(`${e.kind === 'kit' ? '구급상자' : '붕대'} 사용 완료`, 1.2); } else if (e.stage === 'cancel') say('치료 중단', 1); } }
       else if (e.t === 'bagfull') { if (e.id === p.id) say('파츠 가방이 가득 찼습니다', 1.4); }
       else if (e.t === 'equip') { /* 조립 화면이 이미 반영합니다 */ }
-      else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하! 지도의 노란 표시를 확인하세요', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
+      else if (e.t === 'cache' && e.id === p.id) { say('보급 거점 확보 · 장비 회수', 3); audio.play('armor'); }
+      else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하 · 지도 확인', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
       else if (e.t === 'jump') { if (e.id === p.id) { audio.play('go'); say('강하 시작', 1.4); } }
       else if (e.t === 'chute') { if (e.id === p.id) { audio.play('pickup'); say('낙하산 펼침', 1.4); } }
       else if (e.t === 'land') { if (e.id === p.id) { audio.play('armor'); say('착지 · 총을 찾으세요', 2.4); } }
@@ -689,7 +696,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase === 'countdown' && !paused) {
       countdown -= real; const c = Math.ceil(countdown - 0.4), el = q('#sz-count');
       if (c > 0) { set(el, 'cd', String(c)); el.classList.add('show'); } else { set(el, 'cd', '출격'); }
-      if (countdown <= 0.4 && phase === 'countdown') { phase = 'play'; q('#sz-count').classList.remove('show'); audio.play('go'); say('마지막까지 살아남으세요', 2.2) }
+      if (countdown <= 0.4 && phase === 'countdown') { phase = 'play'; q('#sz-count').classList.remove('show'); audio.play('go'); say(m.fieldCaches.length ? '지도 사각 표식 · 보급 거점' : '경기 시작', 3) }
       p.input.yaw = yaw; p.input.pitch = pitch;
     }
     if ((phase === 'play' || phase === 'dead' || phase === 'over') && !paused) {

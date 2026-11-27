@@ -16,6 +16,7 @@ import type { Box, Loot } from './world';
 import { buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, partMesh } from './props';
 import { TerrainView, tintGround } from './terrainview';
 import { groundHeight } from './relief';
+import { CACHE_RADIUS } from './field-cache';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
 import { FLOOR_Y } from './ground-surfaces';
@@ -79,6 +80,20 @@ export class ShooterView {
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.42, radius: 0.55, threshold: 0.88, vignette: 0.3 });
     setTextureAnisotropy(quality === 'low' ? 2 : this.renderer.capabilities.getMaxAnisotropy());
     this.buildGround(); this.buildBuildings(); this.buildScatter();
+    for (const cache of match.fieldCaches) {
+      const marker = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6), new THREE.MeshLambertMaterial({ color: 0x727766 }));
+      pole.position.y = 1.3; marker.add(pole);
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.48, 0.12), new THREE.MeshLambertMaterial({ color: 0xd4e1c4 }));
+      panel.position.y = 2.4; marker.add(panel);
+      const ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 48 }, (_, i) => {
+        const a = i / 48 * Math.PI * 2, dx = Math.cos(a) * CACHE_RADIUS, dz = Math.sin(a) * CACHE_RADIUS;
+        return new THREE.Vector3(dx, groundHeight(match.seed, match.map, cache.x + dx, cache.z + dz) - groundHeight(match.seed, match.map, cache.x, cache.z) + 0.08, dz);
+      })), new THREE.LineBasicMaterial({ color: 0xd4e1c4 }));
+      marker.add(ring);
+      marker.position.set(cache.x, groundHeight(match.seed, match.map, cache.x, cache.z), cache.z);
+      this.cacheMarkers.push(marker); sc.add(marker);
+    }
     this.beams = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.09, 7, 8, 1, true), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }), 400);
     this.beams.count = 0; this.beams.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(400 * 3), 3); this.beams.frustumCulled = false; sc.add(this.beams);
     // 자기장 벽: 파란 반투명 원통과 다음 원을 알리는 바닥 고리
@@ -298,6 +313,7 @@ export class ShooterView {
   }
 
   // ---------- 보급 투하 ----------
+  private cacheMarkers: THREE.Group[] = [];
   private dropNodes = new Map<number, { g: THREE.Group; smoke: THREE.Sprite[] }>(); private plane: THREE.Group | null = null;
   private syncDrops(): void {
     const m = this.match, t = m.t; if (!m.drops.length) return;
@@ -579,6 +595,7 @@ export class ShooterView {
     // 자기장
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
+    for (let i = 0; i < this.cacheMarkers.length; i++) this.cacheMarkers[i].visible = !m.fieldCaches[i].claimed && !m.fieldCaches[i].expired;
     this.syncLoot(cam.position); this.syncDrops(); this.syncVehicles(dt, vx, vz); this.syncReds(); this.updateFx(dt);
     this.syncCarrier(); this.weather(dt);
     if (!this.reducedMotion) for (const aircraft of [this.plane, this.carrier]) if (aircraft?.visible) aircraft.traverse(o => { if (o.name === 'propeller') o.rotation.x += dt * 24; });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
-import { quickEventBonus, startEvent } from '../../src/city/events';
+import { quickEventBonus, startEvent, relayProgress, RELAY_TIME, updateCityEvents } from '../../src/city/events';
 
 function run(seed: number, until: (w: World) => boolean, max = 30 * 1200): World {
   const w = new World({ seed, difficulty: 'd3', klass: 'warlord', autoPlayer: true });
@@ -9,6 +9,27 @@ function run(seed: number, until: (w: World) => boolean, max = 30 * 1200): World
 }
 
 describe('도시 사건', () => {
+  it('거점 확보는 보스가 지상에 있고 적이 없을 때만 진행된다', () => {
+    expect(relayProgress(4, true, false)).toBe(5);
+    expect(relayProgress(4, true, true)).toBe(3);
+    expect(relayProgress(4, false, false)).toBe(3);
+    expect(relayProgress(0, false, true)).toBe(0);
+    expect(relayProgress(RELAY_TIME, true, false)).toBe(RELAY_TIME);
+  });
+  it('거점 확보 보상은 한 번만 지급된다', () => {
+    const w = new World({ seed: 2, difficulty: 'd3', klass: 'warlord' });
+    const b = w.boss(0)!;
+    w.event = { kind: 'relay', x: b.x, y: b.y, t: 50, total: 120, prog: RELAY_TIME - 1, stage: 0, ids: [], vid: 0, tx: 0, ty: 0, pay: 520 };
+    for (const a of w.actors) if (w.hostile(0, a.f)) a.alive = false;
+    const before = w.factions[0].cash;
+    updateCityEvents(w);
+    expect(w.event).toBeNull();
+    expect(w.eventsDone).toBe(1);
+    expect(w.factions[0].cash).toBeGreaterThan(before);
+    const after = w.factions[0].cash;
+    updateCityEvents(w);
+    expect(w.factions[0].cash).toBe(after);
+  });
   it('남은 시간이 많을수록 신속 보상이 커지고 범위를 넘지 않는다', () => {
     expect(quickEventBonus(0, 100)).toBe(0);
     expect(quickEventBonus(50, 100)).toBe(100);

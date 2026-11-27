@@ -68,6 +68,6 @@ export function missionSummary(items: readonly MissionItem[]): { completed: numb
 export interface SideJobItem { title: string; objective: string; current: number; target: number; reward: number; done: boolean }
 /** 부업 이정표(도시 사건을 몇 건 끝냈는지)와 연속 성공 상태 */
 export function sideJobs(world: World): { items: SideJobItem[]; streak: number; done: number } {
-  const items = SIDE_MILESTONES.map((m, i) => ({ title: m.title, objective: `도시 사건(수송차·구조·배달·현상금) ${m.n}건 완료`, current: Math.min(m.n, world.eventsDone), target: m.n, reward: m.reward, done: world.sideClaimed > i }));
+  const items = SIDE_MILESTONES.map((m, i) => ({ title: m.title, objective: `도시 사건(수송차·구조·배달·현상금·통신 거점) ${m.n}건 완료`, current: Math.min(m.n, world.eventsDone), target: m.n, reward: m.reward, done: world.sideClaimed > i }));
   return { items, streak: world.eventStreak, done: world.eventsDone };
 }

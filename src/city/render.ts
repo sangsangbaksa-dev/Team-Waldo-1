@@ -1,6 +1,6 @@
 // LAST CITY — 캔버스 렌더러 (유사 3D 건물, 파티클, 자기장, 미니맵)
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
-import { EVENT_INFO } from './events';
+import { EVENT_INFO, RELAY_TIME } from './events';
 import { HQ_BUILD_RANGE, structCenter } from './placement';
 import { declutterFromAreaChip } from './uiMath';
 import type { Actor, Fx, Vehicle, World } from './world';
@@ -114,7 +114,7 @@ export class Renderer {
     if (pb) { // 화면 밖 지시 화살표
       const zn = w.zone; if (Math.hypot(pb.x - zn.nx, pb.y - zn.ny) > zn.nr && zn.nr < 3800) this.arrow(zn.nx, zn.ny, '#c9a2ff', '안전지대');
       for (const l of w.loot) if (l.alive && l.type === 'crate') this.arrow(l.x, l.y, '#ffe27a', '보급');
-      if (w.event) this.arrow(w.event.x, w.event.y, EVENT_INFO[w.event.kind].color, EVENT_INFO[w.event.kind].name);
+      if (w.event) this.arrow(w.event.x, w.event.y, EVENT_INFO[w.event.kind].color, w.event.kind === 'relay' ? `통신 거점 · ${w.event.stage ? '교전 중' : `${w.event.prog}/${RELAY_TIME}초`}` : EVENT_INFO[w.event.kind].name);
       const hq = w.hq(0); if (hq && w.time - hq.hurtT < 4) this.arrow(hq.x + 60, hq.y + 60, '#ff6b6b', '본부 피격!');
     }
   }

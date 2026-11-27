@@ -28,6 +28,65 @@ function track(previous, sample, stats){
  }
  return {stats:next,peak};
 }
+function projectPoint(p,a,b){
+ const dx=b[0]-a[0],dz=b[1]-a[1],d=dx*dx+dz*dz;
+ const t=d?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dz)/d)):0;
+ const q=[a[0]+dx*t,a[1]+dz*t];return {t,q,d:Math.hypot(p[0]-q[0],p[1]-q[1])};
+}
+function roadGraph(roads){
+ const segments=[];
+ for(const r of roads){
+  if(r.kind==="path"||r.kind==="runway")continue;
+  let a=r.from,b=r.to;
+  if(!a||!b){
+   if(!r.center||!r.size)continue;
+   const [x,z]=r.center,[w,h]=r.size;
+   a=w>=h?[x-w/2,z]:[x,z-h/2];b=w>=h?[x+w/2,z]:[x,z+h/2];
+  }
+  if(![...a,...b].every(Number.isFinite)||Math.hypot(b[0]-a[0],b[1]-a[1])<.1)continue;
+  segments.push({a,b,cuts:[0,1]});
+ }
+ const cross=(ax,az,bx,bz)=>ax*bz-az*bx;
+ for(let i=0;i<segments.length;i++)for(let j=i+1;j<segments.length;j++){
+  const p=segments[i],q=segments[j],rx=p.b[0]-p.a[0],rz=p.b[1]-p.a[1],sx=q.b[0]-q.a[0],sz=q.b[1]-q.a[1],dx=q.a[0]-p.a[0],dz=q.a[1]-p.a[1],den=cross(rx,rz,sx,sz);
+  if(Math.abs(den)>1e-8){
+   const t=cross(dx,dz,sx,sz)/den,u=cross(dx,dz,rx,rz)/den;
+   if(t>=-1e-7&&t<=1+1e-7&&u>=-1e-7&&u<=1+1e-7){p.cuts.push(Math.max(0,Math.min(1,t)));q.cuts.push(Math.max(0,Math.min(1,u)));}
+  }else{
+   for(const e of [q.a,q.b]){const hit=projectPoint(e,p.a,p.b);if(hit.d<.02)p.cuts.push(hit.t);}
+   for(const e of [p.a,p.b]){const hit=projectPoint(e,q.a,q.b);if(hit.d<.02)q.cuts.push(hit.t);}
+  }
+ }
+ const points=[],edges=[],adj=[],ids=new Map(),unique=new Set();
+ const node=p=>{const key=p.map(v=>Math.round(v*100)).join(",");if(ids.has(key))return ids.get(key);const id=points.length;ids.set(key,id);points.push(p);adj.push([]);return id;};
+ for(const s of segments){
+  const cuts=[...new Set(s.cuts.map(t=>Math.round(t*1e8)/1e8))].sort((a,b)=>a-b);
+  const list=cuts.map(t=>node([s.a[0]+(s.b[0]-s.a[0])*t,s.a[1]+(s.b[1]-s.a[1])*t]));
+  for(let i=1;i<list.length;i++){
+   const a=list[i-1],b=list[i],key=[Math.min(a,b),Math.max(a,b)].join(":");if(a===b||unique.has(key))continue;unique.add(key);
+   const d=Math.hypot(points[a][0]-points[b][0],points[a][1]-points[b][1]);edges.push({a,b,d});adj[a].push({to:b,d});adj[b].push({to:a,d});
+  }
+ }
+ return {points,edges,adj};
+}
+function roadRoute(graph,from,to){
+ if(!graph?.edges.length)return null;
+ const nearest=p=>{let best=null;for(const edge of graph.edges){const hit=projectPoint(p,graph.points[edge.a],graph.points[edge.b]);if(!best||hit.d<best.d)best={...hit,edge};}return best;};
+ const start=nearest(from),end=nearest(to);if(!start||!end||start.d>70||end.d>70)return null;
+ if(start.edge===end.edge)return {points:[start.q,end.q],meters:Math.hypot(start.q[0]-end.q[0],start.q[1]-end.q[1]),offRoad:end.d};
+ const n=graph.points.length,dist=Array(n).fill(Infinity),prev=Array(n).fill(-1),used=Array(n).fill(false);
+ dist[start.edge.a]=start.t*start.edge.d;dist[start.edge.b]=(1-start.t)*start.edge.d;
+ for(let i=0;i<n;i++){
+  let u=-1;for(let j=0;j<n;j++)if(!used[j]&&(u<0||dist[j]<dist[u]))u=j;
+  if(u<0||!Number.isFinite(dist[u]))break;used[u]=true;
+  for(const e of graph.adj[u])if(dist[u]+e.d<dist[e.to]){dist[e.to]=dist[u]+e.d;prev[e.to]=u;}
+ }
+ const ca=dist[end.edge.a]+end.t*end.edge.d,cb=dist[end.edge.b]+(1-end.t)*end.edge.d,meters=Math.min(ca,cb);
+ if(!Number.isFinite(meters))return null;
+ let u=ca<=cb?end.edge.a:end.edge.b,route=[];
+ while(u>=0){route.push(graph.points[u]);u=prev[u];}
+ return {points:[start.q,...route.reverse(),end.q],meters,offRoad:end.d};
+}
 function mapProjection(bounds,width,height){
  const {min,max}=bounds;
  const scale=Math.min((width-40)/(max[0]-min[0]),(height-32)/(max[1]-min[1]));
@@ -38,7 +97,8 @@ function canvasFit(canvas){
  const r=canvas.getBoundingClientRect(),scale=Math.min(r.width/canvas.width,r.height/canvas.height);
  return {left:r.left+(r.width-canvas.width*scale)/2,top:r.top+(r.height-canvas.height*scale)/2,width:canvas.width*scale,height:canvas.height*scale,scale};
 }
-function drawPins(ctx,point,selected,course,run,landmarks,visited,showAll){
+function drawPins(ctx,point,selected,course,run,landmarks,visited,showAll,route){
+ if(route&&!course){ctx.save();ctx.strokeStyle='#f4be72';ctx.lineWidth=3;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();route.points.forEach((p,i)=>{const [x,y]=point(...p);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();ctx.restore();}
  const draw=(p,color,r)=>{const [x,y]=point(...p);if(x<0||y<0||x>ctx.canvas.width||y>ctx.canvas.height)return;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle="#172429";ctx.lineWidth=1.5;ctx.stroke();};
  if(showAll){
   for(const l of landmarks)draw([l.position[0],l.position[2]],visited.includes(l.id)?"#92e0d1":"#e9e6db",3.1);
@@ -87,7 +147,7 @@ function mount(){
  const description=element("p","","명소를 방문하면 탐험 기록이 남습니다. 주행 코스는 선택 사항이며 차량으로 시작점에 접근하면 기록이 시작됩니다.");
  const summary=element("p"), status=element("p");
  const records=element("div","harbor-records");
- const mapHelp=element("p","","지도에서 클릭해 자유 목적지를 지정하세요. 금색 사각형은 속도 측정 구간입니다. 점선은 체크포인트 연결선이며 도로 경로는 아닙니다.");
+ const mapHelp=element("p","","지도 클릭으로 목적지를 지정하세요. 운전 중 금색 실선은 추정 도로 경로, 점선은 주행 코스 연결선입니다. 금색 사각형은 속도 측정 구간입니다.");
  const row=element("div","harbor-extra-row"), select=element("select");select.setAttribute("aria-label","탐험 목적지");
  const defaultOption=element("option","","목적지 없음");defaultOption.value="";select.append(defaultOption);
  const routeRow=element("div","harbor-extra-row"), routeSelect=element("select");routeSelect.setAttribute("aria-label","주행 코스");
@@ -98,7 +158,12 @@ function mount(){
  row.append(select,clear);routeRow.append(routeSelect,choose,cancel);details.append(description,summary,row,routeRow,status,mapHelp,records);
  (map.querySelector(".map-panel")||map).append(details);
  let landmarks=[], target=null, course=null, run=null, lastVersion=-1,lastTime=performance.now(),lastPos=null,lastSave=0,lastNotice="",noticeUntil=0;
- let bounds=null,latest=null,previousSample=null;
+ let bounds=null,latest=null,previousSample=null,graph=null,route=null,routeTarget=null,routeFrom=null;
+ function getRoute(){
+  if(!graph||!latest?.driving||!target||course){route=null;routeTarget=null;return null;}
+  if(routeTarget!==target||!routeFrom||Math.hypot(latest.x-routeFrom[0],latest.z-routeFrom[1])>10){routeTarget=target;routeFrom=[latest.x,latest.z];route=roadRoute(graph,routeFrom,target.point);}
+  return route;
+ }
  const radar=document.getElementById("radar");
  const makeOverlay=id=>{const e=element("canvas","harbor-map-pins");e.id=id;e.setAttribute("aria-hidden","true");e.hidden=true;document.body.append(e);return e;};
  const atlasPins=makeOverlay("harbor-map-pins-atlas"),radarPins=makeOverlay("harbor-map-pins-radar");
@@ -112,7 +177,7 @@ function mount(){
    if(pins.width!==canvas.width)pins.width=canvas.width;if(pins.height!==canvas.height)pins.height=canvas.height;
    const ctx=pins.getContext("2d");ctx.clearRect(0,0,pins.width,pins.height);
    const point=mode==="map"?mapProjection(bounds,pins.width,pins.height).point:(x,z)=>{const scale=pins.width/(latest.driving?134:88);return [pins.width/2+(x-latest.x)*scale,pins.height/2+(z-latest.z)*scale];};
-   drawPins(ctx,point,target,course,run,landmarks,saved.visited,mode==="map");
+   drawPins(ctx,point,target,course,run,landmarks,saved.visited,mode==="map",getRoute());
   }
  }
  atlas.addEventListener("click",event=>{
@@ -141,7 +206,7 @@ function mount(){
  cancel.addEventListener("click",()=>{course=null;run=null;announce("주행 코스 취소");});
  document.getElementById("reset")?.addEventListener("click",()=>{run=null;course=null;target=null;select.value="";lastPos=null;lastVersion=-1;previousSample=null;latest=null;});
  fetch(new URL("world/harbor_front.json",document.baseURI)).then(r=>{if(!r.ok)throw Error("map");return r.json();}).then(layout=>{
-  bounds=layout.bounds;
+  bounds=layout.bounds;graph=roadGraph(layout.roads||[]);
   landmarks=(layout.landmarks||[]).filter(l=>typeof l.id==="string"&&typeof l.name==="string"&&Array.isArray(l.position)&&Number.isFinite(l.position[0])&&Number.isFinite(l.position[2]));
   for(const l of landmarks){const o=element("option","",l.name);o.value=l.id;select.append(o);}refresh();
  }).catch(()=>{description.textContent="명소 목록을 불러오지 못했습니다. 주행 코스는 사용할 수 있습니다.";refresh();});
@@ -177,7 +242,8 @@ function mount(){
   panel.hidden=!point&&now>=noticeUntil;
   heading.textContent=course?course.name:"자유 탐험";
   progress.textContent=run?.started?"경과 "+format(run.seconds):now<noticeUntil?lastNotice:"";
-  nav.textContent=point?`${point.name} · ${Math.round(distance(p,point.point))}m · ${bearing(p,point.point)}`:"";
+  const road=getRoute();
+  nav.textContent=point?`${point.name} · ${Math.round(distance(p,point.point))}m · ${bearing(p,point.point)}${road?` · 도로 약 ${Math.round(road.meters)}m`:""}`:"";
   renderOverlay();
  }
  setInterval(tick,150);

@@ -150,6 +150,8 @@ export function separateCars(a: TrafficCar, b: TrafficCar): boolean {
   if (closing > 0) {
     a.health = Math.max(0, a.health - closing * 0.35);
     b.health = Math.max(0, b.health - closing * 0.35);
+    if (a.control === 'player') { a.vx -= nx * closing * .55; a.vz -= nz * closing * .55; }
+    if (b.control === 'player') { b.vx += nx * closing * .55; b.vz += nz * closing * .55; }
     a.panic = Math.max(a.panic, 2.5);
     b.panic = Math.max(b.panic, 2.5);
     if (a.parked) a.parked = false;

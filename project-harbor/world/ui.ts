@@ -1,6 +1,7 @@
 import * as T from 'three';
 import { terrainHeight } from './domain';
 import { COURSES } from './time-trials';
+import { RENTALS } from './rental';
 import { makeSave, parseSave, restoreSave, SAVE_KEY } from './save';
 import { mapPoint, roadGuide, PACKAGES, type Point } from './exploration';
 import { SERVICE_INFO, SITES } from './services';
@@ -60,6 +61,12 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
     ctx.fillRect(x - 6, y - 6, 12, 12);
     ctx.fillStyle = '#17201d'; ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(info.symbol, x, y);
+  }
+  for (const site of RENTALS) {
+    const x = ox + site.x * scale, z = oz + site.z * scale;
+    if (x < 0 || z < 0 || x > w || z > h) continue;
+    ctx.fillStyle = '#b4c9ea'; ctx.fillRect(x - 7, z - 7, 14, 14);
+    ctx.fillStyle = '#202521'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('L', x, z);
   }
   for (const course of COURSES) {
     const x = ox + course.start.x * scale, z = oz + course.start.z * scale;
@@ -225,6 +232,11 @@ function start(): () => void {
     mesh.position.set(item.x, terrainHeight(item.x, item.z) + 0.32, item.z);
     mesh.visible = false; scene.add(mesh); return { item, mesh };
   });
+  const rentalMaterial = new T.MeshBasicMaterial({ color: 0xb4c9ea, side: T.DoubleSide });
+  const rentalMarkers = RENTALS.map(site => {
+    const ring = new T.Mesh(ringGeometry, rentalMaterial); ring.rotation.x = -Math.PI / 2;
+    ring.position.set(site.x, terrainHeight(site.x, site.z) + .16, site.z); scene.add(ring); return ring;
+  });
   const trialRingGeo = new T.RingGeometry(5, 5.5, 40);
   const trialRingMat = new T.MeshBasicMaterial({ color: 0xe9c76b, side: T.DoubleSide });
   const trialMarkers = COURSES.map(course => {
@@ -303,7 +315,7 @@ function start(): () => void {
   required('harbor-world-map-button').addEventListener('click', toggleMap, { signal });
   required('harbor-world-close-map').addEventListener('click', toggleMap, { signal });
   required('harbor-world-exit').addEventListener('click', () => host.dispatchEvent(new Event('harbor-world-exit')), { signal });
-  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyB', 'KeyK', 'KeyT', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
+  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyB', 'KeyK', 'KeyT', 'KeyL', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
   const focusGame = () => {
     if (host.hidden) return;
     host.tabIndex = -1;
@@ -331,6 +343,7 @@ function start(): () => void {
       if (event.code === 'KeyR') pulses.add('reload');
       if (event.code === 'KeyB') pulses.add('service');
       if (event.code === 'KeyT') pulses.add('trial');
+      if (event.code === 'KeyL') pulses.add('rent');
       if (event.code === 'Space' && !roam.driving) pulses.add('jump');
     }
   }, { signal, capture: true });
@@ -416,6 +429,7 @@ function start(): () => void {
       reload: pulses.has('reload'),
       service: pulses.has('service'),
       trial: pulses.has('trial'),
+      rent: pulses.has('rent'),
       jump: !driving && pulses.has('jump'),
       throttle: driving ? forward : 0,
       steer: driving ? (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) : 0,
@@ -477,6 +491,7 @@ function start(): () => void {
     actors.view(camera.position.x, camera.position.z);
     actors.sync(roam.peds, roam.items, roam.shots);
     garage.sync(roam.rides);
+    for (const marker of rentalMarkers) marker.visible = Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 150;
     for (const marker of trialMarkers) marker.visible = !roam.trial && Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 180;
     const gate = roam.trial?.course.gates[roam.trial.next];
     gateMarker.visible = !!gate;

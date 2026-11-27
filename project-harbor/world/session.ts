@@ -1,6 +1,7 @@
 import { buyService, DISCOVERY_REWARD, nearestService, SERVICE_INFO, visitService } from './services';
 import { findPackage, groundedJump, stepJump, JUMP_DURATION, PACKAGES } from './exploration';
 import { beginTrial, nearbyCourse, recordTrial, stepTrial, type Trial } from './time-trials';
+import { nearbyRental, rentalEligibility } from './rental';
 import { CHUNK, DEPTH, WIDTH, roadDistance } from './domain';
 import { World, type ChunkView } from './application';
 import {
@@ -32,6 +33,7 @@ export interface RoamInput {
   service?: boolean;
   jump?: boolean;
   trial?: boolean;
+  rent?: boolean;
 }
 
 export const IDLE_INPUT: RoamInput = {
@@ -263,9 +265,24 @@ export class FreeRoam {
         this.ears.push({ kind: 'ui', x: this.x, z: this.z, gain: 0.45, pitch: result.ok ? 1.15 : 0.8 });
       }
     } else if (input.service) this.say('지도에 표시된 시설 가까이 이동하세요.');
+    if (input.rent) this.rentVehicle();
     this.updateTrial(input, step);
     if (this.vitals.health <= 0) this.respawn();
     if (this.time >= this.noticeUntil) this.notice = '';
+  }
+
+  private rentVehicle() {
+    const site = nearbyRental(this);
+    if (!site) { this.say('지도에서 차량 대여소를 찾으세요.'); return; }
+    const reason = rentalEligibility(site, this.vitals.money, this.vitals.wanted, this.driving, this.sim.busy || this.airborne || this.vitals.health <= 0);
+    if (reason) { this.say(reason); return; }
+    if (!this.sim.rent(site.type, site.x, site.z, (x, z) => this.world.open(x, z, 1))) { this.say('대여 차량을 놓을 공간이 없습니다. 잠시 후 다시 시도하세요.'); return; }
+    this.vitals.money -= site.price;
+    const car = this.sim.playerCar;
+    if (car) { this.world.x = car.x; this.world.z = car.z; this.world.yaw = car.yaw; }
+    this.seekingId = -1;
+    this.say(site.name + ' 대여 완료 · -$' + site.price, 3.5);
+    this.ears.push({ kind: 'ui', x: this.x, z: this.z, gain: .6, pitch: 1.15 });
   }
 
   private updateTrial(input: RoamInput, step: number) {
@@ -293,6 +310,8 @@ export class FreeRoam {
 
   hint(): string {
     if (this.trial) return 'T · 기록 주행 종료 · 다음 체크포인트 ' + (this.trial.next + 1) + '/' + this.trial.course.gates.length;
+    const rental = nearbyRental(this);
+    if (rental && !this.driving && !this.sim.busy) return 'L · ' + rental.name + ' 대여 $' + rental.price;
     const course = nearbyCourse(this);
     if (course && this.driving) {
       const best = this.trialRecords.get(course.id);

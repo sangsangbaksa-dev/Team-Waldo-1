@@ -1,4 +1,6 @@
 import { DEPTH, WIDTH, districtAt, roadDistance, type District } from './domain';
+import { civilType, type CivilVehicle } from './rental';
+import { resolveVehicleWall } from './vehicle-collision';
 import { beginHijack, doorOpen, doorPoint, stepHijack, type Hijack } from './hijack';
 import {
   dispatchCommand, initialPursuit, policyFor, pursuitMode, spawnBudget, stepPursuit,
@@ -8,7 +10,7 @@ import {
   buildLanes, endPoint, nearestLane, poseOn, signalOpen, SPAWN, vehicleYawFromWorld, worldForward, worldYawFromVehicle,
   type LaneEdge,
 } from './roads';
-import { makeVehicle, hitWall, longitudinal, stepVehicle, type VehicleInput, type VehicleBody } from '../vehicles/domain.js';
+import { makeVehicle, longitudinal, stepVehicle, type VehicleInput, type VehicleBody } from '../vehicles/domain.js';
 import {
   DISTRICT_CAP, SIM_STEP, claimSignal, lodOf, neighborsOnLane, releaseSignal, separateCars, stepTraffic,
   SpatialHash, type Reservation, type TrafficCar, type TrafficKind,
@@ -77,6 +79,7 @@ export class StreetSim {
   private exitPoint: { x: number; z: number } | null = null;
   private playerId = -1;
   private pendingUse = false;
+  private rentedId = -1;
   private attempt = 1;
   private nextId = 1;
   private time = 0;
@@ -119,6 +122,33 @@ export class StreetSim {
     return best;
   }
 
+  rent(type: CivilVehicle, x: number, z: number, clear: (x: number, z: number) => boolean): boolean {
+    if (this.driving || this.busy) return false;
+    const spec = makeVehicle(0, type, 0, 0, 0).spec;
+    const offsets = [0, 9, -9, 18, -18];
+    for (const offset of offsets) {
+      const lane = nearestLane(this.edges, x, z + offset);
+      if (!lane) continue;
+      const pose = poseOn(lane.edge, lane.progress);
+      if (Math.hypot(pose.x - x, pose.z - z) > 22 || !clear(pose.x, pose.z)) continue;
+      const forward = worldForward(pose.yaw);
+      if (!clear(pose.x + forward.x * spec.length * .45, pose.z + forward.z * spec.length * .45) || !clear(pose.x - forward.x * spec.length * .45, pose.z - forward.z * spec.length * .45)) continue;
+      if (this.cars.some(car => car.id !== this.rentedId && Math.hypot(car.x - pose.x, car.z - pose.z) < (car.length + spec.length) * .5 + 2)) continue;
+      const old = this.cars.findIndex(car => car.id === this.rentedId);
+      if (old >= 0) this.cars.splice(old, 1);
+      this.bodies.delete(this.rentedId);
+      const car: TrafficCar = {
+        id: this.nextId++, x: pose.x, z: pose.z, yaw: pose.yaw, speed: 0, vx: 0, vz: 0,
+        edge: lane.edge.id, progress: lane.progress, kind: 'civil', control: 'player', mode: 'hold',
+        occupied: false, parked: false, door: 0, health: 100, panic: 0, wait: 0, cruise: 10,
+        length: spec.length, width: spec.width, color: spec.color, persistent: true, lod: 'near', type, drift: 0,
+      };
+      this.cars.push(car); this.rentedId = car.id; this.playerId = car.id; this.pendingUse = false;
+      this.body(car); return true;
+    }
+    return false;
+  }
+
   repairPlayer(health: number): void {
     const car = this.playerCar;
     if (!car) return;
@@ -139,6 +169,8 @@ export class StreetSim {
     this.command = dispatchCommand(0, 'clear');
     if (this.playerId >= 0) this.releasePlayer();
     this.cars.splice(0, this.cars.length, ...this.cars.filter(car => car.kind === 'civil'));
+    const ids = new Set(this.cars.map(car => car.id));
+    for (const id of this.bodies.keys()) if (!ids.has(id)) this.bodies.delete(id);
   }
 
   step(frameDt: number, ctx: SimContext): SimEvent[] {
@@ -208,8 +240,17 @@ export class StreetSim {
       if (car.id !== this.hijack?.carId) car.door = Math.max(0, car.door - dt * 1.6);
     }
     this.separate(events);
+    const playerAfterCollision = this.playerCar;
+    if (playerAfterCollision) {
+      const body = this.bodies.get(playerAfterCollision.id);
+      if (body) { body.health = playerAfterCollision.health; body.vx = playerAfterCollision.vx; body.vz = playerAfterCollision.vz; }
+    }
     const staying = this.cars.filter(car => car.kind === 'civil' || car.control === 'player' || car.control === 'reserved' || car.mode !== 'withdraw' || Math.hypot(car.x - ctx.x, car.z - ctx.z) < 96);
-    this.cars.splice(0, this.cars.length, ...staying);
+    if (staying.length !== this.cars.length) {
+      const ids = new Set(staying.map(car => car.id));
+      for (const id of this.bodies.keys()) if (!ids.has(id)) this.bodies.delete(id);
+      this.cars.splice(0, this.cars.length, ...staying);
+    }
     return events;
   }
 
@@ -344,8 +385,9 @@ export class StreetSim {
   private driveBody(car: TrafficCar, input: VehicleInput, dt: number, ctx: SimContext) {
     const body = this.body(car);
     body.yaw = vehicleYawFromWorld(car.yaw);
+    const previous = { x: body.x, z: body.z, yaw: body.yaw };
     stepVehicle(body, input, dt, roadDistance(body.x, body.z) > 0.4);
-    if (ctx.blocked(body.x, body.z)) hitWall(body, { x: body.x, z: body.z, w: 2.2, d: 2.2 });
+    resolveVehicleWall(body, previous, ctx.blocked);
     body.x = Math.max(4, Math.min(WIDTH - 4, body.x));
     body.z = Math.max(4, Math.min(DEPTH - 4, body.z));
     car.x = body.x;
@@ -477,7 +519,8 @@ export class StreetSim {
         const pose = poseOn(edge, progress);
         if (districtAt(pose.x, pose.z).id !== district) continue;
         if (Math.hypot(pose.x - SPAWN.x, pose.z - SPAWN.z) <= 24) continue;
-        const spec = makeVehicle(0, 'sedan', 0, 0, 0).spec;
+        const type = civilType(district, placed);
+        const spec = makeVehicle(0, type, 0, 0, 0).spec;
         this.cars.push({
           id: this.nextId++,
           x: pose.x,
@@ -497,13 +540,13 @@ export class StreetSim {
           health: 100,
           panic: 0,
           wait: 0,
-          cruise: 9 + (placed % 5),
+          cruise: type === 'truck' ? 8 + (placed % 3) : type === 'sport' ? 14 + (placed % 4) : 9 + (placed % 5),
           length: spec.length,
           width: spec.width,
-          color: COLOR[district],
+          color: type === 'sedan' ? COLOR[district] : spec.color,
           persistent: false,
           lod: 'sleep',
-          type: 'sedan',
+          type,
           drift: 0,
         });
         placed += 1;

@@ -131,3 +131,6 @@
 
 .sl-touchhint{display:none;margin:14px 0 0;padding:10px 12px;border-radius:10px;background:#0000002e;font-size:12px;color:#c7cdc4}
 @media (pointer:coarse){.sl-keyhints{display:none}.sl-touchhint{display:block}.sl-titlecard .sl-help{display:block}}
+
+.sl-tools [data-focus]:disabled{opacity:.55;cursor:default}
+.sl-tools [data-focus]:not(:disabled){border-color:#c0ae83}

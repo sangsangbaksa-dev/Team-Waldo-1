@@ -1,5 +1,6 @@
 // SKY WAR — 공중전 시뮬레이션(렌더링과 무관한 순수 로직). 단순화한 비행 모델 + 웨이브 AI.
 import * as THREE from 'three';
+import { createWaveObjective, settleObjective, type WaveObjective } from './domain/wave-objective';
 
 export const WORLD_R = 3200;        // 이 반경 밖에서는 경고 후 기수를 안쪽으로 돌립니다
 export const SEA_Y = 0;
@@ -34,7 +35,7 @@ export interface Bullet { pos: THREE.Vector3; vel: THREE.Vector3; life: number; 
 export type SimEvent =
   | { t: 'gun'; id: number } | { t: 'missile'; id: number } | { t: 'boom'; pos: THREE.Vector3; big: boolean }
   | { t: 'hit'; id: number; pos: THREE.Vector3; by?: number } | { t: 'nolock' } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
-  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield' } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
+  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield' } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' } | { t: 'objective-complete'; points: number };
 
 export interface Input { pitch: number; roll: number; yaw?: number; throttle: number; fire: boolean; missile: boolean; flare: boolean; boost?: boolean; }
 export interface Pickup { id: number; kind: 'repair' | 'ammo' | 'shield'; pos: THREE.Vector3; life: number; } // pitch/roll -1..1
@@ -58,12 +59,14 @@ export function forward(j: { q: THREE.Quaternion }, out = new THREE.Vector3()): 
 export class SkySim {
   jets: Jet[] = []; pickups: Pickup[] = []; missiles: Missile[] = []; bullets: Bullet[] = []; events: SimEvent[] = [];
   private bulletPool: Bullet[] = [];
+  objective: WaveObjective | null = null;
   player!: Jet; wave = 0; score = 0; kills = 0; time = 0; over = false; waveDelay = 0; combo = 0; comboT = 0;
   bestCombo = 0; shots = 0; hits = 0; shield = 0; overdrive = 0; warnT = 0; private nid = 1; spawnQueue = 0; intermission = 2;
   constructor(public diff: Difficulty) { this.reset(); }
 
   reset(): void {
     this.bulletPool.length = 0;
+    this.objective = null;
     this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0;
     const p = this.makeJet('player', 'fighter', new THREE.Vector3(0, 700, 2200), 1); p.q.identity(); p.speed = CRUISE; p.missiles = 6; p.missileCd = 0; p.hp = p.maxHp = 100;
     this.player = p;
@@ -80,7 +83,7 @@ export class SkySim {
   enemies(): Jet[] { return this.jets.filter(j => j.alive && j.team === 'enemy'); }
 
   private startWave(): void {
-    this.wave++; const modifier = this.wave % 5 === 0 ? '' : this.wave % 3 === 0 ? '폭격기 편대' : this.wave % 3 === 1 && this.wave > 1 ? '에이스 편대' : ''; this.events.push({ t: 'wave', n: this.wave, modifier });
+    this.wave++; this.objective = createWaveObjective(this.wave, this.time); const modifier = this.wave % 5 === 0 ? '' : this.wave % 3 === 0 ? '폭격기 편대' : this.wave % 3 === 1 && this.wave > 1 ? '에이스 편대' : ''; this.events.push({ t: 'wave', n: this.wave, modifier });
     const n = Math.min(10, Math.round((1 + this.wave * 1.3) * this.diff.count));
     const p = this.player.pos;
     if (this.wave % 5 === 0) { this.events.push({ t: 'boss' }); const a = rnd(0, Math.PI * 2); const bp = new THREE.Vector3(p.x + Math.cos(a) * 2200, 900, p.z + Math.sin(a) * 2200); const bj = this.makeJet('enemy', 'boss', bp, this.diff.skill); const dd = p.clone().sub(bp).normalize(); bj.yaw = Math.atan2(-dd.x, -dd.z); bj.q.setFromEuler(eul.set(0, bj.yaw, 0, 'YXZ')); }
@@ -122,7 +125,16 @@ export class SkySim {
     for (const j of this.jets) if (j.alive) this.collideTerrain(j);
     this.comboT -= dt; if (this.comboT <= 0) this.combo = 0;
     // 웨이브 관리
-    if (!this.over && this.enemies().length === 0) { this.intermission -= dt; if (this.intermission <= 0) { this.startWave(); this.intermission = 4; if (p.alive) { p.hp = Math.min(p.maxHp, p.hp + 20); p.missiles = Math.min(8, p.missiles + 2); } } }
+    if (p.alive && this.objective && !this.objective.settled && !this.enemies().length) {
+      if (settleObjective(this.objective, this.time)) {
+        const points = 250 + Math.min(this.wave, 10) * 25;
+        this.score += points;
+        if (this.objective.kind === 'clean') this.shield = Math.min(50, this.shield + 15);
+        else p.missiles = Math.min(8, p.missiles + 1);
+        this.events.push({ t: 'objective-complete', points });
+      }
+    }
+    if (p.alive && !this.over && this.enemies().length === 0) { this.intermission -= dt; if (this.intermission <= 0) { this.startWave(); this.intermission = 4; if (p.alive) { p.hp = Math.min(p.maxHp, p.hp + 20); p.missiles = Math.min(8, p.missiles + 2); } } }
     // 미사일 경고
     this.warnT -= dt; let warn = false;
     for (const m of this.missiles) if (m.alive && m.target === p.id) warn = true;
@@ -294,14 +306,16 @@ export class SkySim {
   }
 
   damage(j: Jet, dmg: number, by: number, at: THREE.Vector3): void {
-    if (!j.alive) return; if (j === this.player && this.shield > 0) { const absorbed = Math.min(this.shield, dmg); this.shield -= absorbed; dmg -= absorbed; } if (j.kind === 'boss' && j.hp < j.maxHp * 0.5) dmg *= 1.25; j.hp -= dmg; this.events.push({ t: 'hit', id: j.id, pos: at.clone(), by });
+    if (!j.alive) return; if (j === this.player && dmg > 0 && this.objective) this.objective.damaged = true; if (j === this.player && this.shield > 0) { const absorbed = Math.min(this.shield, dmg); this.shield -= absorbed; dmg -= absorbed; } if (j.kind === 'boss' && j.hp < j.maxHp * 0.5) dmg *= 1.25; j.hp -= dmg; this.events.push({ t: 'hit', id: j.id, pos: at.clone(), by });
     if (j.hp <= 0) this.kill(j, by);
   }
   kill(j: Jet, by: number): void {
+    if (!j.alive) return;
     j.alive = false; this.events.push({ t: 'boom', pos: j.pos.clone(), big: true });
     let points = 0;
     if (j.team === 'enemy' && (j.kind === 'boss' || Math.random() < 0.25)) { const drop = Math.random(); this.pickups.push({ id: this.nid++, kind: j.kind === 'boss' ? 'repair' : drop < 0.34 ? 'shield' : drop < 0.67 ? 'repair' : 'ammo', pos: j.pos.clone(), life: 25 }); }
     if (j.team === 'enemy' && by === this.player.id) {
+      if (this.objective) this.objective.kills++;
       this.kills++; this.combo = Math.min(5, this.combo + 1); this.bestCombo = Math.max(this.bestCombo, this.combo); this.comboT = 6;
       points = Math.round((j.kind === 'boss' ? 2500 : j.kind === 'bomber' ? 300 : j.kind === 'ace' ? 500 : 200) * (1 + (this.combo - 1) * 0.25)); this.score += points;
       if (this.combo === 3) this.player.missiles = Math.min(8, this.player.missiles + 1);

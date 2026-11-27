@@ -26,6 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
+import { createDecoy, deployDecoy, tickDecoy, decoyTarget } from "./domain/decoy.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -108,6 +109,7 @@ let returnFromHelp = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
+let decoy = createDecoy(), nextDecoyPulse = 0;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -401,6 +403,8 @@ function pointPlayer() {
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");
   hiddenSpot = null;
+  decoy = createDecoy();
+  nextDecoyPulse = 0;
   hideBreath = 1;
   hideReadyAt = 0;
   $("viewWrap").classList.remove("hiding");
@@ -778,8 +782,25 @@ function renderHUD() {
       : c.item + " 회수  " + total() + " / 3";
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
   $("crouch").setAttribute("aria-pressed", String(crouched));
+  renderDecoy();
   refreshGuide();
 }
+function renderDecoy() {
+  const button = $("decoy");
+  const label = decoy.remaining > 0 ? "재생 " + Math.ceil(decoy.remaining) + "초" : "녹음기 " + decoy.uses + "회";
+  if ($("decoyLabel").textContent !== label) $("decoyLabel").textContent = label;
+  const disabled = Boolean(hiddenSpot) || decoy.uses === 0 || decoy.remaining > 0;
+  if (button.disabled !== disabled) button.disabled = disabled;
+}
+function useDecoy() {
+  if (state !== "play" || hiddenSpot) return;
+  if (!deployDecoy(decoy, cellOf(player), true)) return;
+  nextPath = 0;
+  nextDecoyPulse = 0;
+  renderDecoy();
+  message("녹음기 재생 · 소리가 나는 곳에서 벗어나세요.", 3);
+}
+$("decoy").onclick = useDecoy;
 function toggleLamp() {
   if (state !== "play" || hiddenSpot) return;
   lightOn = !lightOn;
@@ -1208,6 +1229,14 @@ function enemyUpdate(dt, running) {
   if (!grace && inSight && !wasSeeing) alertUntil = now + 1.4;
   wasSeeing = !grace && inSight;
   wasTracking = tracking;
+  const lure = decoyTarget(decoy, tracking, Boolean(investigation));
+  if (lure !== null) {
+    if (lastKnown !== lure || searching) nextPath = 0;
+    lastKnown = lure;
+    enemyPhase = Math.max(enemyPhase, 0.1);
+    searchRemaining = 0;
+    searching = false;
+  }
   if (investigation && hiddenSpot === investigation.spot) {
     lastKnown = investigation.spot.cell;
     enemyPhase = Math.max(enemyPhase, 0.1);
@@ -1259,7 +1288,7 @@ function enemyUpdate(dt, running) {
   }
   const startX = e.x;
   const startZ = e.z;
-  const destination = investigation && ec === investigation.spot.cell ? null
+  const destination = (investigation && ec === investigation.spot.cell) || (lure !== null && ec === lure && path.length === 0) ? null
     : tracking && inSight && ec === playerCell ? player
     : path.length ? xy(path[0]) : null;
   if (destination) {
@@ -1311,6 +1340,18 @@ function pathsDistXZ(a, b) {
 }
 function update(dt) {
   elapsed += dt;
+  tickDecoy(decoy, dt);
+  if (decoy.remaining > 0) {
+    nextDecoyPulse -= dt;
+    if (nextDecoyPulse <= 0) {
+      const source = xy(decoy.cell), dx = source.x - player.x, dz = source.z - player.z;
+      const distance = Math.hypot(dx, dz);
+      const pan = distance > 0 ? (Math.cos(yaw) * dx - Math.sin(yaw) * dz) / distance : 0;
+      sound.decoy(distance, pan);
+      nextDecoyPulse = 1.25;
+    }
+  }
+  renderDecoy();
   let f =
     (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
     (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
@@ -1485,6 +1526,7 @@ document.addEventListener("keydown", (e) => {
       if (e.code === "KeyE") interact();
       else if (e.code === "KeyF") toggleLamp();
       else if (e.code === "KeyC") toggleCrouch();
+      else if (e.code === "KeyR") useDecoy();
       else if (e.code === "KeyG") toggleGuide();
       else if (e.code === "KeyM") mapPanel();
       else if (e.code === "Escape" || e.code === "KeyP") pauseGame();

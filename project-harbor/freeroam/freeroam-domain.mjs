@@ -7,13 +7,21 @@ export function createFreeRoam(layout, saved = {}) {
     {id:"harbor-loop", name:"항만 순환 코스", checkpoints:[[40,33],[40,71],[-39,71],[-39,33],[40,33]],limit:85},
     {id:"civic-run", name:"도심 대로 코스", checkpoints:[[-155,-242],[-155,-345],[-70,-345],[-70,-440],[22,-440],[22,-530]],limit:120},
     {id:"cinder-run", name:"사막 패스 코스", checkpoints:[[-595,-440],[-599,-381],[-591,-327],[-565,-275],[-530,-247],[-460,-242]],limit:100},
+    {id:"alder-drive",name:"숲속 파크웨이",checkpoints:[[-580,174],[-562,224],[-581,278],[-581,361],[-570,413],[-541,438],[-215,438]],limit:180},
+    {id:"coast-drive",name:"랜턴 포인트 해안",checkpoints:[[99,170],[99,438],[385,438],[482,438],[540,420],[568,379],[568,326],[554,287]],limit:200},
+    {id:"station-drive",name:"기지 외곽 순환",checkpoints:[[224,-530],[224,-268],[550,-268],[550,-530]],limit:180},
   ];
   const traps = [
     {id:"lighthouse", name:"Lighthouse Drive", x:99,z:-80},
     {id:"supply", name:"Supply Road", x:-105,z:-175},
     {id:"meridian", name:"Meridian Avenue", x:22,z:-470},
+    {id:"boulevard",name:"Union Boulevard",x:-110,z:-440},
+    {id:"harbor",name:"Calloway Boulevard",x:-95,z:33},
+    {id:"desert",name:"Cinder Main",x:-591,z:-327},
+    {id:"forest",name:"Alderwash Parkway",x:-581,z:320},
+    {id:"coast",name:"Seabank Road",x:290,z:438},
   ];
-  const record = {visited: Array.isArray(saved.visited) ? [...new Set(saved.visited.filter(id=>points.some(p=>p.id===id)))] : [], best:{}, speeds:{}, trip:{walk:0,drive:0,topSpeed:0,escapes:0}};
+  const record = {visited: Array.isArray(saved.visited) ? [...new Set(saved.visited.filter(id=>points.some(p=>p.id===id)))] : [], best:{}, speeds:{}, trip:{walk:0,drive:0,topSpeed:0,escapes:0,maxEscape:0}};
   for(const k of Object.keys(record.trip)) if(Number.isFinite(saved.trip?.[k])&&saved.trip[k]>=0)record.trip[k]=saved.trip[k];
   for (const r of routes) if (Number.isFinite(saved.best?.[r.id]) && saved.best[r.id]>0) record.best[r.id]=saved.best[r.id];
   for (const t of traps) if (Number.isFinite(saved.speeds?.[t.id]) && saved.speeds[t.id]>=0) record.speeds[t.id]=saved.speeds[t.id];
@@ -43,7 +51,7 @@ export function createFreeRoam(layout, saved = {}) {
     if(Number.isFinite(speed)&&speed<450&&speed>record.trip.topSpeed){record.trip.topSpeed=speed;changed=true;}
     const wanted=Math.max(0,Number(frame.state.wantedLevel)||0);
     if(wanted){wantedPeak=Math.max(wantedPeak,wanted);clearTime=0;}
-    else if(wantedPeak){clearTime+=dt;if(clearTime>=3){record.trip.escapes++;tell("추격 탈출 · "+wantedPeak+"단계");wantedPeak=0;clearTime=0;changed=true;}}
+    else if(wantedPeak){clearTime+=dt;if(clearTime>=3){record.trip.escapes++;record.trip.maxEscape=Math.max(record.trip.maxEscape,wantedPeak);tell("추격 탈출 · "+wantedPeak+"단계");wantedPeak=0;clearTime=0;changed=true;}}
     if(!driving) {
       for(const mark of points) if(!record.visited.includes(mark.id)&&d(p,mark.position[0],mark.position[2])<=10&&Math.abs(p.y-mark.position[1])<=4){
         record.visited.push(mark.id);tell("명소 발견 · "+mark.name);changed=true;
@@ -94,5 +102,65 @@ export function createFreeRoam(layout, saved = {}) {
     const target=active?{item:active.route,distance:d(p,...active.route.checkpoints[active.index]),point:active.route.checkpoints[active.index]}:route&&{...route,point:route.item.checkpoints[0]};
     return {active:active?{name:active.route.name,index:active.index,total:active.route.checkpoints.length,remaining:Math.max(0,active.route.limit-active.elapsed)}:null,target,landmark,trap,visited:record.visited.length,total:points.length,record,msg:notice>0?msg:""};
   }
-  return {update,toggle,view,cancel,reset,record,routes,points,selectRoute(id){selectedRoute=routes.some(r=>r.id===id)?id:"";active=null;},selectLandmark(id){selectedLandmark=points.some(p=>p.id===id)?id:"";}};
+  return {update,toggle,view,cancel,reset,record,routes,points,traps,selectRoute(id){selectedRoute=routes.some(r=>r.id===id)?id:"";active=null;},selectLandmark(id){selectedLandmark=points.some(p=>p.id===id)?id:"";}};
+}
+
+function projectPoint(p,a,b){
+ const dx=b[0]-a[0],dz=b[1]-a[1],d=dx*dx+dz*dz;
+ const t=d?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dz)/d)):0;
+ const q=[a[0]+dx*t,a[1]+dz*t];return {t,q,d:Math.hypot(p[0]-q[0],p[1]-q[1])};
+}
+export function roadGraph(roads){
+ const segments=[];
+ for(const r of roads){
+  if(r.kind==="path"||r.kind==="runway")continue;
+  let a=r.from,b=r.to;
+  if(!a||!b){
+   if(!r.center||!r.size)continue;
+   const [x,z]=r.center,[w,h]=r.size;
+   a=w>=h?[x-w/2,z]:[x,z-h/2];b=w>=h?[x+w/2,z]:[x,z+h/2];
+  }
+  if(![...a,...b].every(Number.isFinite)||Math.hypot(b[0]-a[0],b[1]-a[1])<.1)continue;
+  segments.push({a,b,cuts:[0,1]});
+ }
+ const cross=(ax,az,bx,bz)=>ax*bz-az*bx;
+ for(let i=0;i<segments.length;i++)for(let j=i+1;j<segments.length;j++){
+  const p=segments[i],q=segments[j],rx=p.b[0]-p.a[0],rz=p.b[1]-p.a[1],sx=q.b[0]-q.a[0],sz=q.b[1]-q.a[1],dx=q.a[0]-p.a[0],dz=q.a[1]-p.a[1],den=cross(rx,rz,sx,sz);
+  if(Math.abs(den)>1e-8){
+   const t=cross(dx,dz,sx,sz)/den,u=cross(dx,dz,rx,rz)/den;
+   if(t>=-1e-7&&t<=1+1e-7&&u>=-1e-7&&u<=1+1e-7){p.cuts.push(Math.max(0,Math.min(1,t)));q.cuts.push(Math.max(0,Math.min(1,u)));}
+  }else{
+   for(const e of [q.a,q.b]){const hit=projectPoint(e,p.a,p.b);if(hit.d<.02)p.cuts.push(hit.t);}
+   for(const e of [p.a,p.b]){const hit=projectPoint(e,q.a,q.b);if(hit.d<.02)q.cuts.push(hit.t);}
+  }
+ }
+ const points=[],edges=[],adj=[],ids=new Map(),unique=new Set();
+ const node=p=>{const key=p.map(v=>Math.round(v*100)).join(",");if(ids.has(key))return ids.get(key);const id=points.length;ids.set(key,id);points.push(p);adj.push([]);return id;};
+ for(const s of segments){
+  const cuts=[...new Set(s.cuts.map(t=>Math.round(t*1e8)/1e8))].sort((a,b)=>a-b);
+  const list=cuts.map(t=>node([s.a[0]+(s.b[0]-s.a[0])*t,s.a[1]+(s.b[1]-s.a[1])*t]));
+  for(let i=1;i<list.length;i++){
+   const a=list[i-1],b=list[i],key=[Math.min(a,b),Math.max(a,b)].join(":");if(a===b||unique.has(key))continue;unique.add(key);
+   const d=Math.hypot(points[a][0]-points[b][0],points[a][1]-points[b][1]);edges.push({a,b,d});adj[a].push({to:b,d});adj[b].push({to:a,d});
+  }
+ }
+ return {points,edges,adj};
+}
+export function roadRoute(graph,from,to){
+ if(!graph?.edges.length)return null;
+ const nearest=p=>{let best=null;for(const edge of graph.edges){const hit=projectPoint(p,graph.points[edge.a],graph.points[edge.b]);if(!best||hit.d<best.d)best={...hit,edge};}return best;};
+ const start=nearest(from),end=nearest(to);if(!start||!end||start.d>70||end.d>70)return null;
+ if(start.edge===end.edge)return {points:[start.q,end.q],meters:Math.hypot(start.q[0]-end.q[0],start.q[1]-end.q[1]),offRoad:end.d};
+ const n=graph.points.length,dist=Array(n).fill(Infinity),prev=Array(n).fill(-1),used=Array(n).fill(false);
+ dist[start.edge.a]=start.t*start.edge.d;dist[start.edge.b]=(1-start.t)*start.edge.d;
+ for(let i=0;i<n;i++){
+  let u=-1;for(let j=0;j<n;j++)if(!used[j]&&(u<0||dist[j]<dist[u]))u=j;
+  if(u<0||!Number.isFinite(dist[u]))break;used[u]=true;
+  for(const e of graph.adj[u])if(dist[u]+e.d<dist[e.to]){dist[e.to]=dist[u]+e.d;prev[e.to]=u;}
+ }
+ const ca=dist[end.edge.a]+end.t*end.edge.d,cb=dist[end.edge.b]+(1-end.t)*end.edge.d,meters=Math.min(ca,cb);
+ if(!Number.isFinite(meters))return null;
+ let u=ca<=cb?end.edge.a:end.edge.b,route=[];
+ while(u>=0){route.push(graph.points[u]);u=prev[u];}
+ return {points:[start.q,...route.reverse(),end.q],meters,offRoad:end.d};
 }

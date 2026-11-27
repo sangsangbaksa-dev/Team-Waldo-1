@@ -23,8 +23,8 @@ try {
     throw new Error('Project Harbor bundle is missing the streamed Godot map chunks');
   }
   const extras = join(source, 'freeroam');
-  execFileSync(process.execPath, ['--test', join(extras, 'tests/freeroam.test.mjs')], { stdio: 'inherit' });
-  for (const name of ['freeroam-domain.mjs', 'freeroam-ui.mjs']) await copyFile(join(extras, name), join(staged, name));
+  execFileSync(process.execPath, ['--test', join(extras, 'tests/freeroam.test.mjs'), join(extras, 'tests/drive-audio.test.mjs')], { stdio: 'inherit' });
+  for (const name of ['freeroam-domain.mjs', 'freeroam-ui.mjs', 'drive-audio-domain.mjs', 'drive-audio-ui.mjs']) await copyFile(join(extras, name), join(staged, name));
   const page = join(staged, 'index.html');
   const html = await readFile(page, 'utf8');
   if (!html.includes('</body>')) throw new Error('Harbor browser entry is missing a body');

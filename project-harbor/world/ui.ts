@@ -8,6 +8,7 @@ import { DISTRICTS, WIDTH, DEPTH, roadHalf, districtAt } from './domain';
 import { FreeRoam, type RoamInput } from './session';
 import { StreetActors } from './actors';
 import { CityGarage } from './garage';
+import { reflectionSky } from './reflections';
 import { ThreeChunks } from './infrastructure';
 import { WEAPONS, starCount, starLabel, type GroundItem, type Ped } from './street';
 import { CharacterGfx } from '../characters/infrastructure';
@@ -199,6 +200,8 @@ function start(): () => void {
   const sky = new T.HemisphereLight(0xc8e5ff, 0x8c8067, 1.9);
   const sun = new T.DirectionalLight(0xffe2bd, 2.2);
   scene.add(sky, sun);
+  const reflections=coarse?null:reflectionSky();
+  if(reflections)scene.environment=reflections;
   scene.fog = new T.FogExp2(0x9daebc, 0.004);
   const chunks = new ThreeChunks(scene);
   const roam = new FreeRoam(chunks);
@@ -476,7 +479,7 @@ function start(): () => void {
     } else roam.world.stream();
     actors.view(camera.position.x, camera.position.z);
     actors.sync(roam.peds, roam.items, roam.shots);
-    garage.sync(roam.rides);
+    garage.sync(roam.rides, dt);
     for (const marker of trialMarkers) marker.visible = !roam.trial && Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 180;
     const gate = roam.trial?.course.gates[roam.trial.next];
     gateMarker.visible = !!gate;
@@ -522,6 +525,7 @@ function start(): () => void {
     sun.intensity = (0.08 + brightness * 2.1) * (1 - climate.night * 0.35);
     sun.position.set(Math.cos(angle) * 150, Math.max(12, Math.sin(angle) * 180), 75);
     scene.background = color.setHex(climate.sky);
+    scene.environmentIntensity=.12+brightness*.43*(1-climate.night*.6);
     if (scene.fog instanceof T.FogExp2) {
       scene.fog.color.setHex(climate.fog);
       scene.fog.density = climate.fogDensity;
@@ -543,6 +547,7 @@ function start(): () => void {
     people.dispose();
     garage.dispose();
     chunks.dispose();
+    scene.environment=null;reflections?.dispose();
     const geometries = new Set<T.BufferGeometry>();
     const materials = new Set<T.Material>();
     scene.traverse(obj => {

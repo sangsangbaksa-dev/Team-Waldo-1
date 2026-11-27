@@ -120,7 +120,37 @@ export class ThreeChunks implements ChunkView {
       for(let n=8;n<128;n+=16)if(!vx||Math.abs(n-64)>vx+4)add(x+n,.13,z+64,7,.018,.18,0xd6cba7);
       if(lod===0)for(const side of [-1,1]){ const pz=z+64+side*(hz+.6); if(vx){const span=64-vx-1;add(x+span/2,.05,pz,span,.1,1.2,0x95948a);add(x+128-span/2,.05,pz,span,.1,1.2,0x95948a);}else add(x+64,.05,pz,CHUNK,.1,1.2,0x95948a); }
     }
-    if(vx&&hz&&lod===0)for(let stripe=-3;stripe<=3;stripe++)add(x+64+stripe*1.15,.16,z+64,.42,.02,Math.min(vx,hz)*1.15,0xf4f1ea);
+    if(lod===0){
+      // Painted lines and curb surfaces remain instanced with the road geometry.
+      const roadDetails=(half:number,other:number,vertical:boolean)=>{
+        if(!half)return;
+        const strip=(offset:number,along:number,width:number,length:number,color:number)=>{
+          if(vertical)add(x+64+offset,.138,z+along,width,.016,length,color);
+          else add(x+along,.148,z+64+offset,length,.016,width,color);
+        };
+        for(const side of [-1,1]){
+          const edge=side*(half-.3);
+          if(other){
+            const len=64-other-2;
+            strip(edge,len/2,.12,len,0xb5b1a3);
+            strip(edge,128-len/2,.12,len,0xb5b1a3);
+            for(let off=-half+.9;off<half-.5;off+=1.15)
+              strip(off,64+side*(other+2),.42,2.0,0xd9d8ce);
+            strip(0,64+side*(other+4.0),half*1.7,.18,0xd9d8ce);
+          }else strip(edge,64,.12,128,0xb5b1a3);
+          if(half>=15)for(let n=8;n<128;n+=16)
+            if(!other||Math.abs(n-64)>other+7)strip(side*half*.5,n,.12,6,0xd3d1c6);
+          for(let n=12;n<128;n+=24){
+            if(other&&Math.abs(n-64)<other+7)continue;
+            strip(side*(half-.7),n,.46,.70,0x282d30);
+            for(let grate=-1;grate<=1;grate++)strip(side*(half-.7)+grate*.13,n,.035,.62,0x777c7c);
+          }
+        }
+        if(!other)strip(0,50,.70,.70,0x535658);
+      };
+      roadDetails(vx,hz,true);
+      roadDetails(hz,vx,false);
+    }
     for(const p of props){if(p.detail&&lod!==0)continue;parts.push(...this.part(p,lod));}
     const buckets=new Map<string,{shape:T.BufferGeometry;glow:boolean;authored:boolean;list:Part[]}>();
     for(const p of parts){

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d0e10" />
+    <title>Project Harbor</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="../style.css" />
+  <style>.harbor-play-intro{max-width:40rem;margin:12vh auto;padding:2rem;color:#f0f0ed}.harbor-play-intro button{padding:1rem 1.5rem;background:#d6c27a;color:#171917;border:0;font-weight:700;cursor:pointer}.harbor-play-intro a{color:#b6cbd7}.harbor-driving .harbor-play-intro{display:none}</style>
+  </head>
+  <body>
+    <p id="harbor-world-error" role="alert"></p>
+    <main class="harbor-play-intro"><h1>Project Harbor</h1><p>포트 캘러웨이 자유 탐험 · 차량 · 상점 · 수배 시스템</p><button id="harbor-world-start" type="button">브라우저에서 바로 플레이</button><p><a href="../">다운로드 페이지</a></p></main>
+    <section id="harbor-world-stage" class="harbor-world-stage" aria-label="자유 탐험" hidden>
+      <p id="harbor-world-loading">포트 캘러웨이를 불러오는 중…</p>
+      <div class="harbor-world-hud">
+        <div id="harbor-world-status" aria-live="off">캘러웨이 도심</div>
+        <div class="harbor-vitals">
+          <div id="harbor-world-health" role="meter" aria-label="체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></div>
+          <p id="harbor-world-money">$0</p>
+          <p id="harbor-world-stars" aria-label="수배 0단계">☆☆☆☆☆</p>
+          <p id="harbor-world-weapon">맨손</p>
+        </div>
+        <canvas id="harbor-world-mini" width="180" height="180" aria-label="미니맵"></canvas>
+        <button type="button" id="harbor-world-map-button">전체지도 (M)</button>
+        <button type="button" id="harbor-world-exit">종료 (Esc)</button>
+      </div>
+      <div id="harbor-world-crosshair" aria-hidden="true"></div>
+      <p id="harbor-world-prompt"></p>
+      <p id="harbor-world-notice" role="status"></p>
+      <div class="harbor-world-controls">WASD 이동·운전 · Shift 달리기 · Space 브레이크 · 드래그 시점 · 클릭 사격 · E 탑승·줍기 · F 소매치기 · G 강도 · R 재장전 · B 시설 이용 · M 지도</div>
+      <div class="harbor-touch" aria-label="터치 조작">
+        <div class="harbor-touch-move">
+          <button type="button" data-key="KeyW" aria-label="앞으로">▲</button>
+          <button type="button" data-key="KeyA" aria-label="왼쪽">◀</button>
+          <button type="button" data-key="KeyS" aria-label="뒤로">▼</button>
+          <button type="button" data-key="KeyD" aria-label="오른쪽">▶</button>
+          <button type="button" data-act="run">달리기</button>
+        </div>
+        <div class="harbor-touch-act">
+          <button type="button" data-act="board">탑승</button>
+          <button type="button" data-act="use">줍기</button>
+          <button type="button" data-key="Space">브레이크</button>
+          <button type="button" data-act="pickpocket">소매치기</button>
+          <button type="button" data-act="rob">강도</button>
+          <button type="button" data-act="service">시설 이용</button>
+          <button type="button" data-act="fire">사격</button>
+        </div>
+      </div>
+      <div id="harbor-world-overlay" class="harbor-world-overlay" hidden>
+        <header><strong>PORT CALLOWAY / 전체지도 · + 의료소 / P 정비소 / A 탄약</strong><button type="button" id="harbor-world-close-map">닫기 (M / Esc)</button></header>
+        <canvas id="harbor-world-atlas" width="900" height="600" aria-label="6개 지역과 전체 도로 지도"></canvas>
+      </div>
+    </section>
+    <script type="module" src="../world/ui.ts"></script>
+  </body>
+</html>

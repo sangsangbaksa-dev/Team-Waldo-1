@@ -1,3 +1,4 @@
+import { buyService, DISCOVERY_REWARD, nearestService, SERVICE_INFO, visitService } from './services';
 import { CHUNK, DEPTH, WIDTH, roadDistance } from './domain';
 import { World, type ChunkView } from './application';
 import {
@@ -26,6 +27,7 @@ export interface RoamInput {
   throttle: number;
   steer: number;
   handbrake: boolean;
+  service?: boolean;
 }
 
 export const IDLE_INPUT: RoamInput = {
@@ -60,6 +62,7 @@ export class FreeRoam {
   private responseNoted = false;
   private militaryNoted = false;
   private heatPulse = false;
+  readonly visitedServices = new Set<string>();
   ears: Ear[] = [];
 
   constructor(view: ChunkView) {
@@ -227,11 +230,28 @@ export class FreeRoam {
     this.reap(step);
     decayWanted(this.vitals, step);
     this.heatPulse = this.vitals.wanted > heatAt;
+    const service = nearestService(this.x, this.z);
+    if (service && !this.sim.busy) {
+      if (visitService(this.visitedServices, service, this.vitals)) this.say(SERVICE_INFO[service.kind].label + ' 발견 · +$' + DISCOVERY_REWARD);
+      if (input.service) {
+        const car = this.sim.playerCar;
+        const vehicle = car ? { health: car.health, maxHealth: car.kind === 'military' ? 220 : car.kind === 'police' ? 140 : 100, speed: car.speed } : null;
+        const result = buyService(service, this.vitals, vehicle);
+        if (result.ok && car && vehicle) car.health = vehicle.health;
+        this.say(result.message);
+        this.ears.push({ kind: 'ui', x: this.x, z: this.z, gain: 0.45, pitch: result.ok ? 1.15 : 0.8 });
+      }
+    } else if (input.service) this.say('지도에 표시된 시설 가까이 이동하세요.');
     if (this.vitals.health <= 0) this.respawn();
     if (this.time >= this.noticeUntil) this.notice = '';
   }
 
   hint(): string {
+    const service = nearestService(this.x, this.z);
+    if (service && !this.sim.busy) {
+      const info = SERVICE_INFO[service.kind];
+      return 'B · ' + info.label + ' $' + info.price + ' · ' + (this.sim.driving ? 'E 하차' : 'WASD 이동');
+    }
     const car = this.sim.playerCar;
     if (car) {
       const speed = Math.round(Math.abs(car.speed) * 3.6);

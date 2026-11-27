@@ -5,7 +5,7 @@ import type { Ride } from './traffic';
 
 // Blender source: tools/blender/cars.py and world.py. The shared asset is
 // read-only; Harbor does not change any models used by the other games.
-const URL = new globalThis.URL('../../public/assets/models/vehicles.glb', import.meta.url).href;
+const VEHICLE_URL = new URL('../../public/assets/models/vehicles.glb', import.meta.url).href;
 const MODEL: Record<string, string> = {
   sedan: 'sedan', sport: 'sports', truck: 'truck', jeep: 'suv', police: 'police',
 };
@@ -25,7 +25,7 @@ export class CityGarage {
   private disposed = false;
 
   constructor(private readonly scene: T.Scene) {
-    void new GLTFLoader().loadAsync(URL).then(gltf => {
+    void new GLTFLoader().loadAsync(VEHICLE_URL).then(gltf => {
       gltf.scene.traverse(o => {
         if (!(o instanceof T.Mesh)) return;
         this.ownedGeometry.add(o.geometry);
@@ -62,10 +62,9 @@ export class CityGarage {
       visual.root.rotation.y = ride.yaw;
       visual.root.rotation.z = ride.type === 'bike' ? -ride.steer * Math.min(Math.hypot(ride.vx, ride.vz) * .018, .32) : 0;
       visual.fallback.visible = !visual.model;
-      // The imported asset has a fused body; keep the existing door animation
-      // on the fallback only rather than draw a duplicate floating panel.
+      // Keep the independent door cue while boarding; the GLB body is fused.
       visual.door.rotation.y = -opening * .9;
-      visual.door.visible = !visual.model && ride.type !== 'bike';
+      visual.door.visible = ride.type !== 'bike' && (!visual.model || opening > .015);
       if (visual.model) visual.model.visible = true;
     }
     for (const [id, visual] of this.groups) {
@@ -100,7 +99,7 @@ export class CityGarage {
   }
 
   private release(visual: Visual) {
-    visual.fallback.traverse(o => {
+    for (const group of [visual.fallback, visual.door]) group.traverse(o => {
       if (o instanceof T.Mesh && o.geometry !== this.wheelShape && o.geometry !== this.wheelHub) o.geometry.dispose();
     });
   }
@@ -140,8 +139,7 @@ export class CityGarage {
 
   private build(ride: Ride): Visual {
     const root = new T.Group(), fallback = new T.Group(), door = new T.Group();
-    root.add(fallback);
-    fallback.add(door);
+    root.add(fallback, door);
     const { length: l, width: w, color } = ride.spec;
     const paint = this.material(color);
     const bike = ride.type === 'bike';

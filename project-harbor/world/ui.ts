@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { terrainHeight } from './domain';
+import { COURSES } from './time-trials';
 import { makeSave, parseSave, restoreSave, SAVE_KEY } from './save';
 import { mapPoint, roadGuide, PACKAGES, type Point } from './exploration';
 import { SERVICE_INFO, SITES } from './services';
@@ -41,13 +42,15 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
   for (let x = 64; x < WIDTH; x += 256) { ctx.lineWidth = roadHalf('x', x) * 2; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, DEPTH); ctx.stroke(); }
   for (let z = 64; z < DEPTH; z += 256) { ctx.lineWidth = roadHalf('z', z) * 2; ctx.beginPath(); ctx.moveTo(0, z); ctx.lineTo(WIDTH, z); ctx.stroke(); }
   ctx.restore();
-  if (waypoint) {
-    const route = roadGuide(roam, waypoint);
+  const trialGate = roam.trial?.course.gates[roam.trial.next];
+  const destination = trialGate ?? waypoint;
+  if (destination) {
+    const route = roadGuide(roam, destination);
     ctx.strokeStyle = '#e9c76b'; ctx.lineWidth = full ? 3 : 2.5;
     ctx.beginPath();
     route.forEach((point, i) => { const x = ox + point.x * scale, z = oz + point.z * scale; if (i === 0) ctx.moveTo(x, z); else ctx.lineTo(x, z); });
     ctx.stroke();
-    ctx.fillStyle = '#e9c76b'; ctx.beginPath(); ctx.arc(ox + waypoint.x * scale, oz + waypoint.z * scale, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e9c76b'; ctx.beginPath(); ctx.arc(ox + destination.x * scale, oz + destination.z * scale, 5, 0, Math.PI * 2); ctx.fill();
   }
   for (const site of SITES) {
     const x = ox + site.x * scale, y = oz + site.z * scale;
@@ -57,6 +60,12 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
     ctx.fillRect(x - 6, y - 6, 12, 12);
     ctx.fillStyle = '#17201d'; ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(info.symbol, x, y);
+  }
+  for (const course of COURSES) {
+    const x = ox + course.start.x * scale, z = oz + course.start.z * scale;
+    if (x < 0 || z < 0 || x > w || z > h) continue;
+    ctx.fillStyle = '#e9c76b'; ctx.fillRect(x - 7, z - 7, 14, 14);
+    ctx.fillStyle = '#202521'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('T', x, z);
   }
   ctx.fillStyle = '#d6c27a';
   for (const item of items) if (item.kind === 'weapon') ctx.fillRect(ox + item.x * scale - 2, oz + item.z * scale - 2, 4, 4);
@@ -215,6 +224,15 @@ function start(): () => void {
     mesh.position.set(item.x, terrainHeight(item.x, item.z) + 0.32, item.z);
     mesh.visible = false; scene.add(mesh); return { item, mesh };
   });
+  const trialRingGeo = new T.RingGeometry(5, 5.5, 40);
+  const trialRingMat = new T.MeshBasicMaterial({ color: 0xe9c76b, side: T.DoubleSide });
+  const trialMarkers = COURSES.map(course => {
+    const marker = new T.Mesh(trialRingGeo, trialRingMat); marker.rotation.x = -Math.PI / 2;
+    marker.position.set(course.start.x, terrainHeight(course.start.x, course.start.z) + 0.15, course.start.z);
+    scene.add(marker); return marker;
+  });
+  const gateMarker = new T.Mesh(new T.TorusGeometry(5, 0.3, 8, 32), trialRingMat);
+  gateMarker.visible = false; scene.add(gateMarker);
   const actors = new StreetActors(scene);
   const garage = new CityGarage(scene);
   let orbit = 0;
@@ -255,6 +273,8 @@ function start(): () => void {
     crosshair.hidden = mapOpen;
     keys.clear();
     pulses.clear();
+    actions.clear();
+    drag = false; pressed = false;
     if (mapOpen) drawMap(atlas, roam, true, roam.peds, roam.items, waypoint);
     else renderer.domElement.focus();
   };
@@ -282,7 +302,7 @@ function start(): () => void {
   required('harbor-world-map-button').addEventListener('click', toggleMap, { signal });
   required('harbor-world-close-map').addEventListener('click', toggleMap, { signal });
   required('harbor-world-exit').addEventListener('click', () => host.dispatchEvent(new Event('harbor-world-exit')), { signal });
-  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyB', 'KeyK', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
+  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyB', 'KeyK', 'KeyT', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
   const focusGame = () => {
     if (host.hidden) return;
     host.tabIndex = -1;
@@ -309,6 +329,7 @@ function start(): () => void {
       if (event.code === 'KeyG') pulses.add('rob');
       if (event.code === 'KeyR') pulses.add('reload');
       if (event.code === 'KeyB') pulses.add('service');
+      if (event.code === 'KeyT') pulses.add('trial');
       if (event.code === 'Space' && !roam.driving) pulses.add('jump');
     }
   }, { signal, capture: true });
@@ -393,6 +414,7 @@ function start(): () => void {
       fire: driving ? false : pulses.has('fireOnce') || actions.has('fire') || keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyJ'),
       reload: pulses.has('reload'),
       service: pulses.has('service'),
+      trial: pulses.has('trial'),
       jump: !driving && pulses.has('jump'),
       throttle: driving ? forward : 0,
       steer: driving ? (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) : 0,
@@ -422,6 +444,10 @@ function start(): () => void {
     if (now - hudAt > 100) {
       hudAt = now;
       drawMap(mini, roam, false, roam.peds, roam.items, waypoint);
+      const trialHud = required('harbor-world-trial');
+      const trial = roam.trial;
+      const best = COURSES.filter(course => roam.trialRecords.has(course.id)).length;
+      trialHud.textContent = trial ? trial.course.name + ' · ' + trial.elapsed.toFixed(1) + ' / ' + trial.course.limit + '초 · ' + trial.next + '/' + trial.course.gates.length : '기록 주행 ' + best + '/' + COURSES.length;
       const hours = Math.floor(roam.world.hours);
       const minutes = Math.floor((roam.world.hours - hours) * 60);
       hud.textContent = districtAt(roam.x, roam.z).name + ' · ' + String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ' · 가방 ' + roam.collectedPackages.size + '/' + PACKAGES.length + (waypoint ? ' · 목적지 ' + Math.round(Math.hypot(waypoint.x - roam.x, waypoint.z - roam.z)) + 'm' : '');
@@ -451,6 +477,14 @@ function start(): () => void {
     actors.view(camera.position.x, camera.position.z);
     actors.sync(roam.peds, roam.items, roam.shots);
     garage.sync(roam.rides);
+    for (const marker of trialMarkers) marker.visible = !roam.trial && Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 180;
+    const gate = roam.trial?.course.gates[roam.trial.next];
+    gateMarker.visible = !!gate;
+    if (gate) {
+      gateMarker.position.set(gate.x, terrainHeight(gate.x, gate.z) + 5, gate.z);
+      const next = roam.trial!.course.gates[roam.trial!.next + 1];
+      gateMarker.rotation.y = next && Math.abs(next.x - gate.x) > Math.abs(next.z - gate.z) ? Math.PI / 2 : 0;
+    }
     for (const marker of markers) marker.visible = Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 180;
     for (const { item, mesh } of packages) {
       mesh.visible = !roam.collectedPackages.has(item.id) && Math.hypot(item.x - roam.x, item.z - roam.z) < 65;

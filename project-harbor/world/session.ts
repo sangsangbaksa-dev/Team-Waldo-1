@@ -1,5 +1,6 @@
 import { buyService, DISCOVERY_REWARD, nearestService, SERVICE_INFO, visitService } from './services';
 import { findPackage, groundedJump, stepJump, JUMP_DURATION, PACKAGES } from './exploration';
+import { beginTrial, nearbyCourse, recordTrial, stepTrial, type Trial } from './time-trials';
 import { CHUNK, DEPTH, WIDTH, roadDistance } from './domain';
 import { World, type ChunkView } from './application';
 import {
@@ -30,6 +31,7 @@ export interface RoamInput {
   handbrake: boolean;
   service?: boolean;
   jump?: boolean;
+  trial?: boolean;
 }
 
 export const IDLE_INPUT: RoamInput = {
@@ -66,6 +68,8 @@ export class FreeRoam {
   private heatPulse = false;
   readonly visitedServices = new Set<string>();
   readonly collectedPackages = new Set<string>();
+  readonly trialRecords = new Map<string, number>();
+  trial: Trial | null = null;
   private jumpState = groundedJump();
   get jumpHeight() { return this.jumpState.height; }
   get jumpPhase() { return this.jumpState.elapsed / JUMP_DURATION; }
@@ -254,16 +258,43 @@ export class FreeRoam {
         const car = this.sim.playerCar;
         const vehicle = car ? { health: car.health, maxHealth: car.kind === 'military' ? 220 : car.kind === 'police' ? 140 : 100, speed: car.speed } : null;
         const result = buyService(service, this.vitals, vehicle);
-        if (result.ok && car && vehicle) car.health = vehicle.health;
+        if (result.ok && car && vehicle && service.kind === 'garage') this.sim.repairPlayer(vehicle.health);
         this.say(result.message);
         this.ears.push({ kind: 'ui', x: this.x, z: this.z, gain: 0.45, pitch: result.ok ? 1.15 : 0.8 });
       }
     } else if (input.service) this.say('지도에 표시된 시설 가까이 이동하세요.');
+    this.updateTrial(input, step);
     if (this.vitals.health <= 0) this.respawn();
     if (this.time >= this.noticeUntil) this.notice = '';
   }
 
+  private updateTrial(input: RoamInput, step: number) {
+    const driver = this.sim.playerCar;
+    if (input.trial) {
+      if (this.trial) { this.trial = null; this.say('기록 주행을 종료했습니다.'); return; }
+      const course = nearbyCourse(this);
+      if (!course) { this.say('지도에서 기록 주행 출발점을 찾으세요.'); return; }
+      this.trial = beginTrial(course, driver, this.vitals.wanted);
+      this.say(this.trial ? course.name + ' · 기록 주행 시작' : '수배 없이 차량을 정차한 뒤 시작하세요.');
+      return;
+    }
+    if (!this.trial) return;
+    const course = this.trial.course;
+    const update = stepTrial(this.trial, driver, this.vitals.wanted, step);
+    this.trial = update.trial;
+    if (update.event === 'finish') {
+      const best = recordTrial(this.trialRecords, course, update.elapsed);
+      this.vitals.money += course.reward;
+      this.say((best ? '최고 기록! ' : '완주! ') + update.elapsed.toFixed(1) + '초 · +$' + course.reward, 4);
+    } else if (update.event === 'gate') this.say('체크포인트 ' + this.trial?.next + '/' + course.gates.length);
+    else if (update.event === 'cancel') this.say('차량 변경 또는 수배로 기록 주행 종료');
+    else if (update.event === 'timeout') this.say('시간 초과 · 다시 도전할 수 있습니다.');
+  }
+
   hint(): string {
+    if (this.trial) return 'T · 기록 주행 종료 · 다음 체크포인트 ' + (this.trial.next + 1) + '/' + this.trial.course.gates.length;
+    const course = nearbyCourse(this);
+    if (course && this.driving) return 'T · ' + course.name + ' 기록 주행 · E 하차';
     const service = nearestService(this.x, this.z);
     if (service && !this.sim.busy) {
       const info = SERVICE_INFO[service.kind];
@@ -653,6 +684,7 @@ export class FreeRoam {
   }
 
   private respawn() {
+    this.trial = null;
     this.jumpState = groundedJump();
     this.seekingId = -1;
     this.sim.clearResponse();

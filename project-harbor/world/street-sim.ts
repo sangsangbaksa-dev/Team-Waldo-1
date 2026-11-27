@@ -118,6 +118,14 @@ export class StreetSim {
     return best;
   }
 
+  repairPlayer(health: number): void {
+    const car = this.playerCar;
+    if (!car) return;
+    car.health = health;
+    const body = this.bodies.get(car.id);
+    if (body) body.health = health;
+  }
+
   consumeExit(): { x: number; z: number } | null {
     const point = this.exitPoint;
     this.exitPoint = null;

@@ -166,3 +166,7 @@
   #harbor-world-notice { bottom: 156px; }
   #harbor-world-mini { width: 104px; height: 104px; }
 }
+
+#harbor-world-trial { margin: 0; color: #e9c76b; font-size: 12px; font-variant-numeric: tabular-nums; }
+.harbor-world-overlay { z-index: 3; }
+#harbor-world-atlas { cursor: crosshair; }

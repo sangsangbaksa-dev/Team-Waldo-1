@@ -45,10 +45,18 @@ try {
     stdio: 'inherit', env: { ...process.env, HARBOR_WORLD_FILE: join(staged, 'world/harbor_front.json') },
   });
   await copyFile(extras, join(staged, 'sandbox-extras.js'));
+  execFileSync(process.execPath, ['--test', join(legacy, 'tests/city-activities.test.mjs')], { stdio: 'inherit' });
+  for (const name of ['city-activities-domain.mjs', 'city-activities-ui.mjs']) {
+    execFileSync(process.execPath, ['--check', join(legacy, name)], { stdio: 'inherit' });
+    await copyFile(join(legacy, name), join(staged, name));
+  }
   const page = join(staged, 'index.html');
   const html = (await readFile(page, 'utf8')).replace(/<script\b[^>]*src=["'][^"']*freeroam-ui\.mjs["'][^>]*>\s*<\/script>/g, '');
   if (!html.includes('</body>')) throw new Error('Harbor browser entry is missing a body');
-  await writeFile(page, html.includes('sandbox-extras.js') ? html : html.replace('</body>', '<script defer src="./sandbox-extras.js"></script>\n</body>'));
+  let entry = html;
+  if (!entry.includes('sandbox-extras.js')) entry = entry.replace('</body>', '<script defer src="./sandbox-extras.js"></script>\n</body>');
+  if (!entry.includes('city-activities-ui.mjs')) entry = entry.replace('</body>', '<script type="module" src="./city-activities-ui.mjs"></script>\n</body>');
+  await writeFile(page, entry);
   await rm(output, { recursive: true, force: true });
   await rename(staged, output);
   console.log(`Project Harbor ${release.sourceCommit.slice(0, 7)} ready at /project-harbor/${basename(output)}/`);

@@ -5,11 +5,12 @@ courses.push(...[{"id":"alder-drive","name":"숲속 파크웨이","points":[[-58
 const traps=[{"id":"boulevard","name":"Union Boulevard","point":[-110,-440]},{"id":"harbor","name":"Calloway Boulevard","point":[-95,33]},{"id":"desert","name":"Cinder Main","point":[-591,-327]},{"id":"forest","name":"Alderwash Parkway","point":[-581,320]},{"id":"coast","name":"Seabank Road","point":[290,438]}];
 function distance(p,q){return Math.hypot(p.x-q[0],p.z-q[1]);}
 function advance(run,course,position,driving,alive,dt){
+ if(run.finished||run.cancelled)return {...run};
  if(!alive||(!driving&&run.started))return {...run,cancelled:true};
  const next={...run};
  if(!driving)return next;
  if(!next.started){if(distance(position,course.points[0])<=12){next.started=true;next.index=1;}return next;}
- next.seconds+=Math.max(0,Math.min(dt,.5));
+ next.seconds+=Number.isFinite(dt)?Math.max(0,Math.min(dt,.5)):0;
  if(distance(position,course.points[next.index])<=12){next.index++;if(next.index===course.points.length)next.finished=true;}
  return next;
 }
@@ -18,7 +19,7 @@ function track(previous, sample, stats){
  const next={...stats,traps:{...stats.traps}};
  if(!sample.alive)return {stats:next,peak:0};
  const moved=previous?.alive?Math.hypot(sample.x-previous.x,sample.z-previous.z):0;
- const continuous=Boolean(previous?.alive&&moved<=35);
+ const continuous=Boolean(previous?.alive&&moved<=35&&(previous.generation==null||sample.generation==null||previous.generation===sample.generation));
  if(continuous&&previous.driving===sample.driving)next[sample.driving?"driveMeters":"walkMeters"]+=moved;
  let peak=continuous?Math.max(previous.peak||0,sample.wanted):sample.wanted;
  if(continuous&&previous.wanted>0&&sample.wanted===0&&peak>=2){next.escapes++;next.maxEscape=Math.max(next.maxEscape,peak);peak=0;}
@@ -110,9 +111,128 @@ function drawPins(ctx,point,selected,course,run,landmarks,visited,showAll,route)
   course.points.slice(run.index).forEach((p,i)=>draw(p,i===0?"#f6c574":"#d9a261",i===0?5.5:3));
  }else if(selected)draw(selected.point,"#f6c574",6);
 }
+const stations=[{"id":"off","name":"라디오 끄기","bpm":0,"notes":[],"wave":"sine"},{"id":"after-hours","name":"88.3 After Hours","bpm":86,"notes":[45,48,52,55,43,47,50,55,41,45,48,52,43,47,50,53],"wave":"triangle"},{"id":"coastline","name":"94.7 Coastline","bpm":112,"notes":[48,55,60,64,50,57,62,65,45,52,57,60,43,50,55,59],"wave":"sine"},{"id":"freight","name":"103.1 Freight FM","bpm":136,"notes":[36,36,43,39,38,38,45,41,41,41,48,45,43,43,50,46],"wave":"sawtooth"}];
+function audioModel(frame){
+ const state=frame?.state||{},driving=!!(frame?.alive&&state.isDriving);
+ const speed=driving?Math.abs(Number(state.vehicle?.speed)||0):0;
+ const kind=(state.vehicle?.vehicleClass||"").toLowerCase();
+ const heavy=/truck|utility|military|van/.test(kind),sport=/sport|runner/.test(kind);
+ const freq=(heavy?34:sport?58:43)+Math.min(65,speed)*(heavy?2.5:sport?5:3.4);
+ const nearest=(state.enemies||[]).filter(e=>e.team===3&&e.health>0&&e.position).reduce((d,e)=>Math.min(d,Math.hypot(e.position.x-frame.position.x,e.position.z-frame.position.z)),Infinity);
+ const siren=frame?.alive&&state.wantedLevel>=2&&Number.isFinite(nearest)?Math.max(0,1-nearest/100):0;
+ return {driving,speed,freq,engine:driving?.055+Math.min(speed/65,.8)*.075:0,wind:driving?Math.min(.065,speed/65*.065):0,siren};
+}
+function noteFrequency(note){return 440*2**((note-69)/12);}
+function musicStep(station,index){
+ const seq=station.notes,base=seq[index%seq.length],step=index%4;
+ if(!seq.length)return null;
+ return {lead:noteFrequency(base+12),bass:step===0||step===2?noteFrequency(base-12):0,beat:step===0||step===2,accent:step===1||step===3};
+}
+function mountVehicleSound(){
+ const hud=document.getElementById("hud"),menu=document.querySelector("#menu .menu-panel");
+ if(!hud||!menu||document.getElementById("harbor-vehicle-audio"))return;
+ const make=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;};
+ const style=make("style",`#harbor-vehicle-audio{margin-top:15px;padding-top:12px;border:0;border-top:1px solid #ffffff2b;color:#e9e5dc;font-size:13px}
+ #harbor-vehicle-audio legend{color:#fac27d;padding:0 5px;font-weight:650}#harbor-vehicle-audio label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+ #harbor-vehicle-audio select{background:#15242b;color:#fff6e8;border:1px solid #ffffff35;padding:6px;border-radius:4px}
+ #harbor-vehicle-audio input[type=range]{width:45%;accent-color:#92e0d1}
+ #harbor-car-radio{position:absolute;right:var(--edge,16px);bottom:calc(var(--edge,16px) + 130px);padding:6px 10px;font-size:12px;pointer-events:none;text-align:right;max-width:45vw;color:#d4ded9}
+ #harbor-car-radio strong{display:block;color:#fac27d;font-weight:650}#harbor-car-radio small{display:block;color:#bfc9c5}
+ @media(max-width:600px){#harbor-car-radio{bottom:calc(var(--edge,16px) + 190px);font-size:10px}}`);
+ document.head.append(style);
+ const key="harbor-vehicle-audio-v1",clamp=x=>Math.max(0,Math.min(1,x));
+ let settings={effects:.6,radio:.35,station:"off",muted:false};
+ try{const a=JSON.parse(localStorage.getItem(key)||"null");if(a){for(const k of ["effects","radio"])if(Number.isFinite(a[k]))settings[k]=clamp(a[k]);if(stations.some(s=>s.id===a.station))settings.station=a.station;settings.muted=a.muted===true;}}catch{}
+ const persist=()=>{try{localStorage.setItem(key,JSON.stringify(settings));}catch{}};
+ const field=make("fieldset");field.id="harbor-vehicle-audio";field.append(make("legend","차량 · 라디오"));
+ const radio=make("select");radio.setAttribute("aria-label","라디오 방송국");
+ for(const station of stations){const option=make("option",station.name);option.value=station.id;radio.append(option);}
+ radio.value=settings.station;
+ const stationLabel=make("label","방송국");stationLabel.append(radio);field.append(stationLabel);
+ for(const [k,title] of [["effects","차량·도시 효과음"],["radio","라디오 음량"]]){
+  const label=make("label",title),input=make("input");input.type="range";input.min="0";input.max="1";input.step=".05";input.value=String(settings[k]);input.addEventListener("input",()=>{settings[k]=Number(input.value);persist();});label.append(input);field.append(label);
+ }
+ const muteLabel=make("label","추가 음향 음소거"),mute=make("input");mute.type="checkbox";mute.checked=settings.muted;mute.addEventListener("change",()=>{settings.muted=mute.checked;persist();});muteLabel.append(mute);field.append(muteLabel);
+ field.append(make("p","운전 중 B: 방송국 변경 · H: 경적. 라디오는 오리지널 합성 음악입니다."));menu.append(field);
+ const display=make("div");display.id="harbor-car-radio";display.className="panel";display.hidden=true;
+ const stationName=make("strong"),readout=make("small"),instruction=make("small","B 방송국 · H 경적");display.append(stationName,readout,instruction);hud.append(display);
+ let context=null,master=null,fx=null,music=null,engine=null,harmonic=null,engineGain=null,windGain=null,siren=null,sirenGain=null,wind=null,windFilter=null;
+ let nextNote=0,beat=0,stationId="",lastHorn=-Infinity,previous=null,lastVersion=-1,lastFrame=null,stepDistance=0;
+ const transient=new Set();
+ const enabled=()=>globalThis.harborView?.screen?.()==="play"&&!document.hidden;
+ function unlock(){
+  if(!context){
+   const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;
+   try{
+    context=new Audio();master=context.createGain();master.gain.value=0;master.connect(context.destination);
+    fx=context.createGain();fx.gain.value=settings.effects;fx.connect(master);
+    music=context.createGain();music.gain.value=settings.radio;music.connect(master);
+    const pair=(type,dest)=>{const osc=context.createOscillator(),g=context.createGain();osc.type=type;g.gain.value=0;osc.connect(g);g.connect(dest);osc.start();return [osc,g];};
+    [engine,engineGain]=pair("triangle",fx);
+    harmonic=context.createOscillator();harmonic.type="sine";harmonic.connect(engineGain);harmonic.start();
+    [siren,sirenGain]=pair("sine",fx);
+    const buffer=context.createBuffer(1,context.sampleRate*2,context.sampleRate),samples=buffer.getChannelData(0);
+    for(let i=0;i<samples.length;i++)samples[i]=Math.random()*2-1;
+    wind=context.createBufferSource();wind.buffer=buffer;wind.loop=true;windFilter=context.createBiquadFilter();windFilter.type="lowpass";windFilter.frequency.value=450;
+    windGain=context.createGain();windGain.gain.value=0;wind.connect(windFilter);windFilter.connect(windGain);windGain.connect(fx);wind.start();
+   }catch{context=null;return;}
+  }
+  if(context.state==="suspended")context.resume().catch(()=>{});
+ }
+ const set=(param,value,time=.07)=>{if(context&&param)param.setTargetAtTime(value,context.currentTime,time);};
+ function tone(freq,duration,volume,wave,bus,start=context.currentTime){
+  if(!context||context.state!=="running"||!Number.isFinite(freq)||volume<=0)return;
+  const osc=context.createOscillator(),g=context.createGain();osc.type=wave;osc.frequency.value=freq;g.gain.setValueAtTime(.0001,start);g.gain.exponentialRampToValueAtTime(Math.max(.0002,volume),start+.012);g.gain.exponentialRampToValueAtTime(.0001,start+duration);osc.connect(g);g.connect(bus);
+  transient.add(osc);osc.onended=()=>{transient.delete(osc);osc.disconnect();g.disconnect();};osc.start(start);osc.stop(start+duration+.02);
+ }
+ function stopMusic(){for(const osc of transient){try{osc.stop();}catch{}}nextNote=0;beat=0;}
+ function changeStation(id){settings.station=id;radio.value=id;stationId="";stopMusic();persist();}
+ radio.addEventListener("change",()=>changeStation(radio.value));
+ for(const el of ["start","resume"])document.getElementById(el)?.addEventListener("click",unlock);
+ document.addEventListener("keydown",event=>{
+  if(event.repeat||event.ctrlKey||event.altKey||event.metaKey||!enabled()||!lastFrame?.alive||!lastFrame.state?.isDriving)return;
+  if(event.code==="KeyB"){event.preventDefault();unlock();changeStation(stations[(stations.findIndex(s=>s.id===settings.station)+1)%stations.length].id);}
+  if(event.code==="KeyH"){event.preventDefault();unlock();if(context&&context.currentTime-lastHorn>.3&&!settings.muted){lastHorn=context.currentTime;tone(370,.32,.13,"triangle",fx);tone(440,.32,.08,"triangle",fx);}}
+ });
+ function tick(){
+  const active=enabled(),view=globalThis.harborView;
+  if(active&&view?.frameVersion?.()!==lastVersion){lastVersion=view.frameVersion();try{lastFrame=JSON.parse(view.frame());}catch{lastFrame=null;}}
+  const frame=lastFrame,model=audioModel(frame),playing=active&&model.driving;
+  display.hidden=!playing;
+  if(playing){const s=stations.find(s=>s.id===settings.station)||stations[0];stationName.textContent=s.name;readout.textContent=(frame.state.vehicle?.displayName||"차량")+" · "+Math.round(model.speed*3.6)+" km/h";}
+  if(!context)return;
+  const audible=active&&frame?.alive&&!settings.muted;
+  set(master.gain,audible?1:0,.04);set(fx.gain,settings.effects);set(music.gain,playing?settings.radio:0);
+  set(engine.frequency,model.freq);set(harmonic.frequency,model.freq*2.03);set(engineGain.gain,audible?model.engine:0);
+  set(windFilter.frequency,450+model.speed*24);set(windGain.gain,audible?model.wind:0);
+  const phase=context.currentTime*2.8;set(siren.frequency,650+180*Math.sin(phase));set(sirenGain.gain,audible?model.siren*.075:0);
+  if(audible&&frame?.position){
+   if(previous&&!model.driving&&!previous.driving){const d=Math.hypot(frame.position.x-previous.x,frame.position.z-previous.z);if(d<4)stepDistance+=d;else stepDistance=0;if(stepDistance>(frame.sprinting?.8:.65)){stepDistance=0;tone(85,.095,.033,"triangle",fx);}}
+   if(previous?.driving&&model.driving&&previous.vehicleId===frame.state.playerVehicleId&&previous.speed-model.speed>8){tone(55,.2,.065,"triangle",fx);}
+   previous={x:frame.position.x,z:frame.position.z,driving:model.driving,speed:model.speed,vehicleId:frame.state.playerVehicleId};
+  }else{previous=null;stepDistance=0;}
+  const station=stations.find(s=>s.id===settings.station)||stations[0];
+  if(!audible||!playing||!station.bpm||settings.radio===0){if(nextNote)stopMusic();return;}
+  if(stationId!==station.id){stopMusic();stationId=station.id;}
+  const now=context.currentTime,interval=60/station.bpm/2;
+  if(!nextNote||nextNote<now-.25)nextNote=now+.025;
+  while(nextNote<now+.13){
+   const n=musicStep(station,beat++);if(!n)break;
+   tone(n.lead,interval*.82,.035,station.wave,music,nextNote);
+   if(n.bass)tone(n.bass,interval*1.5,.075,"sine",music,nextNote);
+   if(n.beat)tone(58,.12,.08,"sine",music,nextNote);
+   if(n.accent)tone(170,.035,.018,"triangle",music,nextNote);
+   nextNote+=interval;
+  }
+ }
+ setInterval(tick,80);
+ document.addEventListener("visibilitychange",()=>{if(document.hidden){stopMusic();if(master)set(master.gain,0,.025);}});
+ window.addEventListener("pagehide",()=>{stopMusic();context?.close().catch(()=>{});});
+}
 function mount(){
  const hud=document.getElementById("hud"), map=document.getElementById("map"), atlas=document.getElementById("atlas");
  if(!hud||!map||!atlas||document.getElementById("harbor-free-roam"))return;
+ mountVehicleSound();
  const key="harbor-exploration-v1";
  let saved={visited:[],records:{},topSpeed:0};
  const statsKey="harbor-free-roam-stats-v1";
@@ -204,7 +324,7 @@ function mount(){
  clear.addEventListener("click",()=>{target=null;select.value="";});
  choose.addEventListener("click",()=>{course=courses.find(c=>c.id===routeSelect.value)||null;run=course?{started:false,index:0,seconds:0}:null;if(course)announce(course.name+" · 시작점으로 이동");});
  cancel.addEventListener("click",()=>{course=null;run=null;announce("주행 코스 취소");});
- document.getElementById("reset")?.addEventListener("click",()=>{run=null;course=null;target=null;select.value="";lastPos=null;lastVersion=-1;previousSample=null;latest=null;});
+ document.getElementById("reset")?.addEventListener("click",()=>{run=null;course=null;target=null;select.value="";lastPos=null;lastVersion=-1;previousSample=null;latest=null;route=null;routeTarget=null;routeFrom=null;});
  fetch(new URL("world/harbor_front.json",document.baseURI)).then(r=>{if(!r.ok)throw Error("map");return r.json();}).then(layout=>{
   bounds=layout.bounds;graph=roadGraph(layout.roads||[]);
   landmarks=(layout.landmarks||[]).filter(l=>typeof l.id==="string"&&typeof l.name==="string"&&Array.isArray(l.position)&&Number.isFinite(l.position[0])&&Number.isFinite(l.position[2]));
@@ -214,13 +334,14 @@ function mount(){
  function tick(){
   const now=performance.now(),dt=Math.min(.5,(now-lastTime)/1000);lastTime=now;
   const view=globalThis.harborView;
-  if(!view||typeof view.frame!=="function"||view.screen()!=="play"||document.hidden){lastPos=null;previousSample=null;renderOverlay();return;}
+  if(!view||typeof view.frame!=="function"||view.screen()!=="play"||document.hidden){lastPos=null;renderOverlay();return;}
   const version=view.frameVersion();if(version===lastVersion)return;lastVersion=version;
   let f;try{f=JSON.parse(view.frame());}catch{return;}
   if(!f?.position||!f.state||!Number.isFinite(f.position.x)||!Number.isFinite(f.position.z))return;
   const p=f.position, driving=Boolean(f.state.isDriving),alive=Boolean(f.alive);
-  const sample={x:p.x,z:p.z,alive,driving,wanted:Math.max(0,Number(f.state.wantedLevel)||0),speed:driving?Math.abs(Number(f.state.vehicle?.speed))*3.6:0};
+  const sample={x:p.x,z:p.z,alive,driving,generation:f.state.runGeneration,wanted:Math.max(0,Number(f.state.wantedLevel)||0),speed:driving?Math.abs(Number(f.state.vehicle?.speed))*3.6:0};
   const oldEscapes=stats.escapes,oldTraps=stats.traps;
+  if(previousSample?.generation!=null&&sample.generation!=null&&previousSample.generation!==sample.generation&&run?.started){run=null;course=null;announce("세션이 다시 시작되어 주행 기록을 취소했습니다.");}
   const tracked=track(previousSample,sample,stats);stats=tracked.stats;sample.peak=tracked.peak;previousSample=sample;latest=sample;
   if(stats.escapes>oldEscapes){announce("경찰 추격 탈출 · 최고 "+stats.maxEscape+"단계");save();refresh();}
   for(const t of traps)if(Math.floor(stats.traps[t.id]||0)>Math.floor(oldTraps[t.id]||0)){announce("속도 기록 · "+t.name+" "+Math.round(stats.traps[t.id])+" km/h");break;}

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { access, mkdir, mkdtemp, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { copyFile, writeFile, access, mkdir, mkdtemp, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -22,6 +22,13 @@ try {
   if (!chunks.some(file => /^cell_-?\d+_-?\d+\.[\da-f]{12}\.scn$/.test(file))) {
     throw new Error('Project Harbor bundle is missing the streamed Godot map chunks');
   }
+  const extras = join(source, 'freeroam');
+  execFileSync(process.execPath, ['--test', join(extras, 'tests/freeroam.test.mjs')], { stdio: 'inherit' });
+  for (const name of ['freeroam-domain.mjs', 'freeroam-ui.mjs']) await copyFile(join(extras, name), join(staged, name));
+  const page = join(staged, 'index.html');
+  const html = await readFile(page, 'utf8');
+  if (!html.includes('</body>')) throw new Error('Harbor browser entry is missing a body');
+  await writeFile(page, html.replace('</body>', '<script type="module" src="./freeroam-ui.mjs"></script>\n</body>'));
   await rm(output, { recursive: true, force: true });
   await rename(staged, output);
   console.log(`Project Harbor ${release.sourceCommit.slice(0, 7)} ready at /project-harbor/${basename(output)}/`);

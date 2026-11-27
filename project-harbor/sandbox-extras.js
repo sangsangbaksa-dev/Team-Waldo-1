@@ -153,12 +153,12 @@ function mountVehicleSound(){
   const label=make("label",title),input=make("input");input.type="range";input.min="0";input.max="1";input.step=".05";input.value=String(settings[k]);input.addEventListener("input",()=>{settings[k]=Number(input.value);persist();});label.append(input);field.append(label);
  }
  const muteLabel=make("label","추가 음향 음소거"),mute=make("input");mute.type="checkbox";mute.checked=settings.muted;mute.addEventListener("change",()=>{settings.muted=mute.checked;persist();});muteLabel.append(mute);field.append(muteLabel);
- field.append(make("p","운전 중 B: 방송국 변경 · H: 경적. 라디오는 오리지널 합성 음악입니다."));menu.append(field);
+ field.append(make("p","운전 중 B: 방송국 변경 · H: 경적. 터치 화면에서도 조작할 수 있습니다. 라디오는 오리지널 합성 음악입니다."));menu.append(field);
  const display=make("div");display.id="harbor-car-radio";display.className="panel";display.hidden=true;
  const stationName=make("strong"),readout=make("small"),instruction=make("small","B 방송국 · H 경적");display.append(stationName,readout,instruction);hud.append(display);
  let context=null,master=null,fx=null,music=null,engine=null,harmonic=null,engineGain=null,windGain=null,siren=null,sirenGain=null,wind=null,windFilter=null;
  let nextNote=0,beat=0,stationId="",lastHorn=-Infinity,previous=null,lastVersion=-1,lastFrame=null,stepDistance=0;
- const transient=new Set();
+ const transient=new Set(),musicVoices=new Set();
  const enabled=()=>globalThis.harborView?.screen?.()==="play"&&!document.hidden;
  function unlock(){
   if(!context){
@@ -183,22 +183,30 @@ function mountVehicleSound(){
  function tone(freq,duration,volume,wave,bus,start=context.currentTime){
   if(!context||context.state!=="running"||!Number.isFinite(freq)||volume<=0)return;
   const osc=context.createOscillator(),g=context.createGain();osc.type=wave;osc.frequency.value=freq;g.gain.setValueAtTime(.0001,start);g.gain.exponentialRampToValueAtTime(Math.max(.0002,volume),start+.012);g.gain.exponentialRampToValueAtTime(.0001,start+duration);osc.connect(g);g.connect(bus);
-  transient.add(osc);osc.onended=()=>{transient.delete(osc);osc.disconnect();g.disconnect();};osc.start(start);osc.stop(start+duration+.02);
+  transient.add(osc);if(bus===music)musicVoices.add(osc);osc.onended=()=>{transient.delete(osc);musicVoices.delete(osc);osc.disconnect();g.disconnect();};osc.start(start);osc.stop(start+duration+.02);
  }
- function stopMusic(){for(const osc of transient){try{osc.stop();}catch{}}nextNote=0;beat=0;}
+ function stopMusic(){for(const osc of musicVoices){try{osc.stop();}catch{}}musicVoices.clear();nextNote=0;beat=0;}
  function changeStation(id){settings.station=id;radio.value=id;stationId="";stopMusic();persist();}
  radio.addEventListener("change",()=>changeStation(radio.value));
  for(const el of ["start","resume"])document.getElementById(el)?.addEventListener("click",unlock);
+ const canUse=()=>enabled()&&lastFrame?.alive&&lastFrame.state?.isDriving;
+ function nextStation(){if(!canUse())return;unlock();changeStation(stations[(stations.findIndex(s=>s.id===settings.station)+1)%stations.length].id);}
+ function horn(){if(!canUse())return;unlock();if(context&&context.currentTime-lastHorn>.3&&!settings.muted){lastHorn=context.currentTime;tone(370,.32,.13,"triangle",fx);tone(440,.32,.08,"triangle",fx);}}
  document.addEventListener("keydown",event=>{
-  if(event.repeat||event.ctrlKey||event.altKey||event.metaKey||!enabled()||!lastFrame?.alive||!lastFrame.state?.isDriving)return;
-  if(event.code==="KeyB"){event.preventDefault();unlock();changeStation(stations[(stations.findIndex(s=>s.id===settings.station)+1)%stations.length].id);}
-  if(event.code==="KeyH"){event.preventDefault();unlock();if(context&&context.currentTime-lastHorn>.3&&!settings.muted){lastHorn=context.currentTime;tone(370,.32,.13,"triangle",fx);tone(440,.32,.08,"triangle",fx);}}
+  if(event.repeat||event.ctrlKey||event.altKey||event.metaKey||!canUse())return;
+  if(event.code==="KeyB"){event.preventDefault();nextStation();}
+  if(event.code==="KeyH"){event.preventDefault();horn();}
  });
+ const mobile=document.querySelector("#touch .touch-actions");
+ const mobileRadio=make("button","라디오"),mobileHorn=make("button","경적");
+ for(const [button,handler] of [[mobileRadio,nextStation],[mobileHorn,horn]]){button.type="button";button.hidden=true;button.addEventListener("click",handler);mobile?.append(button);}
+ const coarse=window.matchMedia("(pointer: coarse)");
  function tick(){
   const active=enabled(),view=globalThis.harborView;
   if(active&&view?.frameVersion?.()!==lastVersion){lastVersion=view.frameVersion();try{lastFrame=JSON.parse(view.frame());}catch{lastFrame=null;}}
   const frame=lastFrame,model=audioModel(frame),playing=active&&model.driving;
   display.hidden=!playing;
+  mobileRadio.hidden=mobileHorn.hidden=!playing||!coarse.matches;
   if(playing){const s=stations.find(s=>s.id===settings.station)||stations[0];stationName.textContent=s.name;readout.textContent=(frame.state.vehicle?.displayName||"차량")+" · "+Math.round(model.speed*3.6)+" km/h";}
   if(!context)return;
   const audible=active&&frame?.alive&&!settings.muted;
@@ -227,7 +235,8 @@ function mountVehicleSound(){
  }
  setInterval(tick,80);
  document.addEventListener("visibilitychange",()=>{if(document.hidden){stopMusic();if(master)set(master.gain,0,.025);}});
- window.addEventListener("pagehide",()=>{stopMusic();context?.close().catch(()=>{});});
+ window.addEventListener("pagehide",event=>{stopMusic();if(event.persisted){if(master)set(master.gain,0,.025);context?.suspend().catch(()=>{});}else context?.close().catch(()=>{});});
+ window.addEventListener("pageshow",event=>{if(event.persisted&&context?.state==="suspended")context.resume().catch(()=>{});});
 }
 function mount(){
  const hud=document.getElementById("hud"), map=document.getElementById("map"), atlas=document.getElementById("atlas");

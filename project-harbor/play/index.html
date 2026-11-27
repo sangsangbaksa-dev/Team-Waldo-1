@@ -21,6 +21,7 @@
           <p id="harbor-world-money">$0</p>
           <p id="harbor-world-stars" aria-label="수배 0단계">☆☆☆☆☆</p>
           <p id="harbor-world-weapon">맨손</p>
+          <p id="harbor-world-trial">기록 주행 0/6</p>
         </div>
         <canvas id="harbor-world-mini" width="180" height="180" aria-label="미니맵"></canvas>
         <button type="button" id="harbor-world-map-button">전체지도 (M)</button>
@@ -31,7 +32,7 @@
       <div id="harbor-world-crosshair" aria-hidden="true"></div>
       <p id="harbor-world-prompt"></p>
       <p id="harbor-world-notice" role="status"></p>
-      <div class="harbor-world-controls">WASD 이동·운전 · Shift 달리기 · Space 점프/브레이크 · 드래그 시점 · 클릭 사격 · E 탑승·줍기 · F 소매치기 · G 강도 · R 재장전 · B 시설 이용 · K 저장 · M 지도</div>
+      <div class="harbor-world-controls">WASD 이동·운전 · Shift 달리기 · Space 점프/브레이크 · 드래그 시점 · 클릭 사격 · E 탑승·줍기 · F 소매치기 · G 강도 · R 재장전 · B 시설 이용 · K 저장 · T 기록 주행 · M 지도</div>
       <div class="harbor-touch" aria-label="터치 조작">
         <div class="harbor-touch-move">
           <button type="button" data-key="KeyW" aria-label="앞으로">▲</button>
@@ -48,11 +49,12 @@
           <button type="button" data-act="pickpocket">소매치기</button>
           <button type="button" data-act="rob">강도</button>
           <button type="button" data-act="service">시설 이용</button>
+          <button type="button" data-act="trial">기록 주행</button>
           <button type="button" data-act="fire">사격</button>
         </div>
       </div>
       <div id="harbor-world-overlay" class="harbor-world-overlay" hidden>
-        <header><strong>PORT CALLOWAY / 전체지도 · + 의료소 / P 정비소 / A 탄약 · 클릭: 목적지 설정/해제</strong><button type="button" id="harbor-world-close-map">닫기 (M / Esc)</button></header>
+        <header><strong>PORT CALLOWAY / 전체지도 · + 의료소 / P 정비소 / A 탄약 / T 기록 주행 · 클릭: 목적지 설정/해제</strong><button type="button" id="harbor-world-close-map">닫기 (M / Esc)</button></header>
         <canvas id="harbor-world-atlas" width="900" height="600" aria-label="6개 지역과 전체 도로 지도"></canvas>
       </div>
     </section>

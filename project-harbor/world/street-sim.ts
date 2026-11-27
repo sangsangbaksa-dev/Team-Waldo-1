@@ -76,6 +76,7 @@ export class StreetSim {
   private readonly bodies = new Map<number, VehicleBody>();
   private exitPoint: { x: number; z: number } | null = null;
   private playerId = -1;
+  private pendingUse = false;
   private attempt = 1;
   private nextId = 1;
   private time = 0;
@@ -118,6 +119,14 @@ export class StreetSim {
     return best;
   }
 
+  repairPlayer(health: number): void {
+    const car = this.playerCar;
+    if (!car) return;
+    car.health = health;
+    const body = this.bodies.get(car.id);
+    if (body) body.health = health;
+  }
+
   consumeExit(): { x: number; z: number } | null {
     const point = this.exitPoint;
     this.exitPoint = null;
@@ -125,6 +134,7 @@ export class StreetSim {
   }
 
   clearResponse() {
+    this.pendingUse = false;
     this.pursuit = initialPursuit(this.playerCar?.x ?? SPAWN.x, this.playerCar?.z ?? SPAWN.z);
     this.command = dispatchCommand(0, 'clear');
     if (this.playerId >= 0) this.releasePlayer();
@@ -133,10 +143,11 @@ export class StreetSim {
 
   step(frameDt: number, ctx: SimContext): SimEvent[] {
     const events: SimEvent[] = [];
-    let use = ctx.use;
+    this.pendingUse ||= ctx.use;
     this.clock.advance(frameDt, step => {
+      const use = this.pendingUse;
+      this.pendingUse = false;
       events.push(...this.substep(step, { ...ctx, use }));
-      use = false;
     });
     return events;
   }

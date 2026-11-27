@@ -4,6 +4,7 @@ import { World } from '../../project-harbor/world/application';
 import { createVitals } from '../../project-harbor/world/street';
 import { PACKAGES } from '../../project-harbor/world/exploration';
 import { SITES } from '../../project-harbor/world/services';
+import { COURSES } from '../../project-harbor/world/time-trials';
 function state() {
   const world = new World({ load() {}, unload() {} });
   world.x = 64; world.z = 64;
@@ -18,6 +19,14 @@ describe('Harbor local saves', () => {
     expect(restoreSave(b, data!)).toBe(true); expect(b.world.x).toBe(64);
     expect(b.vitals.money).toBe(700); expect(b.vitals.magazine).toBe(8);
     expect(b.visitedServices).toEqual(a.visitedServices); expect(b.collectedPackages).toEqual(a.collectedPackages);
+  });
+  it('retains valid trial records and accepts older save data', () => {
+    const a = { ...state(), trialRecords: new Map([[COURSES[0]!.id, 46.5]]) };
+    const b = { ...state(), trialRecords: new Map<string, number>() };
+    expect(restoreSave(b, makeSave(a)!)).toBe(true);
+    expect(b.trialRecords.get(COURSES[0]!.id)).toBe(46.5);
+    expect(parseSave(JSON.stringify({ ...makeSave(a), records: undefined }))?.records).toEqual({});
+    expect(parseSave(JSON.stringify({ ...makeSave(a), records: { fake: 1, [COURSES[0]!.id]: -2 } }))?.records).toEqual({});
   });
   it('rejects unsafe saves while wanted, airborne or driving', () => {
     const a = state(); a.vitals.wanted = 1; expect(makeSave(a)).toBeNull();

@@ -450,7 +450,7 @@ function start(): () => void {
     } else roam.world.stream();
     actors.view(camera.position.x, camera.position.z);
     actors.sync(roam.peds, roam.items, roam.shots);
-    garage.sync(roam.rides);
+    garage.sync(roam.rides, dt);
     for (const marker of markers) marker.visible = Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 180;
     for (const { item, mesh } of packages) {
       mesh.visible = !roam.collectedPackages.has(item.id) && Math.hypot(item.x - roam.x, item.z - roam.z) < 65;

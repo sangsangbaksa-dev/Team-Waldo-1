@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { copyFile, writeFile, access, copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -29,12 +29,6 @@ try {
   const html = await readFile(page, 'utf8');
   if (!html.includes('</body>')) throw new Error('Harbor browser entry is missing a body');
   await writeFile(page, html.replace('</body>', '<script type="module" src="./freeroam-ui.mjs"></script>\n</body>'));
-  // Install optional sandbox content after verifying and extracting the immutable engine bundle.
-  const indexPath = join(staged, 'index.html');
-  const html = await readFile(indexPath, 'utf8');
-  if (!html.includes('</body>')) throw new Error('Project Harbor HTML is missing its body');
-  await copyFile(join(source, 'sandbox-extras.js'), join(staged, 'sandbox-extras.js'));
-  if (!html.includes('sandbox-extras.js')) await writeFile(indexPath, html.replace('</body>', '<script defer src="./sandbox-extras.js"></script>\n</body>'));
   await rm(output, { recursive: true, force: true });
   await rename(staged, output);
   console.log(`Project Harbor ${release.sourceCommit.slice(0, 7)} ready at /project-harbor/${basename(output)}/`);

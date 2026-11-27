@@ -11,6 +11,8 @@ import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { drawIcon, svgIcon } from './art';
 import { AdaptiveQuality } from '../shared/adaptive';
+import { readControls, saveControls } from './infrastructure/control-store';
+import { createSkyHud } from './ui/hud';
 
 const clamp = THREE.MathUtils.clamp;
 const AIM_CONE = Math.cos(THREE.MathUtils.degToRad(5)), ASSIST_CONE = Math.cos(THREE.MathUtils.degToRad(9));
@@ -29,7 +31,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <button class="sk-pause" id="sk-pause" aria-label="일시정지">Ⅱ</button><div class="sk-hint" id="sk-hint"></div>
   </div>
   <div class="sk-modal wd-screen" id="sk-title"><div class="sk-card wd-panel">
-    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">끝없이 이어지는 하늘에서 나만의 기록을 세워보세요.</p>
+    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">적기 편대를 격추하고 최대한 오래 생존하세요.</p>
     <div class="wd-field"><div class="sk-section-label wd-label">난이도</div><div class="sk-diff wd-seg" id="sk-diff"></div></div>
     <div class="wd-field"><div class="sk-section-label wd-label">설정</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label></div></div>
     <ul class="sk-how"><li><b>커서/손가락 위치</b>로 조종 — 클릭 없이 움직이면 기체가 따라갑니다 (화면 가운데 = 직진)</li>
@@ -40,7 +42,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">게임 목록으로</button></div>
   </div></div>
   <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">MISSION REPORT</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">게임 목록으로</button></div></div></div>
-  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-snd">소리 켜짐</button><button class="wd-btn" id="sk-restart">다시 시작</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
+  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-snd">소리 켜짐</button><button class="wd-btn" id="sk-restart">다시 시작</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
   document.body.appendChild(root);
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
@@ -51,9 +53,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   let mTap = false, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
   const fireTap = new TapBuffer();
   // 조작 설정(저장): assist 0=끔(직접 조준) 1=약 2=강(자동 사격), sens 감도, inv 상하 반전
-  const CTL_KEY = 'waldo-sky-ctl'; const ctl = { assist: 2, sens: 1, inv: false };
-  try { Object.assign(ctl, JSON.parse(localStorage.getItem(CTL_KEY) || '{}')); } catch { /* 저장값 무시 */ }
-  const saveCtl = (): void => { try { localStorage.setItem(CTL_KEY, JSON.stringify(ctl)); } catch { /* 저장 실패 무시 */ } };
+  const ctl = readControls();
+  const saveCtl = (): void => saveControls(ctl);
   autoFire = ctl.assist >= 2;
   const mouse = { x: 0, y: 0, active: false, touchId: -1, ox: 0, oy: 0 }; const keys = new Set<string>();
 
@@ -119,16 +120,9 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   let bannerTick = 0;
   function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; bannerTick = performance.now(); }
   function alertMsg(t: string, sec = 1): void { $('sk-alert').textContent = t; alertT = sec; }
-  const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
+  const renderHud = createSkyHud($);
   function hud(p: Jet): void {
-    $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
-    $('sk-wave').textContent = `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`;
-    $('sk-hp').style.width = `${Math.max(0, p.hp / p.maxHp * 100)}%`; $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
-    $('sk-heat').style.width = `${clamp(p.heat / 1.2 * 100, 0, 100)}%`; $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
-    $('sk-spd').textContent = String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'; $('sk-alt').textContent = String(Math.round(p.pos.y)); setHtml($('sk-mis'), p.missiles > 0 ? svgIcon('missile', 'sk-ic mini').repeat(Math.min(p.missiles, 12)) : '—');
-    setHtml($('sk-status'), [sim!.shield > 0 ? `${svgIcon('shield')}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${svgIcon('bolt')}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
-    $('sk-fuel').style.width = `${p.fuel * 100}%`;
-    $('sk-thr').style.width = `${throttle * 100}%`;
+    renderHud(sim!, p, throttle);
     if (alertT > 0) { alertT -= 1 / 60; if (alertT <= 0) $('sk-alert').textContent = ''; }
     if (bannerT > 0) { bannerT -= (performance.now() - bannerTick) / 1000; bannerTick = performance.now(); if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
     if (hintT > 0) { hintT -= 1 / 60; if (hintT <= 0) $('sk-hint').textContent = ''; }

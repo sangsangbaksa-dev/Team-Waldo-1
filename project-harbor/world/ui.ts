@@ -1,4 +1,6 @@
 import * as T from 'three';
+import { terrainHeight } from './domain';
+import { SERVICE_INFO, SITES } from './services';
 import { DISTRICTS, WIDTH, DEPTH, roadHalf, districtAt } from './domain';
 import { FreeRoam, type RoamInput } from './session';
 import { StreetActors } from './actors';
@@ -37,6 +39,15 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
   for (let x = 64; x < WIDTH; x += 256) { ctx.lineWidth = roadHalf('x', x) * 2; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, DEPTH); ctx.stroke(); }
   for (let z = 64; z < DEPTH; z += 256) { ctx.lineWidth = roadHalf('z', z) * 2; ctx.beginPath(); ctx.moveTo(0, z); ctx.lineTo(WIDTH, z); ctx.stroke(); }
   ctx.restore();
+  for (const site of SITES) {
+    const x = ox + site.x * scale, y = oz + site.z * scale;
+    if (x < 0 || y < 0 || x > w || y > h) continue;
+    const info = SERVICE_INFO[site.kind];
+    ctx.fillStyle = '#' + info.color.toString(16).padStart(6, '0');
+    ctx.fillRect(x - 6, y - 6, 12, 12);
+    ctx.fillStyle = '#17201d'; ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(info.symbol, x, y);
+  }
   ctx.fillStyle = '#d6c27a';
   for (const item of items) if (item.kind === 'weapon') ctx.fillRect(ox + item.x * scale - 2, oz + item.z * scale - 2, 4, 4);
   ctx.fillStyle = '#7eb6ff';
@@ -171,6 +182,16 @@ function start(): () => void {
   scene.fog = new T.FogExp2(0x9daebc, 0.004);
   const chunks = new ThreeChunks(scene);
   const roam = new FreeRoam(chunks);
+  const ringGeometry = new T.RingGeometry(3.4, 3.7, 32);
+  const beaconGeometry = new T.CylinderGeometry(0.13, 0.13, 2.8, 8);
+  const markers = SITES.map(site => {
+    const group = new T.Group();
+    const material = new T.MeshBasicMaterial({ color: SERVICE_INFO[site.kind].color, transparent: true, opacity: 0.85, side: T.DoubleSide });
+    const ring = new T.Mesh(ringGeometry, material); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.12;
+    const beacon = new T.Mesh(beaconGeometry, material); beacon.position.y = 1.4;
+    group.add(ring, beacon); group.position.set(site.x, terrainHeight(site.x, site.z), site.z);
+    scene.add(group); return group;
+  });
   const actors = new StreetActors(scene);
   const garage = new CityGarage(scene);
   let orbit = 0;
@@ -216,7 +237,7 @@ function start(): () => void {
   required('harbor-world-map-button').addEventListener('click', toggleMap, { signal });
   required('harbor-world-close-map').addEventListener('click', toggleMap, { signal });
   required('harbor-world-exit').addEventListener('click', () => host.dispatchEvent(new Event('harbor-world-exit')), { signal });
-  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
+  const codes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyM', 'Escape', 'KeyE', 'KeyF', 'KeyG', 'KeyR', 'KeyB', 'KeyJ', 'ControlLeft', 'ControlRight', 'Space'];
   const focusGame = () => {
     if (host.hidden) return;
     host.tabIndex = -1;
@@ -241,6 +262,7 @@ function start(): () => void {
       if (event.code === 'KeyF') pulses.add('pickpocket');
       if (event.code === 'KeyG') pulses.add('rob');
       if (event.code === 'KeyR') pulses.add('reload');
+      if (event.code === 'KeyB') pulses.add('service');
     }
   }, { signal, capture: true });
   window.addEventListener('keyup', event => keys.delete(event.code), { signal, capture: true });
@@ -323,6 +345,7 @@ function start(): () => void {
       rob: pulses.has('rob'),
       fire: driving ? false : pulses.has('fireOnce') || actions.has('fire') || keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyJ'),
       reload: pulses.has('reload'),
+      service: pulses.has('service'),
       throttle: driving ? forward : 0,
       steer: driving ? (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) : 0,
       handbrake: keys.has('Space') || actions.has('brake'),
@@ -379,6 +402,7 @@ function start(): () => void {
     actors.view(camera.position.x, camera.position.z);
     actors.sync(roam.peds, roam.items, roam.shots);
     garage.sync(roam.rides);
+    for (const marker of markers) marker.visible = Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 180;
     held.visible = roam.vitals.weapon !== null && !roam.vehicle;
     playerRig.root.visible = !roam.vehicle;
     crosshair.hidden = mapOpen || roam.vehicle !== null;

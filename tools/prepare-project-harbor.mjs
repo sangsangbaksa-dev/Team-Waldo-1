@@ -22,13 +22,16 @@ try {
   if (!chunks.some(file => /^cell_-?\d+_-?\d+\.[\da-f]{12}\.scn$/.test(file))) {
     throw new Error('Project Harbor bundle is missing the streamed Godot map chunks');
   }
-  const extras = join(source, 'freeroam');
-  execFileSync(process.execPath, ['--test', join(extras, 'tests/freeroam.test.mjs')], { stdio: 'inherit' });
-  for (const name of ['freeroam-domain.mjs', 'freeroam-ui.mjs']) await copyFile(join(extras, name), join(staged, name));
+  // Keep a single free-roam UI, preserving the previous module's regression tests.
+  const legacy = join(source, 'freeroam');
+  execFileSync(process.execPath, ['--test', join(legacy, 'tests/freeroam.test.mjs')], { stdio: 'inherit' });
+  const extras = join(source, 'sandbox-extras.js');
+  execFileSync(process.execPath, ['--check', extras], { stdio: 'inherit' });
+  await copyFile(extras, join(staged, 'sandbox-extras.js'));
   const page = join(staged, 'index.html');
-  const html = await readFile(page, 'utf8');
+  const html = (await readFile(page, 'utf8')).replace(/<script\b[^>]*src=["'][^"']*freeroam-ui\.mjs["'][^>]*>\s*<\/script>/g, '');
   if (!html.includes('</body>')) throw new Error('Harbor browser entry is missing a body');
-  await writeFile(page, html.replace('</body>', '<script type="module" src="./freeroam-ui.mjs"></script>\n</body>'));
+  if (!html.includes('sandbox-extras.js')) await writeFile(page, html.replace('</body>', '<script defer src="./sandbox-extras.js"></script>\n</body>'));
   await rm(output, { recursive: true, force: true });
   await rename(staged, output);
   console.log(`Project Harbor ${release.sourceCommit.slice(0, 7)} ready at /project-harbor/${basename(output)}/`);

@@ -2,7 +2,9 @@
 (()=>{'use strict';
 const courses=[{"id":"harbor-loop","name":"항만 순환 코스","points":[[40,33],[40,71],[-39,71],[-39,33],[40,33]]},{"id":"civic-run","name":"도심 대로 코스","points":[[-155,-242],[-155,-345],[-70,-345],[-70,-440],[22,-440],[22,-530]]},{"id":"cinder-run","name":"사막 패스 코스","points":[[-595,-440],[-599,-381],[-591,-327],[-565,-275],[-530,-247],[-460,-242]]}];
 courses.push(...[{"id":"alder-drive","name":"숲속 파크웨이","points":[[-580,174],[-562,224],[-581,278],[-581,361],[-570,413],[-541,438],[-215,438]]},{"id":"coast-drive","name":"랜턴 포인트 해안","points":[[99,170],[99,438],[385,438],[482,438],[540,420],[568,379],[568,326],[554,287]]},{"id":"station-drive","name":"기지 외곽 순환","points":[[224,-530],[224,-268],[550,-268],[550,-530]]}]);
+courses.push(...[{"id":"quay","name":"부두 직선 코스","points":[[-130,33],[-85,33],[-39,33],[40,33],[99,33]]},{"id":"civic","name":"시빅 스트리트","points":[[-140,-345],[-70,-345],[22,-345],[105,-345],[170,-345]]},{"id":"rail","name":"철도 교차로 코스","points":[[-140,-119],[-85,-119],[-39,-119],[40,-119],[99,-119]]}]);
 const traps=[{"id":"boulevard","name":"Union Boulevard","point":[-110,-440]},{"id":"harbor","name":"Calloway Boulevard","point":[-95,33]},{"id":"desert","name":"Cinder Main","point":[-591,-327]},{"id":"forest","name":"Alderwash Parkway","point":[-581,320]},{"id":"coast","name":"Seabank Road","point":[290,438]}];
+traps.push(...[{"id":"lighthouse","name":"Lighthouse Drive","point":[99,-80]},{"id":"supply","name":"Supply Road","point":[-105,-175]},{"id":"meridian","name":"Meridian Avenue","point":[22,-470]}]);
 function distance(p,q){return Math.hypot(p.x-q[0],p.z-q[1]);}
 function advance(run,course,position,driving,alive,dt){
  if(run.finished||run.cancelled)return {...run};
@@ -238,6 +240,15 @@ function mountVehicleSound(){
  window.addEventListener("pagehide",event=>{stopMusic();if(event.persisted){if(master)set(master.gain,0,.025);context?.suspend().catch(()=>{});}else context?.close().catch(()=>{});});
  window.addEventListener("pageshow",event=>{if(event.persisted&&context?.state==="suspended")context.resume().catch(()=>{});});
 }
+function migrateLegacy(saved,stats,legacy){
+ if(!legacy||typeof legacy!=="object")return;
+ const valid=n=>Number.isFinite(n)&&n>=0;
+ for(const id of Array.isArray(legacy.visited)?legacy.visited:[])if(typeof id==="string"&&!saved.visited.includes(id))saved.visited.push(id);
+ for(const c of courses){const n=legacy.best?.[c.id];if(valid(n)&&n>0)saved.records[c.id]=Math.min(saved.records[c.id]||Infinity,n);}
+ for(const t of traps){const n=legacy.speeds?.[t.id];if(valid(n)&&n<=450)stats.traps[t.id]=Math.max(stats.traps[t.id]||0,n);}
+ for(const [old,k] of [["walk","walkMeters"],["drive","driveMeters"],["escapes","escapes"]])if(valid(legacy.trip?.[old]))stats[k]=Math.max(stats[k],legacy.trip[old]);
+ if(valid(legacy.trip?.topSpeed)&&legacy.trip.topSpeed<=450)saved.topSpeed=Math.max(saved.topSpeed,legacy.trip.topSpeed);
+}
 function mount(){
  const hud=document.getElementById("hud"), map=document.getElementById("map"), atlas=document.getElementById("atlas");
  if(!hud||!map||!atlas||document.getElementById("harbor-free-roam"))return;
@@ -249,6 +260,7 @@ function mount(){
  try{const a=JSON.parse(localStorage.getItem(statsKey)||"null");if(a){for(const k of ["driveMeters","walkMeters","escapes","maxEscape"])if(Number.isFinite(a[k])&&a[k]>=0)stats[k]=a[k];for(const t of traps)if(Number.isFinite(a.traps?.[t.id])&&a.traps[t.id]>=0&&a.traps[t.id]<=450)stats.traps[t.id]=a.traps[t.id];}}catch{}
  try{const data=JSON.parse(localStorage.getItem(key)||"null");if(data&&Array.isArray(data.visited)&&data.records&&typeof data.records==="object"){saved={visited:data.visited.filter(x=>typeof x==="string"),records:Object.fromEntries(Object.entries(data.records).filter(([k,v])=>courses.some(c=>c.id===k)&&Number.isFinite(v)&&v>0)),topSpeed:Number.isFinite(data.topSpeed)?Math.max(0,data.topSpeed):0};}}catch{}
  const save=()=>{try{localStorage.setItem(key,JSON.stringify(saved));localStorage.setItem(statsKey,JSON.stringify(stats));}catch{}};
+ try{if(!localStorage.getItem("harbor-free-roam-migrated-v1")){migrateLegacy(saved,stats,JSON.parse(localStorage.getItem("harbor.freeroam.v1")||"null"));localStorage.setItem(key,JSON.stringify(saved));localStorage.setItem(statsKey,JSON.stringify(stats));localStorage.setItem("harbor-free-roam-migrated-v1","1");}}catch{}
  const element=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt)e.textContent=txt;return e;};
  const style=element("style");style.textContent=`
  #harbor-free-roam{position:absolute;top:calc(var(--edge,16px) + 150px);left:var(--edge,16px);max-width:min(245px,45vw);padding:8px 11px;font-size:12px;line-height:1.5;color:#e9e5dc;pointer-events:none}
@@ -359,7 +371,7 @@ function mount(){
   const moved=lastPos?Math.hypot(p.x-lastPos.x,p.z-lastPos.z):0;lastPos={x:p.x,z:p.z};
   if(moved>50&&run?.started){run=null;course=null;announce("위치가 변경되어 주행 기록을 취소했습니다.");}
   if(alive){
-   for(const l of landmarks){if(!saved.visited.includes(l.id)&&distance(p,[l.position[0],l.position[2]])<=20){saved.visited.push(l.id);announce("명소 발견 · "+l.name);save();refresh();}}
+   for(const l of landmarks){if(!driving&&!saved.visited.includes(l.id)&&distance(p,[l.position[0],l.position[2]])<=12&&Math.abs((p.y??0)-l.position[1])<=4){saved.visited.push(l.id);announce("명소 발견 · "+l.name);save();refresh();}}
    const speed=driving?Math.abs(Number(f.state.vehicle?.speed))*3.6:0;
    if(Number.isFinite(speed)&&speed>saved.topSpeed&&speed<450){saved.topSpeed=speed;if(now-lastSave>3000){save();lastSave=now;refresh();}}
   }

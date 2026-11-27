@@ -128,6 +128,15 @@ describe('harbor traffic, hijack, and pursuit', () => {
     expect(sim.hijack?.carId).toBe(car.id);
   });
 
+  it('rents a legal car without a theft event and rejects blocked rental space', () => {
+    const sim = new StreetSim();
+    expect(sim.rent('sport', SPAWN.x, SPAWN.z, () => false)).toBe(false);
+    expect(sim.rent('sport', 1344, 692, () => true)).toBe(true);
+    expect(sim.playerCar?.type).toBe('sport');
+    expect(sim.rent('bike', 1344, 692, () => true)).toBe(false);
+    expect(sim.step(1 / 60, context()).filter(event => event.type === 'crime')).toHaveLength(0);
+  });
+
   it('checks the door and refuses a fast or boxed-in vehicle', () => {
     const edges = buildLanes();
     const lane = nearestLane(edges, SPAWN.x, SPAWN.z)!;

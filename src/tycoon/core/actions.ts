@@ -9,6 +9,7 @@ import {
   LOT_IDS, SPOT_BY_ID, absMinute, buildTotal, earn, expandCost, lotPrice, makeStaff, netWorth, nextId, pick,
   retailShops, rivalShopValue, shopValue, stockCap, unitCost, rand, type GameData, type ShopData,
 } from './model';
+import { deliveryTerms, deliveryPay, EXPRESS_JOB_ID } from './delivery';
 import { checkStage, fmt, ipoReady, spotUnlocked, type Emit } from './sim';
 import type { ActionDef, ShopKind, SpotDef } from './types';
 
@@ -64,6 +65,10 @@ export function buildActions(ctx: ActionCtx, spotId: string): ActionSpec[] {
     case 'food': for (const f of FOOD) out.push(foodAction(ctx, f)); break;
     case 'job':
       out.push(jobAction(ctx, spotId));
+      if (spotId === 'job_delivery') {
+        out.push(jobAction(ctx, spotId, true));
+        if (g.task?.from === spotId) out.push(spec({ id: 'cancel_delivery', label: '배송 취소', desc: '보수 없이 계약을 종료합니다. 사용한 에너지는 돌려받지 않습니다.', run: () => { g.task = null; ctx.emit({ type: 'task', text: '배송 취소', task: null }); return '배송을 취소했습니다'; } }, ctx));
+      }
       if (spotId === 'casino') out.push(...casinoActions(ctx));
       else if (!JOBS[JOB_AT[spotId]].delivery) out.push(rushAction(ctx, spotId));
       break;
@@ -135,22 +140,23 @@ function foodAction(ctx: ActionCtx, f: typeof FOOD[number]): ActionSpec {
 }
 
 // ── 알바 ─────────────────────────────────────────────
-function jobAction(ctx: ActionCtx, spotId: string): ActionSpec {
+function jobAction(ctx: ActionCtx, spotId: string, express = false): ActionSpec {
   const { g } = ctx;
   const job = JOBS[JOB_AT[spotId]];
   const h = g.minute / 60;
   const hours = h >= job.fromHour && h < job.toHour;
   const closed = hours ? undefined : `${job.fromHour}시~${job.toHour}시에만 일합니다`;
   if (job.delivery) {
+    const terms = deliveryTerms(express ? EXPRESS_JOB_ID : job.id);
     const busy = g.task ? '이미 배달 중입니다' : undefined;
     return spec({
-      id: 'accept', label: '배달 받기', desc: `${job.desc} 제한 ${DELIVERY_MINUTES / 60}시간, 기본 ${fmt(job.pay)}`, reward: job.pay, energy: job.energy, durationSec: job.durationSec,
+      id: express ? 'accept_express' : 'accept', label: express ? '긴급 배송' : '일반 배달', desc: express ? `제한 ${terms.minutes}분 · 보수 ${fmt(terms.reward)} · 지각 시 보수 없음. 직접 이동 · 시간 배속 1배 권장.` : `${job.desc} 제한 ${DELIVERY_MINUTES / 60}시간, 기본 ${fmt(job.pay)}`, reward: terms.reward, energy: terms.energy, durationSec: job.durationSec,
       ...((closed ?? busy) ? off((closed ?? busy)!) : {}),
       run: () => {
-        const targets = SPOTS.filter(s => s.id !== spotId && spotUnlocked(g, s) && (s.kind !== 'lot' || g.lots[s.id].owner !== 'none') && s.kind !== 'job');
+        const targets = SPOTS.filter(s => s.id !== spotId && spotUnlocked(g, s) && (s.kind !== 'lot' || g.lots[s.id].owner !== 'none') && s.kind !== 'job' && (!express || s.district === 'market' || s.district === 'downtown'));
         const target = pick(g, targets);
-        g.energy -= job.energy;
-        g.task = { id: nextId(g, 'task'), jobId: job.id, from: spotId, target: target.id, reward: job.pay, deadline: absMinute(g) + DELIVERY_MINUTES };
+        g.energy -= terms.energy;
+        g.task = { id: nextId(g, 'task'), jobId: express ? EXPRESS_JOB_ID : job.id, from: spotId, target: target.id, reward: terms.reward, deadline: absMinute(g) + terms.minutes };
         ctx.emit({ type: 'task', text: `${target.name}(으)로 배달하세요`, task: null });
         return `${target.name}까지 배달하세요!`;
       },
@@ -192,13 +198,14 @@ function deliverAction(ctx: ActionCtx): ActionSpec {
   const { g } = ctx;
   const t = g.task!;
   const left = t.deadline - absMinute(g);
-  const pay = Math.round(left < 0 ? t.reward * 0.5 : left > DELIVERY_MINUTES / 2 ? t.reward * 1.25 : t.reward);
+  const terms = deliveryTerms(t.jobId);
+  const pay = deliveryPay(t.jobId, t.reward, left);
   return spec({
-    id: 'deliver', label: '배달 완료', desc: left < 0 ? '늦었다... 절반만 받는다' : left > DELIVERY_MINUTES / 2 ? '총알 배송 보너스 +25%' : '제시간 배달', reward: pay,
+    id: 'deliver', label: '배달 완료', desc: left < 0 ? (t.jobId === EXPRESS_JOB_ID ? '기한 초과 · 보수 없음' : '기한 초과 · 보수 절반') : left > terms.minutes / 2 ? '조기 배송 보너스 +25%' : '제시간 배달', reward: pay,
     run: () => {
       g.task = null;
-      earn(g, pay); g.ledger.jobIncome += pay; g.jobsDone++;
-      ctx.emit({ type: 'cash', text: `+${fmt(pay)}`, amount: pay });
+      earn(g, pay); g.ledger.jobIncome += pay; if (pay > 0) g.jobsDone++;
+      if (pay > 0) ctx.emit({ type: 'cash', text: `+${fmt(pay)}`, amount: pay });
       ctx.emit({ type: 'task', text: '배달 완료', task: null });
       return `배달 완료! ${fmt(pay)}`;
     },

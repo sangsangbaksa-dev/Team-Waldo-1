@@ -126,6 +126,7 @@ export interface ActivityView {
 /** 배달처럼 다른 스폿까지 걸어가야 끝나는 일. 씬은 target 에 마커를 띄운다. */
 export interface TaskView {
   id: string;
+  express?: boolean;
   label: string;
   fromSpotId: string;
   targetSpotId: string;

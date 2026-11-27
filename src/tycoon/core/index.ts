@@ -1,3 +1,4 @@
+import { EXPRESS_JOB_ID } from './delivery';
 // 타이쿤 코어 진입점. 씬은 createCore() 하나만 쓰면 된다.
 import { GAME_MIN_PER_SEC, SPOTS } from './data';
 import { buildActions, type ActionCtx } from './actions';
@@ -88,7 +89,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
         for (let i = 0; i < whole; i++) advanceMinute(g, sim, emit);
         if (g.task && g.task.id !== lateWarned && g.task.deadline < (g.day - 1) * 1440 + g.minute) {
           lateWarned = g.task.id;
-          emit({ type: 'toast', text: '배달 시간이 지났습니다. 그래도 가져다주면 절반은 받습니다', tone: 'bad' });
+          emit({ type: 'toast', text: g.task.jobId === EXPRESS_JOB_ID ? '긴급 배송 기한 초과. 보수 없이 배송하거나 사무소에서 취소할 수 있습니다.' : '배달 시간이 지났습니다. 그래도 가져다주면 절반은 받습니다', tone: 'bad' });
         }
         dirty = true;
       }

@@ -32,7 +32,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
   const carCard = (c: (typeof CARS)[number]): string => `<button type="button" class="rc-opt rc-car" data-pick="car:${c.id}" style="--car:${c.color}"><span class="rc-car-art">${carArt(c.color, c.accent)}</span><span class="rc-car-head"><b>${c.name}</b><em>${c.role}</em></span><span class="rc-stats">${STAT_KEYS.map(k => `<span class="rc-stat" title="${STAT_LABELS[k]}: ${c.points[k]} / 5"><label>${STAT_LABELS[k]}</label><span class="bar" role="img" aria-label="${STAT_LABELS[k]} ${c.points[k]} / 5"><span style="width:${c.points[k] * 20}%"></span></span></span>`).join('')}</span></button>`;
   root.innerHTML = `
     <div class="rc-setup-inner wd-panel">
-      <header><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">레이스 설정</h2><p class="wd-lead">코스와 차량을 고르고 나만의 레이스를 시작하세요.</p></header>
+      <header><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">레이스 설정</h2><p class="wd-lead">코스, 차량, 경기 방식을 선택하세요.</p></header>
       <div class="rc-setup-cols">
         <div class="rc-setup-col">
           <section><h3>코스</h3><div class="rc-grid maps">${MAPS.map(mapCard).join('')}</div><p class="rc-note" data-note="map"></p></section>
@@ -62,7 +62,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
     const lap = records.bestLap[`${map.id}:${cur.car}:${cur.mode}`], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
     const ghost = cur.mode === 'trial' ? readGhost(map.id, cur.laps, car.id) : null;
-    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : cur.mode === 'knockout' ? '3랩 서바이벌. 선두가 랩을 마칠 때마다 꼴찌 한 대가 탈락하고, 마지막 랩은 남은 두 대의 결승입니다.' : '라이벌 3대와 순위를 겨룹니다. 드리프트를 이어 가면 점수가 쌓이고, 슬립스트림과 부스트 패드로 따라잡으세요.';
+    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : cur.mode === 'knockout' ? '3랩 서바이벌. 선두가 랩을 마칠 때마다 꼴찌 한 대가 탈락하고, 마지막 랩은 남은 두 대의 결승입니다. 무충돌 구간마다 니트로가 최대 8% 충전됩니다.' : '라이벌 3대와 순위를 겨룹니다. 한 랩의 세 구간을 충돌 없이 통과하면 구간마다 니트로가 최대 8% 충전됩니다.';
     root.querySelector<HTMLElement>('[data-seg="laps"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'knockout');
     root.querySelector<HTMLElement>('[data-seg="level"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'trial');
     note('record').textContent = lap !== undefined || race !== undefined ? `${map.name} 최고 랩 ${lap !== undefined ? fmtTime(lap) : '—'} · ${cur.laps}랩 최고 ${race !== undefined ? fmtTime(race) : '—'}` : '기록 없음';

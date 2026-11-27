@@ -53,7 +53,7 @@ export function createCityActivities(layout,saved={}){
    if(!active)return false;const q=sample(frame);
    if(!q){cancel("쓰러져 활동이 종료되었습니다");return false;}
    dt=finite(dt)?Math.max(0,Math.min(.5,dt)):0;
-   if(previous&&dist(q.point,previous.point)>Math.max(25,dt*100)){cancel("위치 급변으로 기록 취소");return false;}
+   if(previous&&dist(q.point,previous.point)>Math.max(q.driving||previous.driving?8:4,dt*(q.driving||previous.driving?75:13))){cancel("위치 급변으로 기록 취소");return false;}
    previous=q;const a=active,t=target(),near=dist(q.point,t.point);
    if(a.type==="trail"){
      if(a.phase==="run"){
@@ -78,7 +78,12 @@ export function createCityActivities(layout,saved={}){
  function view(frame){
    if(!active)return {active:null,notice,record};
    const q=sample(frame),t=target(),a=active;
-   return {active:{type:a.type,name:a.item.name,phase:a.phase,target:t,remaining:a.phase==="approach"?null:Math.max(0,(a.type==="stop"?60:a.item.limit)-a.elapsed),hold:a.hold,distance:q?dist(q.point,t.point):null,progress:a.type==="trail"?a.index:null,total:a.type==="trail"?a.item.points.length:null},notice,record};
+   return {active:{type:a.type,name:a.item.name,phase:a.phase,target:t,remaining:a.phase==="approach"?null:Math.max(0,(a.type==="stop"?60:a.item.limit)-a.elapsed),hold:a.hold,distance:q?dist(q.point,t.point):null,progress:a.type==="trail"?a.index:null,total:a.type==="trail"?a.item.points.length:null,path:a.type==="trail"?a.item.points.slice(a.index):a.type==="delivery"&&a.phase==="approach"?[a.item.from.point,a.item.to.point]:[t.point]},notice,record};
  }
  return {trails,stops,jobs,record,select,cancel,update,view};
+}
+
+export function mapActivityPoint(bounds,width,height,point){
+ const {min,max}=bounds;const scale=Math.min((width-40)/(max[0]-min[0]),(height-32)/(max[1]-min[1]));
+ return [width/2+(point[0]-(min[0]+max[0])/2)*scale,height/2+(point[1]-(min[1]+max[1])/2)*scale];
 }

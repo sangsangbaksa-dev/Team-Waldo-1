@@ -107,6 +107,25 @@ describe('harbor traffic, hijack, and pursuit', () => {
     expect(events.filter(event => event.type === 'driver')).toHaveLength(1);
     expect(sim.driving).toBe(true);
     expect(sim.playerCar?.id).toBe(car.id);
+    const body = sim.ride(car);
+    body.health = 21; car.health = 21;
+    sim.repairPlayer(100);
+    sim.step(1 / 60, context());
+    expect(sim.playerCar?.health).toBe(100);
+    expect(sim.ride(car).health).toBe(100);
+  });
+
+  it('retains one use pulse across substep-sized frames', () => {
+    const sim = new StreetSim();
+    const car = sim.cars.find(entry => entry.kind === 'civil')!;
+    const lane = nearestLane(sim.edges, SPAWN.x, SPAWN.z)!;
+    car.edge = lane.edge.id; car.progress = lane.progress; car.parked = true;
+    car.speed = 0; car.panic = 0; car.control = 'ai';
+    sim.step(1 / 60, context());
+    sim.step(1 / 240, context({ use: true }));
+    expect(sim.hijack).toBeNull();
+    sim.step(1 / 60, context());
+    expect(sim.hijack?.carId).toBe(car.id);
   });
 
   it('checks the door and refuses a fast or boxed-in vehicle', () => {

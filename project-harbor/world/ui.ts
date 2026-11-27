@@ -182,6 +182,7 @@ function start(): () => void {
   const weapon = required<HTMLElement>('harbor-world-weapon');
   const prompt = required<HTMLElement>('harbor-world-prompt');
   const notice = required<HTMLElement>('harbor-world-notice');
+  const trialHud = required<HTMLElement>('harbor-world-trial');
   const crosshair = required<HTMLElement>('harbor-world-crosshair');
   const keys = new Set<string>();
   const pulses = new Set<string>();
@@ -444,7 +445,6 @@ function start(): () => void {
     if (now - hudAt > 100) {
       hudAt = now;
       drawMap(mini, roam, false, roam.peds, roam.items, waypoint);
-      const trialHud = required('harbor-world-trial');
       const trial = roam.trial;
       const best = COURSES.filter(course => roam.trialRecords.has(course.id)).length;
       trialHud.textContent = trial ? trial.course.name + ' · ' + trial.elapsed.toFixed(1) + ' / ' + trial.course.limit + '초 · ' + trial.next + '/' + trial.course.gates.length : '기록 주행 ' + best + '/' + COURSES.length;

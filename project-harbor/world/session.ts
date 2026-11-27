@@ -294,7 +294,10 @@ export class FreeRoam {
   hint(): string {
     if (this.trial) return 'T · 기록 주행 종료 · 다음 체크포인트 ' + (this.trial.next + 1) + '/' + this.trial.course.gates.length;
     const course = nearbyCourse(this);
-    if (course && this.driving) return 'T · ' + course.name + ' 기록 주행 · E 하차';
+    if (course && this.driving) {
+      const best = this.trialRecords.get(course.id);
+      return 'T · ' + course.name + ' 기록 주행' + (best === undefined ? '' : ' · 최고 ' + best.toFixed(1) + '초') + ' · E 하차';
+    }
     const service = nearestService(this.x, this.z);
     if (service && !this.sim.busy) {
       const info = SERVICE_INFO[service.kind];

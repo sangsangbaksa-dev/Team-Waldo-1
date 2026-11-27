@@ -508,6 +508,7 @@ function start(): () => void {
     actors.dispose();
     people.dispose();
     garage.dispose();
+    chunks.dispose();
     const geometries = new Set<T.BufferGeometry>();
     const materials = new Set<T.Material>();
     scene.traverse(obj => {

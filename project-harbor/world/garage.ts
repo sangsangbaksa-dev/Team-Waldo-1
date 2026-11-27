@@ -1,6 +1,6 @@
 import * as T from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { terrainHeight } from './domain';
+import { roadDistance, terrainHeight } from './domain';
 import type { Ride } from './traffic';
 import { MotorcycleParts, type MotorcycleVisual } from './motorcycle';
 
@@ -85,7 +85,7 @@ export class CityGarage {
       visual.paint.color.setHex(ride.spec.color).lerp(this.damageColor,(1-T.MathUtils.clamp(ride.health/100,0,1))*.75);
       visual.paint.roughness=.37+(1-T.MathUtils.clamp(ride.health/100,0,1))*.4;
       if(visual.bike)this.motorcycle.update(visual.bike,ride,dt);
-      visual.shadow.position.set(ride.x,terrainHeight(ride.x,ride.z)+.025,ride.z);
+      visual.shadow.position.set(ride.x,terrainHeight(ride.x,ride.z)+(roadDistance(ride.x,ride.z)<=1?.14:.025),ride.z);
       visual.shadow.rotation.y=ride.yaw;
       visual.shadow.visible=true;
       const opening = Math.max(0, Math.min(1, ride.door ?? 0));
@@ -111,6 +111,7 @@ export class CityGarage {
     this.disposed = true;
     for (const visual of this.groups.values()) {
       visual.root.removeFromParent();
+      visual.shadow.removeFromParent();
       this.release(visual);
     }
     this.groups.clear();

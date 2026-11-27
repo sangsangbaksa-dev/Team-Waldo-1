@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import '../shared/ui.css';
 import './tycoon.css';
+import { isRepeatedCommand } from './application/input';
 import './ui/map-directory.css';
 import './ui/teleport.css';
 import './ui/casino.css';
@@ -106,13 +107,13 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 저장 ----------
-  const save = (): void => {
-    if (!core || phase !== 'play') return;
+  const save = (): boolean => {
+    if (!core || phase !== 'play') return false;
     const world: SessionPosition = {
       x: player.pos.x, z: player.pos.z, yaw: player.camYaw - Math.PI,
       waypoint, ride: rides?.snapshot() ?? null,
     };
-    saveTycoon({ serialize: () => ({ ...core.serialize(), world }) });
+    return saveTycoon({ serialize: () => ({ ...core.serialize(), world }) });
   };
 
   // ---------- 모달 ----------
@@ -287,7 +288,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (m !== 'restart') confirmRestart = false;
     if (m === 'resume') closeModal();
     else if (m === 'restart') { if (confirmRestart) restartGame(); else { confirmRestart = true; renderModal(); } }
-    else if (m === 'save') { save(); toast('저장했습니다', 'good'); }
+    else if (m === 'save') { if (save()) toast('저장했습니다', 'good'); else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 'bad'); }
     else if (m === 'view') { toggleView(); renderModal(); }
     else if (m === 'sound') { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); renderModal(); }
     else if (m === 'exit') exit();
@@ -299,7 +300,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked) resetInput(); };
   document.addEventListener('pointerlockchange', onLock);
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.target instanceof HTMLInputElement) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLElement && e.target.isContentEditable)) return;
+    if (isRepeatedCommand(e.code, e.repeat)) { e.preventDefault(); return; }
     audio.unlock();
     if (phase === 'title') { if (player && e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
     if (phase !== 'play') return;
@@ -342,13 +344,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { resetInput(); if (document.hidden && phase === 'play' && !modal) openModal({ kind: 'menu' }); };
   document.addEventListener('visibilitychange', onVisibility);
   canvas.addEventListener('pointerdown', e => {
-    audio.unlock(); if (phase !== 'play' || modal) return;
+    audio.unlock(); if (phase !== 'play' || modal || e.button !== 0) return;
     if (e.pointerType === 'touch') {
       if (e.clientX < innerWidth * 0.45 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; const st = q('#ty-stick'); st.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
       else if (tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
     } else { drag = e.pointerId; dragX = e.clientX; dragY = e.clientY; lock(); }
   });
   const onMove = (e: PointerEvent): void => {
+    if (phase !== 'play' || modal || document.hidden) return;
     if (e.pointerId === tc.moveId) { const dx = clamp((e.clientX - tc.ox) / 55, -1, 1), dy = clamp((e.clientY - tc.oy) / 55, -1, 1); tc.mx = dx; tc.my = dy; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = `translate(${dx * 38}px,${dy * 38}px)`; }
     else if (e.pointerId === tc.lookId) { player.look((e.clientX - tc.lx) * 0.0055, (e.clientY - tc.ly) * 0.0045); tc.lx = e.clientX; tc.ly = e.clientY; }
     else if (locked && phase === 'play' && !modal) player.look(e.movementX * 0.0024, e.movementY * 0.002);
@@ -360,13 +363,13 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.pointerId === tc.brakeId) { tc.brakeId = -1; tc.brake = false; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); }
     if (e.pointerId === drag) drag = -1;
   };
-  window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
+  window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp); window.addEventListener('lostpointercapture', onUp);
   const onWheel = (e: WheelEvent): void => { if (phase === 'play' && !modal && !player.firstPerson) player.dist = clamp(player.dist + e.deltaY * 0.01, 3.5, 14); };
   window.addEventListener('wheel', onWheel, { passive: true });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
-    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b || phase !== 'play' || modal || e.button !== 0) return; audio.unlock(); e.preventDefault();
     const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') { if (rides?.driving) honk(); else interact(); } else if (t === 'run') {
-      if (rides?.driving) { tc.brakeId = e.pointerId; tc.brake = true; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
+      if (rides?.driving) { if (tc.brakeId >= 0) return; tc.brakeId = e.pointerId; tc.brake = true; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); try { b.setPointerCapture(e.pointerId); } catch { /* window release is still handled */ } }
       else { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); }
     } else if (t === 'view') { toggleView(); }
   });
@@ -611,7 +614,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function exit(): void {
     if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
     window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility);
-    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
+    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('lostpointercapture', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
     if (document.pointerLockElement) document.exitPointerLock();
     for (const u of unsub) u();
     try { waypointMarker?.dispose(); rides?.dispose(); crowd?.dispose(); traffic?.dispose(); player?.dispose(); city?.dispose(); atmo?.dispose(); } catch { /* 정리 실패는 무시 */ }

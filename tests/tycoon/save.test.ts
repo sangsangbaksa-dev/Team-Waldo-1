@@ -24,6 +24,27 @@ function playedCore() {
 }
 
 describe('타이쿤 저장', () => {
+  it('프로토타입 속성은 상점 종류나 화물로 복구하지 않는다', () => {
+    const save = playedCore().serialize() as Record<string, unknown>;
+    const lots = save.lots as Record<string, Record<string, unknown>>;
+    (lots.lot_m1.shop as Record<string, unknown>).kind = '__proto__';
+    save.cargo = { kind: 'constructor', units: 5 };
+    const restored = createCore({ save });
+    expect(restored.state.owned).toHaveLength(0);
+    expect(restored.serialize().cargo).toBeNull();
+  });
+
+  it('깨진 일일 결산은 복구하지 않는다', () => {
+    const saved = { ...playedCore().serialize(), lastReport: { day: 1, profit: 'invalid' } };
+    expect(createCore({ save: saved }).state.lastReport).toBeNull();
+  });
+
+  it('저장소 쓰기 실패를 성공으로 보고하지 않는다', () => {
+    const storage = new MemStorage();
+    storage.setItem = () => { throw new Error('quota exceeded'); };
+    expect(saveTycoon(playedCore(), storage as unknown as Storage)).toBe(false);
+  });
+
   it('serialize → createCore 로 되살리면 같은 판이다', () => {
     const core = playedCore();
     const save = core.serialize();

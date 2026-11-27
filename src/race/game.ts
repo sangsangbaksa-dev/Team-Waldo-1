@@ -22,6 +22,7 @@ import { RaceView, setDriverKit } from './view';
 import { loadCharacterKit } from '../shared/character';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
+import { PointerHolds } from './application/pointer-holds';
 
 const STEP = 1 / 90;
 /** 한 프레임에 따라잡는 최대 시간(초)과 스텝 수. 이보다 느리면 게임이 느려집니다(카운트다운이 건너뛰어지지 않게). */
@@ -84,7 +85,8 @@ export function openRace(onExit: () => void): void {
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
-  function clearControls(): void { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
+  const pointers = new PointerHolds<keyof typeof hold>();
+  function clearControls(): void { keys.clear(); pointers.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
   let doneKmh: number | null = null, driftBests = readDriftBests(), nitroWas = false, driftWas = false;
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
@@ -94,6 +96,7 @@ export function openRace(onExit: () => void): void {
   const dbg = { auto: false };
   if (import.meta.env.DEV) (window as unknown as { __race: unknown }).__race = { get race() { return race; }, get view() { return view; }, dbg, skip(sec: number) { for (let t = 0; t < sec; t += STEP) handle(updateRace(race, STEP, readInput())); } }; // 개발 중 화면 캡처용: 시뮬레이션을 앞으로 감습니다.
   function readInput(): CarInput {
+    if (document.hidden) return { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
     if (dbg.auto) { const c = race.player.car, ai = aiInput(c, track, { lane: 0, top: race.player.params.top * 0.97, grip: 38, skill: 1, line: 1 }); return { ...ai, nitro: c.nitro > 0.5 && Math.abs(track.k[c.idx]) < 0.002, }; }
     const k = (n: string): boolean => keys.has(n), left = k('ArrowLeft') || k('KeyA') || hold.left, right = k('ArrowRight') || k('KeyD') || hold.right;
     const brake = k('ArrowDown') || k('KeyS') || hold.brake;
@@ -375,7 +378,7 @@ export function openRace(onExit: () => void): void {
     if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; if (on) clearControls(); modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = `<div class="rc-card wd-panel"><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">일시정지</h2>${reason ? `<p>${reason}</p>` : ''}<div class="rc-actions"><button class="wd-btn primary" data-act="resume">이어하기</button><button class="wd-btn ghost" data-act="mute" data-text>소리 ${audio.enabled ? '켜짐' : '꺼짐'}</button><button class="wd-btn ghost" data-act="restart">다시 시작</button><button class="wd-btn ghost" data-act="setup">설정</button><button class="wd-btn ghost" data-act="exit">게임 목록으로</button></div></div>`; } else modal.innerHTML = '';
   };
   const exit = (): void => {
-    if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);
+    if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
     leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
   };
   let settingsBack = '';
@@ -412,26 +415,32 @@ export function openRace(onExit: () => void): void {
   const onKey = (e: KeyboardEvent): void => {
     if (setupUi && e.code !== 'KeyM') return;
     if (e.target instanceof HTMLElement && e.target.closest('.rc-modal.show button') && (e.code === 'Enter' || e.code === 'Space')) return;
-    if (e.repeat && e.code !== 'KeyR') { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
+    if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape' || e.code === 'KeyP') { setPaused(!paused); return; } if (e.code === 'KeyM') { act('mute'); return; } if (e.code === 'KeyR' && !paused && race.phase === 'racing') { recover(); return; }
     if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } if (!paused && !finishedShown) keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  const onBlur = (): void => { clearControls(); if (race.phase === 'racing' && !setupUi) setPaused(true, '창이 비활성화되어 일시정지'); };
+  const onBlur = (): void => { clearControls(); if ((race.phase === 'racing' || race.phase === 'countdown') && !setupUi && !paused) setPaused(true, '창이 비활성화되어 일시정지'); };
+  const onVisibility = (): void => { if (document.hidden) onBlur(); };
+  document.addEventListener('visibilitychange', onVisibility);
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });
   root.querySelectorAll<HTMLElement>('[data-hold]').forEach(b => {
     const k = b.dataset.hold as keyof typeof hold;
-    const release = (): void => { hold[k] = false; b.classList.remove('down'); };
+    const release = (e: PointerEvent): void => {
+      pointers.release(k, e.pointerId);
+      hold[k] = pointers.active(k);
+      b.classList.toggle('down', hold[k]);
+    };
     b.addEventListener('pointerdown', e => {
-      if (e.button !== 0 || paused || setupUi || race.phase === 'done') return;
+      if (e.button !== 0 || paused || setupUi || !view || finishedShown || race.phase === 'done') return;
       e.preventDefault(); audio.unlock();
       try { b.setPointerCapture(e.pointerId); } catch { /* 캡처를 거절해도 누르고 있는 동안은 조향이 유지됩니다. */ }
-      hold[k] = true; b.classList.add('down');
+      pointers.press(k, e.pointerId); hold[k] = true; b.classList.add('down');
     });
-    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release);
-    b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(); });
+    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('lostpointercapture', release);
+    b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(e); });
     b.addEventListener('contextmenu', e => e.preventDefault());
   });
 

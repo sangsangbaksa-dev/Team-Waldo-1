@@ -37,7 +37,8 @@ describe('Harbor vehicle detail', () => {
   it('builds a compact opaque reflection panorama', () => {
     const texture=reflectionSky(), image=texture.image;
     expect(image.width).toBe(128);expect(image.height).toBe(64);
-    expect(image.data.length).toBe(128*64*4);expect(image.data[3]).toBe(255);
+    expect(image.data).not.toBeNull();
+    expect(image.data?.length).toBe(128*64*4);expect(image.data?.[3]).toBe(255);
     texture.dispose();
   });
 });

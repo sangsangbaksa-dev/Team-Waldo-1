@@ -45,7 +45,9 @@ try {
     stdio: 'inherit', env: { ...process.env, HARBOR_WORLD_FILE: join(staged, 'world/harbor_front.json') },
   });
   await copyFile(extras, join(staged, 'sandbox-extras.js'));
-  execFileSync(process.execPath, ['--test', join(legacy, 'tests/city-activities.test.mjs')], { stdio: 'inherit' });
+  execFileSync(process.execPath, ['--test', join(legacy, 'tests/city-activities.test.mjs'), join(legacy, 'tests/city-world.test.mjs')], {
+    stdio: 'inherit', env: { ...process.env, HARBOR_WORLD_FILE: join(staged, 'world/harbor_front.json') },
+  });
   for (const name of ['city-activities-domain.mjs', 'city-activities-ui.mjs']) {
     execFileSync(process.execPath, ['--check', join(legacy, name)], { stdio: 'inherit' });
     await copyFile(join(legacy, name), join(staged, name));

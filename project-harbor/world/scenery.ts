@@ -6,6 +6,26 @@ import { districtAt, type WorldProp } from './domain';
 const PROP_URL = new URL('../../public/assets/models/props.glb', import.meta.url).href;
 const NAMES = ['tree_round', 'tree_pine', 'lamp', 'bench', 'bin', 'barrier', 'planter', 'street_sign', 'kiosk'] as const;
 type Name = typeof NAMES[number];
+export function sceneryModelFor(prop: WorldProp): Name | undefined {
+  const district = districtAt(prop.x, prop.z).id;
+  const choice: Partial<Record<WorldProp['kind'], Name>> = {
+    tree: district === 'forest' ? (Math.floor(prop.x + prop.z) % 3 === 0 ? 'tree_round' : 'tree_pine') : 'tree_round',
+    lamp: 'lamp', bench: 'bench', trash: 'bin', barricade: 'barrier',
+    planter: 'planter', sign: 'street_sign', stall: 'kiosk',
+  };
+  return choice[prop.kind];
+}
+
+export function sceneryFit(prop: WorldProp, size: T.Vector3) {
+  const sy = prop.h / size.y;
+  // Tree crowns and lamp arms extend beyond their ground collision footprint.
+  const natural = prop.kind === 'lamp' || prop.kind === 'sign';
+  const sx = natural ? sy : (prop.kind === 'tree' ? Math.max(prop.w, prop.h * .48) : prop.w) / size.x;
+  const sz = natural ? sy : (prop.kind === 'tree' ? Math.max(prop.d, prop.h * .48) : prop.d) / size.z;
+  const yaw = prop.kind === 'tree' ? (prop.x * .19 + prop.z * .11) % (2 * Math.PI) : prop.yaw ?? 0;
+  return { sx, sy, sz, yaw };
+}
+
 type AssetPart = { geometry: T.BufferGeometry; glow: boolean };
 type Asset = { parts: AssetPart[]; size: T.Vector3 };
 export type SceneryPart = AssetPart & { sx: number; sy: number; sz: number; yaw: number };
@@ -65,23 +85,12 @@ export class Scenery {
   }
 
   parts(prop: WorldProp): SceneryPart[] | null {
-    const district = districtAt(prop.x, prop.z).id;
-    const choice: Partial<Record<WorldProp['kind'], Name>> = {
-      tree: district === 'forest' ? (Math.floor(prop.x + prop.z) % 3 === 0 ? 'tree_round' : 'tree_pine') : 'tree_round',
-      lamp: 'lamp', bench: 'bench', trash: 'bin', barricade: 'barrier',
-      planter: 'planter', sign: 'street_sign', stall: 'kiosk',
-    };
-    const name = choice[prop.kind];
+    const name = sceneryModelFor(prop);
     const asset = name && this.assets.get(name);
     if (!asset) return null;
     const { size } = asset;
-    const sy = prop.h / size.y;
-    // Tree crowns and lamp arms extend beyond their ground collision footprint.
-    const natural = prop.kind === 'lamp' || prop.kind === 'sign';
-    const sx = natural ? sy : (prop.kind === 'tree' ? Math.max(prop.w, prop.h * .48) : prop.w) / size.x;
-    const sz = natural ? sy : (prop.kind === 'tree' ? Math.max(prop.d, prop.h * .48) : prop.d) / size.z;
-    const yaw = prop.kind === 'tree' ? (prop.x * .19 + prop.z * .11) % (2 * Math.PI) : prop.yaw ?? 0;
-    return asset.parts.map(part => ({ ...part, sx, sy, sz, yaw }));
+    const fit = sceneryFit(prop, size);
+    return asset.parts.map(part => ({ ...part, ...fit }));
   }
 
   private disposeAssets(): void {

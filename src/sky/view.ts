@@ -91,6 +91,7 @@ export class SkyView {
     this.cockpit = on;
     for (const mesh of this.meshes.values()) if (mesh.userData.team === 'player') mesh.visible = !on;
   }
+  private readonly jetFlames = new WeakMap<THREE.Group, { flame?: THREE.Mesh; core?: THREE.Mesh }>();
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
   private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
   private tracers: THREE.LineSegments; private tracerPos = new Float32Array(400 * 6);
@@ -141,7 +142,7 @@ export class SkyView {
     };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; sc.add(sea); this.sea = sea;
     // 섬 지형
-    const N = 200, size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
+    const N = this.quality === 'high' ? 200 : this.quality === 'standard' ? 160 : 112, size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), c = new THREE.Color(), grass = new THREE.Color(0x2c6a2c), rock = new THREE.Color(0x77695a);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), h = terrainY(x, z); pos.setY(i, h - (h < 1 ? 6 : 0));
@@ -206,11 +207,13 @@ export class SkyView {
       m.visible = !(this.cockpit && j.team === 'player');
       m.position.copy(j.pos); m.quaternion.copy(j.q);
       const throttle = THREE.MathUtils.clamp(j.throttle + (j.boosting ? 0.6 : 0), 0, 1.6);
-      const fl = m.getObjectByName('flame') as THREE.Mesh | undefined; if (fl) {
+      let exhaust = this.jetFlames.get(m);
+      if (!exhaust) { exhaust = { flame: m.getObjectByName('flame') as THREE.Mesh | undefined, core: m.getObjectByName('flameCore') as THREE.Mesh | undefined }; this.jetFlames.set(m, exhaust); }
+      const fl = exhaust.flame; if (fl) {
         fl.scale.set(0.65 + throttle * 0.55, 0.45 + throttle * 1.4 + Math.sin(time * 40 + j.id) * 0.1, 0.65 + throttle * 0.55);
         (fl.material as THREE.MeshBasicMaterial).opacity = 0.4 + throttle * 0.55;
       }
-      const core = m.getObjectByName('flameCore') as THREE.Mesh | undefined;
+      const core = exhaust.core;
       if (core) { core.scale.set(0.7 + throttle * 0.3, 0.55 + throttle * 0.8, 0.7 + throttle * 0.3); (core.material as THREE.MeshBasicMaterial).opacity = 0.35 + throttle * 0.32; }
       if ((j.speed > 170 || (j.speed > 120 && Math.abs(j.roll) > 0.8)) && Math.random() < Math.min(1, dt * 24)) {
         const tip = this.v1;
@@ -254,7 +257,7 @@ export class SkyView {
     let n = 0; const tp = this.tracerPos;
     const hp = this.tracerHeadPos;
     for (const b of sim.bullets) { if (n >= 400) break; hp[n * 3] = b.pos.x; hp[n * 3 + 1] = b.pos.y; hp[n * 3 + 2] = b.pos.z; const o = n * 6; tp[o] = b.pos.x; tp[o + 1] = b.pos.y; tp[o + 2] = b.pos.z; tp[o + 3] = b.pos.x - b.vel.x * 0.035; tp[o + 4] = b.pos.y - b.vel.y * 0.035; tp[o + 5] = b.pos.z - b.vel.z * 0.035; n++; }
-    (this.tracers.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; this.tracers.geometry.setDrawRange(0, n * 2); (this.tracerHeads.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; this.tracerHeads.geometry.setDrawRange(0, n);
+    if (n > 0) { (this.tracers.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.tracerHeads.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; } this.tracers.geometry.setDrawRange(0, n * 2); this.tracerHeads.geometry.setDrawRange(0, n);
     // 파티클
     this.firePool.update(dt); this.smokePool.update(dt);
     // 하늘·바다가 카메라를 따라감(무한한 느낌)

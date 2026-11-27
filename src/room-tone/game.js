@@ -306,10 +306,10 @@ async function setup() {
   if (!player) player = new THREE.Vector3();
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !touch,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, touch ? 1.35 : 1.65));
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, touch ? 1.25 : 1.65));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -431,14 +431,21 @@ function pointPlayer() {
   $("act").disabled = true;
   clearInputs();
 }
+let renderWidth = 0, renderHeight = 0;
 function resize() {
   if (!renderer || !camera) return;
   const w = $("viewWrap").clientWidth,
     h = $("viewWrap").clientHeight;
   if (!w || !h) return;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h, false);
+  if (camera.aspect !== w / h) {
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  if (renderWidth !== w || renderHeight !== h) {
+    renderer.setSize(w, h, false);
+    renderWidth = w;
+    renderHeight = h;
+  }
   showSceneOnce();
 }
 window.addEventListener("resize", resize);
@@ -1401,7 +1408,8 @@ function update(dt) {
   $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
-  $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  const staminaTransform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  if ($("stamina").style.transform !== staminaTransform) $("stamina").style.transform = staminaTransform;
   const timeLabel = clock(elapsed);
   if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
@@ -1571,7 +1579,8 @@ wrap.addEventListener("pointermove", (e) => {
     !document.pointerLockElement
   ) {
     look(e.clientX - lookLast[0], e.clientY - lookLast[1]);
-    lookLast = [e.clientX, e.clientY];
+    lookLast[0] = e.clientX;
+    lookLast[1] = e.clientY;
   }
 });
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
@@ -1581,6 +1590,7 @@ for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
 const stick = $("stick");
 stick.addEventListener("pointerdown", (e) => {
   if (state !== "play" || !movePointer.claim(e.pointerId)) return;
+  e.preventDefault();
   const b = stick.getBoundingClientRect();
   moveStart = [b.left + b.width / 2, b.top + b.height / 2];
   if (!tryCapture(stick, e.pointerId)) {

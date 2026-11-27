@@ -1,5 +1,6 @@
 import { DEPTH, WIDTH, districtAt, roadDistance, type District } from './domain';
 import { civilType, type CivilVehicle } from './rental';
+import { resolveVehicleWall } from './vehicle-collision';
 import { beginHijack, doorOpen, doorPoint, stepHijack, type Hijack } from './hijack';
 import {
   dispatchCommand, initialPursuit, policyFor, pursuitMode, spawnBudget, stepPursuit,
@@ -9,7 +10,7 @@ import {
   buildLanes, endPoint, nearestLane, poseOn, signalOpen, SPAWN, vehicleYawFromWorld, worldForward, worldYawFromVehicle,
   type LaneEdge,
 } from './roads';
-import { makeVehicle, hitWall, longitudinal, stepVehicle, type VehicleInput, type VehicleBody } from '../vehicles/domain.js';
+import { makeVehicle, longitudinal, stepVehicle, type VehicleInput, type VehicleBody } from '../vehicles/domain.js';
 import {
   DISTRICT_CAP, SIM_STEP, claimSignal, lodOf, neighborsOnLane, releaseSignal, separateCars, stepTraffic,
   SpatialHash, type Reservation, type TrafficCar, type TrafficKind,
@@ -168,6 +169,8 @@ export class StreetSim {
     this.command = dispatchCommand(0, 'clear');
     if (this.playerId >= 0) this.releasePlayer();
     this.cars.splice(0, this.cars.length, ...this.cars.filter(car => car.kind === 'civil'));
+    const ids = new Set(this.cars.map(car => car.id));
+    for (const id of this.bodies.keys()) if (!ids.has(id)) this.bodies.delete(id);
   }
 
   step(frameDt: number, ctx: SimContext): SimEvent[] {
@@ -243,7 +246,11 @@ export class StreetSim {
       if (body) { body.health = playerAfterCollision.health; body.vx = playerAfterCollision.vx; body.vz = playerAfterCollision.vz; }
     }
     const staying = this.cars.filter(car => car.kind === 'civil' || car.control === 'player' || car.control === 'reserved' || car.mode !== 'withdraw' || Math.hypot(car.x - ctx.x, car.z - ctx.z) < 96);
-    this.cars.splice(0, this.cars.length, ...staying);
+    if (staying.length !== this.cars.length) {
+      const ids = new Set(staying.map(car => car.id));
+      for (const id of this.bodies.keys()) if (!ids.has(id)) this.bodies.delete(id);
+      this.cars.splice(0, this.cars.length, ...staying);
+    }
     return events;
   }
 
@@ -378,8 +385,9 @@ export class StreetSim {
   private driveBody(car: TrafficCar, input: VehicleInput, dt: number, ctx: SimContext) {
     const body = this.body(car);
     body.yaw = vehicleYawFromWorld(car.yaw);
+    const previous = { x: body.x, z: body.z, yaw: body.yaw };
     stepVehicle(body, input, dt, roadDistance(body.x, body.z) > 0.4);
-    if (ctx.blocked(body.x, body.z)) hitWall(body, { x: body.x, z: body.z, w: 2.2, d: 2.2 });
+    resolveVehicleWall(body, previous, ctx.blocked);
     body.x = Math.max(4, Math.min(WIDTH - 4, body.x));
     body.z = Math.max(4, Math.min(DEPTH - 4, body.z));
     car.x = body.x;

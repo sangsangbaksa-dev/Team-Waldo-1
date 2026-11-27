@@ -131,6 +131,7 @@ describe('harbor traffic, hijack, and pursuit', () => {
   it('rents a legal car without a theft event and rejects blocked rental space', () => {
     const sim = new StreetSim();
     expect(sim.rent('sport', SPAWN.x, SPAWN.z, () => false)).toBe(false);
+    sim.cars.length = 0;
     expect(sim.rent('sport', 1344, 692, () => true)).toBe(true);
     expect(sim.playerCar?.type).toBe('sport');
     expect(sim.rent('bike', 1344, 692, () => true)).toBe(false);

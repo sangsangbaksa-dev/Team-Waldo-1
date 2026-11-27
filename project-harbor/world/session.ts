@@ -1,4 +1,5 @@
 import { buyService, DISCOVERY_REWARD, nearestService, SERVICE_INFO, visitService } from './services';
+import { findPackage, groundedJump, stepJump, JUMP_DURATION, PACKAGES } from './exploration';
 import { CHUNK, DEPTH, WIDTH, roadDistance } from './domain';
 import { World, type ChunkView } from './application';
 import {
@@ -28,6 +29,7 @@ export interface RoamInput {
   steer: number;
   handbrake: boolean;
   service?: boolean;
+  jump?: boolean;
 }
 
 export const IDLE_INPUT: RoamInput = {
@@ -63,6 +65,11 @@ export class FreeRoam {
   private militaryNoted = false;
   private heatPulse = false;
   readonly visitedServices = new Set<string>();
+  readonly collectedPackages = new Set<string>();
+  private jumpState = groundedJump();
+  get jumpHeight() { return this.jumpState.height; }
+  get jumpPhase() { return this.jumpState.elapsed / JUMP_DURATION; }
+  get airborne() { return this.jumpState.elapsed < JUMP_DURATION; }
   ears: Ear[] = [];
 
   constructor(view: ChunkView) {
@@ -118,6 +125,9 @@ export class FreeRoam {
     }
     if (this.vitals.invulnerable > 0) this.vitals.invulnerable = Math.max(0, this.vitals.invulnerable - step);
     if (this.vitals.health <= 0) this.respawn();
+    const wasAirborne = this.airborne;
+    this.jumpState = stepJump(this.jumpState, step, !!input.jump, !this.sim.driving && !this.sim.busy && !input.use);
+    if (wasAirborne && !this.airborne && !this.sim.driving && !this.sim.busy) this.ears.push({ kind: 'step', x: this.x, z: this.z, gain: 0.8, pitch: 0.8, surface: surfaceAt(this.x, this.z) });
     let vehicleUse = false;
     if (this.sim.driving) {
       vehicleUse = input.use;
@@ -171,6 +181,7 @@ export class FreeRoam {
     }
     const driven = this.sim.playerCar;
     if (driven) {
+      this.jumpState = groundedJump();
       this.world.x = driven.x;
       this.world.z = driven.z;
       this.world.yaw = driven.yaw;
@@ -210,9 +221,9 @@ export class FreeRoam {
       }
     }
     const moved = Math.hypot(this.world.x - fromX, this.world.z - fromZ);
-    this.stepMeter += moved;
+    this.stepMeter += driving || this.airborne ? 0 : moved;
     const stride = input.sprint ? 0.42 : 0.68;
-    if (moved > 0.01 && this.stepMeter >= stride) {
+    if (!driving && !this.airborne && moved > 0.01 && this.stepMeter >= stride) {
       this.stepMeter = 0;
       this.ears.push({
         kind: 'step', x: this.world.x, z: this.world.z, gain: input.sprint ? 0.7 : 0.45, pitch: input.sprint ? 1.15 : 1,
@@ -230,6 +241,12 @@ export class FreeRoam {
     this.reap(step);
     decayWanted(this.vitals, step);
     this.heatPulse = this.vitals.wanted > heatAt;
+    const item = findPackage(this, this.collectedPackages, !driving && !this.airborne && this.vitals.health > 0);
+    if (item) {
+      this.collectedPackages.add(item.id);
+      this.vitals.money += item.reward;
+      this.say('숨겨진 가방 ' + this.collectedPackages.size + '/' + PACKAGES.length + ' · +$' + item.reward, 3.5);
+    }
     const service = nearestService(this.x, this.z);
     if (service && !this.sim.busy) {
       if (visitService(this.visitedServices, service, this.vitals)) this.say(SERVICE_INFO[service.kind].label + ' 발견 · +$' + DISCOVERY_REWARD);
@@ -250,7 +267,7 @@ export class FreeRoam {
     const service = nearestService(this.x, this.z);
     if (service && !this.sim.busy) {
       const info = SERVICE_INFO[service.kind];
-      return 'B · ' + info.label + ' $' + info.price + ' · ' + (this.sim.driving ? 'E 하차' : 'WASD 이동');
+      return 'B · ' + info.label + ' $' + info.price + ' · ' + (this.sim.driving ? 'E 하차 · Space 브레이크' : 'E 탑승/줍기 · Space 점프');
     }
     const car = this.sim.playerCar;
     if (car) {
@@ -634,6 +651,7 @@ export class FreeRoam {
   }
 
   private respawn() {
+    this.jumpState = groundedJump();
     this.seekingId = -1;
     this.sim.clearResponse();
     this.responseNoted = false;

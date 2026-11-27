@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { terrainHeight } from './domain';
+import { mapPoint, roadGuide, PACKAGES, type Point } from './exploration';
 import { SERVICE_INFO, SITES } from './services';
 import { DISTRICTS, WIDTH, DEPTH, roadHalf, districtAt } from './domain';
 import { FreeRoam, type RoamInput } from './session';
@@ -19,7 +20,7 @@ function required<E extends HTMLElement>(id: string): E {
   if (!el) throw new Error('Missing ' + id);
   return el as E;
 }
-function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds: readonly Ped[], items: readonly GroundItem[]) {
+function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds: readonly Ped[], items: readonly GroundItem[], waypoint: Point | null = null) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const w = canvas.width, h = canvas.height;
@@ -39,6 +40,14 @@ function drawMap(canvas: HTMLCanvasElement, roam: FreeRoam, full: boolean, peds:
   for (let x = 64; x < WIDTH; x += 256) { ctx.lineWidth = roadHalf('x', x) * 2; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, DEPTH); ctx.stroke(); }
   for (let z = 64; z < DEPTH; z += 256) { ctx.lineWidth = roadHalf('z', z) * 2; ctx.beginPath(); ctx.moveTo(0, z); ctx.lineTo(WIDTH, z); ctx.stroke(); }
   ctx.restore();
+  if (waypoint) {
+    const route = roadGuide(roam, waypoint);
+    ctx.strokeStyle = '#e9c76b'; ctx.lineWidth = full ? 3 : 2.5;
+    ctx.beginPath();
+    route.forEach((point, i) => { const x = ox + point.x * scale, z = oz + point.z * scale; if (i === 0) ctx.moveTo(x, z); else ctx.lineTo(x, z); });
+    ctx.stroke();
+    ctx.fillStyle = '#e9c76b'; ctx.beginPath(); ctx.arc(ox + waypoint.x * scale, oz + waypoint.z * scale, 5, 0, Math.PI * 2); ctx.fill();
+  }
   for (const site of SITES) {
     const x = ox + site.x * scale, y = oz + site.z * scale;
     if (x < 0 || y < 0 || x > w || y > h) continue;
@@ -192,6 +201,13 @@ function start(): () => void {
     group.add(ring, beacon); group.position.set(site.x, terrainHeight(site.x, site.z), site.z);
     scene.add(group); return group;
   });
+  const packageGeometry = new T.BoxGeometry(0.65, 0.4, 0.4);
+  const packageMaterial = new T.MeshStandardMaterial({ color: 0xb9a36e, roughness: 0.8 });
+  const packages = PACKAGES.map(item => {
+    const mesh = new T.Mesh(packageGeometry, packageMaterial);
+    mesh.position.set(item.x, terrainHeight(item.x, item.z) + 0.32, item.z);
+    mesh.visible = false; scene.add(mesh); return { item, mesh };
+  });
   const actors = new StreetActors(scene);
   const garage = new CityGarage(scene);
   let orbit = 0;
@@ -223,6 +239,7 @@ function start(): () => void {
   let speaker: HarborAudio | null = null;
   try { speaker = new HarborAudio(new AudioContext()); } catch { speaker = null; }
   const mixer = createMixer(districtAt(roam.x, roam.z).id);
+  let waypoint: Point | null = null;
   let mapOpen = false, drag = false, pressed = false, lastX = 0, pressX = 0, pressY = 0;
   let previous = performance.now(), hudAt = 0;
   const toggleMap = () => {
@@ -231,9 +248,18 @@ function start(): () => void {
     crosshair.hidden = mapOpen;
     keys.clear();
     pulses.clear();
-    if (mapOpen) drawMap(atlas, roam, true, roam.peds, roam.items);
+    if (mapOpen) drawMap(atlas, roam, true, roam.peds, roam.items, waypoint);
     else renderer.domElement.focus();
   };
+  atlas.addEventListener('click', event => {
+    if (!mapOpen) return;
+    const rect = atlas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const point = mapPoint((event.clientX - rect.left) * atlas.width / rect.width, (event.clientY - rect.top) * atlas.height / rect.height, atlas.width, atlas.height);
+    if (!point) return;
+    waypoint = waypoint && Math.hypot(waypoint.x - point.x, waypoint.z - point.z) < 35 ? null : point;
+    drawMap(atlas, roam, true, roam.peds, roam.items, waypoint);
+  }, { signal });
   required('harbor-world-map-button').addEventListener('click', toggleMap, { signal });
   required('harbor-world-close-map').addEventListener('click', toggleMap, { signal });
   required('harbor-world-exit').addEventListener('click', () => host.dispatchEvent(new Event('harbor-world-exit')), { signal });
@@ -263,6 +289,7 @@ function start(): () => void {
       if (event.code === 'KeyG') pulses.add('rob');
       if (event.code === 'KeyR') pulses.add('reload');
       if (event.code === 'KeyB') pulses.add('service');
+      if (event.code === 'Space' && !roam.driving) pulses.add('jump');
     }
   }, { signal, capture: true });
   window.addEventListener('keyup', event => keys.delete(event.code), { signal, capture: true });
@@ -346,6 +373,7 @@ function start(): () => void {
       fire: driving ? false : pulses.has('fireOnce') || actions.has('fire') || keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyJ'),
       reload: pulses.has('reload'),
       service: pulses.has('service'),
+      jump: !driving && pulses.has('jump'),
       throttle: driving ? forward : 0,
       steer: driving ? (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) : 0,
       handbrake: keys.has('Space') || actions.has('brake'),
@@ -373,10 +401,10 @@ function start(): () => void {
     if (notice.textContent !== roam.notice) notice.textContent = roam.notice;
     if (now - hudAt > 100) {
       hudAt = now;
-      drawMap(mini, roam, false, roam.peds, roam.items);
+      drawMap(mini, roam, false, roam.peds, roam.items, waypoint);
       const hours = Math.floor(roam.world.hours);
       const minutes = Math.floor((roam.world.hours - hours) * 60);
-      hud.textContent = districtAt(roam.x, roam.z).name + ' · ' + String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+      hud.textContent = districtAt(roam.x, roam.z).name + ' · ' + String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ' · 가방 ' + roam.collectedPackages.size + '/' + PACKAGES.length + (waypoint ? ' · 목적지 ' + Math.round(Math.hypot(waypoint.x - roam.x, waypoint.z - roam.z)) + 'm' : '');
     }
   }
   function frame(now: number) {
@@ -388,6 +416,7 @@ function start(): () => void {
       const command = input();
       command.look = look;
       roam.tick(command, dt);
+      if (waypoint && Math.hypot(waypoint.x - roam.x, waypoint.z - roam.z) < 9) waypoint = null;
       pulses.clear();
       if (speaker) {
         speaker.apply(renderMix(mixer, {
@@ -403,23 +432,29 @@ function start(): () => void {
     actors.sync(roam.peds, roam.items, roam.shots);
     garage.sync(roam.rides);
     for (const marker of markers) marker.visible = Math.hypot(marker.position.x - roam.x, marker.position.z - roam.z) < 180;
+    for (const { item, mesh } of packages) {
+      mesh.visible = !roam.collectedPackages.has(item.id) && Math.hypot(item.x - roam.x, item.z - roam.z) < 65;
+    }
     held.visible = roam.vitals.weapon !== null && !roam.vehicle;
     playerRig.root.visible = !roam.vehicle;
     crosshair.hidden = mapOpen || roam.vehicle !== null;
     const moving = !roam.vehicle && (has('KeyW', 'ArrowUp') - has('KeyS', 'ArrowDown') !== 0 || keys.has('KeyA') || keys.has('KeyD'));
     const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight') || actions.has('run');
-    const clip: Clip = moving ? (sprint ? 'run' : 'walk') : 'idle';
+    const clip: Clip = roam.airborne ? 'jump' : moving ? (sprint ? 'run' : 'walk') : 'idle';
     gait = moving ? (gait + dt / (sprint ? 0.44 : 0.78)) % 1 : 0;
-    playerRig.root.position.set(roam.x, roam.world.y, roam.z);
+    playerRig.root.position.set(roam.x, roam.world.y + roam.jumpHeight, roam.z);
     playerRig.root.rotation.y = modelYaw(roam.yaw, 'harbor');
-    if (!roam.vehicle) people.apply(playerRig, poseAt(clip, gait), { phase: gait, clip });
+    if (!roam.vehicle) {
+      const phase = roam.airborne ? roam.jumpPhase : gait;
+      people.apply(playerRig, poseAt(clip, phase), { phase, clip });
+    }
     const facing = roam.yaw + (roam.vehicle ? orbit : 0);
     const aimX = Math.sin(facing);
     const aimZ = -Math.cos(facing);
     const distance = roam.vehicle ? 12 : 7.5;
     const height = roam.vehicle ? 5.4 : 4.2;
-    target.set(roam.x + aimX * 14, roam.world.y + 1.25, roam.z + aimZ * 14);
-    desired.set(roam.x - aimX * distance, roam.world.y + height, roam.z - aimZ * distance);
+    target.set(roam.x + aimX * 14, roam.world.y + 1.25 + roam.jumpHeight * 0.6, roam.z + aimZ * 14);
+    desired.set(roam.x - aimX * distance, roam.world.y + height + roam.jumpHeight * 0.6, roam.z - aimZ * distance);
     camera.position.lerp(desired, 1 - Math.exp(-dt * 13));
     camera.lookAt(target);
     frameShot(camera, roam);

@@ -145,6 +145,8 @@ class Game {
   private deploySolo(): void {
     notice(element('menu-status'));
     const world = this.world ??= createWorld();
+    this.session?.close();
+    this.controls.resetSession();
     this.session = new SoloSession(world, this.playerName());
     const snapshot = this.session.snapshot;
     if (snapshot && this.openField(snapshot)) this.resume();
@@ -152,6 +154,7 @@ class Game {
 
   private connect(request: Extract<ClientMessage, { type: 'create' | 'join' }>): void {
     this.session?.close();
+    this.controls.resetSession();
     this.session = new OnlineSession(request, this.world ??= createWorld());
     this.onlineBusy(true);
     notice(element('online-status'), 'Connecting…');
